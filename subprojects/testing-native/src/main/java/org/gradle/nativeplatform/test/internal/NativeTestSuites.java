@@ -47,7 +47,7 @@ public class NativeTestSuites {
                                                      final Class<S> testSuiteBinaryClass,
                                                      final String typeString, final File buildDir, final ServiceRegistry serviceRegistry) {
         for (final NativeBinarySpec testedBinary : testedBinariesOf(testSuite)) {
-            if (testedBinary instanceof SharedLibraryBinary) {
+            if (testedBinary instanceof SharedLibraryBinary || testedBinary instanceof SemiStaticLibraryBinary) {
                 // For now, we only create test suites for static library variants
                 continue;
             }
