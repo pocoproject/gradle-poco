@@ -15,6 +15,10 @@
  */
 package org.gradle.nativeplatform.plugins;
 
+import java.io.File;
+
+import javax.inject.Inject;
+
 import org.apache.commons.lang.StringUtils;
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
@@ -63,6 +67,7 @@ import org.gradle.nativeplatform.NativeLibrarySpec;
 import org.gradle.nativeplatform.PrebuiltLibraries;
 import org.gradle.nativeplatform.PrebuiltLibrary;
 import org.gradle.nativeplatform.Repositories;
+import org.gradle.nativeplatform.SemiStaticLibraryBinarySpec;
 import org.gradle.nativeplatform.SharedLibraryBinarySpec;
 import org.gradle.nativeplatform.StaticLibraryBinarySpec;
 import org.gradle.nativeplatform.TargetedNativeComponent;
@@ -72,6 +77,7 @@ import org.gradle.nativeplatform.internal.DefaultFlavorContainer;
 import org.gradle.nativeplatform.internal.DefaultNativeExecutableBinarySpec;
 import org.gradle.nativeplatform.internal.DefaultNativeExecutableSpec;
 import org.gradle.nativeplatform.internal.DefaultNativeLibrarySpec;
+import org.gradle.nativeplatform.internal.DefaultSemiStaticLibraryBinarySpec;
 import org.gradle.nativeplatform.internal.DefaultSharedLibraryBinarySpec;
 import org.gradle.nativeplatform.internal.DefaultStaticLibraryBinarySpec;
 import org.gradle.nativeplatform.internal.NativeBinarySpecInternal;
@@ -79,6 +85,7 @@ import org.gradle.nativeplatform.internal.NativeComponents;
 import org.gradle.nativeplatform.internal.NativeDependentBinariesResolutionStrategy;
 import org.gradle.nativeplatform.internal.NativeExecutableBinarySpecInternal;
 import org.gradle.nativeplatform.internal.NativePlatformResolver;
+import org.gradle.nativeplatform.internal.SemiStaticLibraryBinarySpecInternal;
 import org.gradle.nativeplatform.internal.SharedLibraryBinarySpecInternal;
 import org.gradle.nativeplatform.internal.StaticLibraryBinarySpecInternal;
 import org.gradle.nativeplatform.internal.TargetedNativeComponentInternal;
@@ -90,6 +97,7 @@ import org.gradle.nativeplatform.internal.resolve.NativeDependencyResolver;
 import org.gradle.nativeplatform.platform.NativePlatform;
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
 import org.gradle.nativeplatform.platform.internal.NativePlatforms;
+import org.gradle.nativeplatform.tasks.CreateSemiStaticLibrary;
 import org.gradle.nativeplatform.tasks.CreateStaticLibrary;
 import org.gradle.nativeplatform.tasks.LinkSharedLibrary;
 import org.gradle.nativeplatform.tasks.PrefixHeaderFileGenerateTask;
@@ -106,9 +114,6 @@ import org.gradle.platform.base.TypeBuilder;
 import org.gradle.platform.base.internal.HasIntermediateOutputsComponentSpec;
 import org.gradle.platform.base.internal.PlatformResolvers;
 import org.gradle.platform.base.internal.dependents.DependentBinariesResolver;
-
-import javax.inject.Inject;
-import java.io.File;
 
 /**
  * A plugin that sets up the infrastructure for defining native binaries.
@@ -205,6 +210,12 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
         void registerStaticLibraryBinaryType(TypeBuilder<StaticLibraryBinarySpec> builder) {
             builder.defaultImplementation(DefaultStaticLibraryBinarySpec.class);
             builder.internalView(StaticLibraryBinarySpecInternal.class);
+        }
+
+        @ComponentType
+        void registerSemiStaticLibraryBinaryType(TypeBuilder<SemiStaticLibraryBinarySpec> builder) {
+            builder.defaultImplementation(DefaultSemiStaticLibraryBinarySpec.class);
+            builder.internalView(SemiStaticLibraryBinarySpecInternal.class);
         }
 
         @ComponentType
@@ -345,6 +356,21 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
                     task.setToolChain(binary.getToolChain());
                     task.setTargetPlatform(binary.getTargetPlatform());
                     task.setOutputFile(binary.getStaticLibraryFile());
+                    task.setStaticLibArgs(binary.getStaticLibArchiver().getArgs());
+                }
+            });
+        }
+
+        @BinaryTasks
+        public void semiStaticLibraryTasks(ModelMap<Task> tasks, final SemiStaticLibraryBinarySpecInternal binary) {
+            String taskName = binary.getNamingScheme().getTaskName("create");
+            tasks.create(taskName, CreateSemiStaticLibrary.class, new Action<CreateSemiStaticLibrary>() {
+                @Override
+                public void execute(CreateSemiStaticLibrary task) {
+                    task.setDescription("Creates " + binary.getDisplayName());
+                    task.setToolChain(binary.getToolChain());
+                    task.setTargetPlatform(binary.getTargetPlatform());
+                    task.setOutputFile(binary.getSemiStaticLibraryFile());
                     task.setStaticLibArgs(binary.getStaticLibArchiver().getArgs());
                 }
             });
