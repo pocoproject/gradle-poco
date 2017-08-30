@@ -35,13 +35,14 @@ class SwiftParallelExecutionIntegrationTest extends AbstractNativeParallelIntegr
         buildFile << """
             apply plugin: 'swift-executable'
         """
-        withTaskThatRunsParallelWith("linkMain")
+
+        createTaskThatRunsInParallelUsingCustomToolchainWith("linkDebug")
 
         when:
         succeeds "assemble", "parallelTask"
 
         then:
-        assertTaskIsParallel("linkMain")
+        assertTaskIsParallel("linkDebug")
     }
 
     def "compile task is executed in parallel"() {
@@ -54,12 +55,13 @@ class SwiftParallelExecutionIntegrationTest extends AbstractNativeParallelIntegr
         buildFile << """
             apply plugin: 'swift-executable'
          """
-        withTaskThatRunsParallelWith("compileSwift")
+
+        createTaskThatRunsInParallelUsingCustomToolchainWith("compileDebugSwift")
 
         when:
         succeeds "assemble", "parallelTask"
 
         then:
-        assertTaskIsParallel("compileSwift")
+        assertTaskIsParallel("compileDebugSwift")
     }
 }

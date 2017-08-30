@@ -19,12 +19,10 @@ package org.gradle.language.cpp;
 import org.gradle.api.Incubating;
 
 /**
- * Configuration for a C++ executable, defining the source files that make up the executable plus other settings.
- *
- * <p>An instance of this type is added as a project extension by the C++ executable plugin.</p>
+ * An executable built from C++ source.
  *
  * @since 4.2
  */
 @Incubating
-public interface CppExecutable extends CppComponent {
+public interface CppExecutable extends CppBinary {
 }

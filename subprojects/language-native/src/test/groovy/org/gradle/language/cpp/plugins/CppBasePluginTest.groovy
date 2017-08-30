@@ -17,9 +17,9 @@
 package org.gradle.language.cpp.plugins
 
 import org.gradle.internal.os.OperatingSystem
-import org.gradle.language.cpp.CppComponent
+import org.gradle.language.cpp.CppBinary
 import org.gradle.language.cpp.CppExecutable
-import org.gradle.language.cpp.CppLibrary
+import org.gradle.language.cpp.CppSharedLibrary
 import org.gradle.language.cpp.tasks.CppCompile
 import org.gradle.nativeplatform.tasks.LinkExecutable
 import org.gradle.nativeplatform.tasks.LinkSharedLibrary
@@ -34,66 +34,72 @@ class CppBasePluginTest extends Specification {
     def projectDir = tmpDir.createDir("project")
     def project = ProjectBuilder.builder().withProjectDir(projectDir).withName("test").build()
 
-    def "adds compile task for component"() {
-        def component = Stub(CppComponent)
-        component.name >> name
+    def "adds compile task for binary"() {
+        def binary = Stub(CppBinary)
+        binary.name >> name
 
         when:
         project.pluginManager.apply(CppBasePlugin)
-        project.components.add(component)
+        project.components.add(binary)
 
         then:
         def compileCpp = project.tasks[taskName]
         compileCpp instanceof CppCompile
-        compileCpp.objectFileDirectory.get().asFile == projectDir.file("build/${name}/objs")
+        compileCpp.objectFileDirectory.get().asFile == projectDir.file("build/obj/${objDir}")
 
         where:
-        name   | taskName
-        "main" | "compileCpp"
-        "test" | "compileTestCpp"
+        name        | taskName              | objDir
+        "main"      | "compileCpp"          | "main"
+        "mainDebug" | "compileDebugCpp"     | "main/debug"
+        "test"      | "compileTestCpp"      | "test"
+        "testDebug" | "compileTestDebugCpp" | "test/debug"
     }
 
     def "adds link task for executable"() {
         def baseName = project.providers.property(String)
         baseName.set("test_app")
-        def component = Stub(CppExecutable)
-        component.name >> name
-        component.baseName >> baseName
+        def executable = Stub(CppExecutable)
+        executable.name >> name
+        executable.baseName >> baseName
 
         when:
         project.pluginManager.apply(CppBasePlugin)
-        project.components.add(component)
+        project.components.add(executable)
 
         then:
         def link = project.tasks[taskName]
         link instanceof LinkExecutable
-        link.binaryFile.get().asFile == projectDir.file("build/exe/" + OperatingSystem.current().getExecutableName("test_app"))
+        link.binaryFile.get().asFile == projectDir.file("build/exe/$exeDir" + OperatingSystem.current().getExecutableName("test_app"))
 
         where:
-        name   | taskName
-        "main" | "linkMain"
-        "test" | "linkTest"
+        name        | taskName        | exeDir
+        "main"      | "link"          | "main/"
+        "mainDebug" | "linkDebug"     | "main/debug/"
+        "test"      | "linkTest"      | "test/"
+        "testDebug" | "linkTestDebug" | "test/debug/"
     }
 
     def "adds link task for shared library"() {
         def baseName = project.providers.property(String)
         baseName.set("test_lib")
-        def component = Stub(CppLibrary)
-        component.name >> name
-        component.baseName >> baseName
+        def library = Stub(CppSharedLibrary)
+        library.name >> name
+        library.baseName >> baseName
 
         when:
         project.pluginManager.apply(CppBasePlugin)
-        project.components.add(component)
+        project.components.add(library)
 
         then:
         def link = project.tasks[taskName]
         link instanceof LinkSharedLibrary
-        link.binaryFile.get().asFile == projectDir.file("build/lib/" + OperatingSystem.current().getSharedLibraryName("test_lib"))
+        link.binaryFile.get().asFile == projectDir.file("build/lib/${libDir}" + OperatingSystem.current().getSharedLibraryName("test_lib"))
 
         where:
-        name   | taskName
-        "main" | "linkMain"
-        "test" | "linkTest"
+        name        | taskName        | libDir
+        "main"      | "link"          | "main/"
+        "mainDebug" | "linkDebug"     | "main/debug/"
+        "test"      | "linkTest"      | "test/"
+        "testDebug" | "linkTestDebug" | "test/debug/"
     }
 }

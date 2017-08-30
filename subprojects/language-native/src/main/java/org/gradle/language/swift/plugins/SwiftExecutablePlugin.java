@@ -29,10 +29,9 @@ import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
-import org.gradle.language.cpp.plugins.CppBasePlugin;
+import org.gradle.language.swift.SwiftApplication;
 import org.gradle.language.swift.SwiftComponent;
-import org.gradle.language.swift.SwiftExecutable;
-import org.gradle.language.swift.internal.DefaultSwiftExecutable;
+import org.gradle.language.swift.internal.DefaultSwiftApplication;
 import org.gradle.language.swift.tasks.SwiftCompile;
 import org.gradle.nativeplatform.tasks.InstallExecutable;
 import org.gradle.nativeplatform.tasks.LinkExecutable;
@@ -69,20 +68,20 @@ public class SwiftExecutablePlugin implements Plugin<ProjectInternal> {
         TaskContainer tasks = project.getTasks();
 
         // Add the component extension
-        SwiftComponent component = project.getExtensions().create(SwiftExecutable.class, "executable", DefaultSwiftExecutable.class, "main", fileOperations, providers);
-        project.getComponents().add(component);
+        SwiftApplication application = project.getExtensions().create(SwiftApplication.class, "executable", DefaultSwiftApplication.class, "main", project.getObjects(), fileOperations, providers, configurations);
+        project.getComponents().add(application);
+        project.getComponents().add(application.getDebugExecutable());
+        project.getComponents().add(application.getReleaseExecutable());
 
         // Setup component
-        final PropertyState<String> module = component.getModule();
+        final PropertyState<String> module = application.getModule();
         module.set(GUtil.toCamelCase(project.getName()));
-        component.getCompileImportPath().from(configurations.getByName(SwiftBasePlugin.SWIFT_IMPORT_PATH));
-        component.getLinkLibraries().from(configurations.getByName(CppBasePlugin.NATIVE_LINK));
 
         // Configure compile task
-        SwiftCompile compile = (SwiftCompile) tasks.getByName("compileSwift");
+        SwiftCompile compile = (SwiftCompile) tasks.getByName("compileDebugSwift");
         compile.setCompilerArgs(Lists.newArrayList("-g", "-enable-testing"));
 
-        LinkExecutable link = (LinkExecutable) tasks.getByName("linkMain");
+        LinkExecutable link = (LinkExecutable) tasks.getByName("linkDebug");
 
         // Add an install task
         final InstallExecutable install = tasks.create("installMain", InstallExecutable.class);
@@ -102,7 +101,7 @@ public class SwiftExecutablePlugin implements Plugin<ProjectInternal> {
                 return install.getExecutable().exists();
             }
         });
-        install.lib(configurations.getByName(CppBasePlugin.NATIVE_RUNTIME));
+        install.lib(application.getDebugExecutable().getRuntimeLibraries());
 
         tasks.getByName(LifecycleBasePlugin.ASSEMBLE_TASK_NAME).dependsOn(install);
     }

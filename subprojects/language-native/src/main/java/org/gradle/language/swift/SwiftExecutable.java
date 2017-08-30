@@ -19,12 +19,10 @@ package org.gradle.language.swift;
 import org.gradle.api.Incubating;
 
 /**
- * Configuration for a Swift executable, defining the source files that make up the executable plus other settings.
- *
- * <p>An instance of this type is added as a project extension by the Swift executable plugin.</p>
+ * An executable built from Swift source.
  *
  * @since 4.2
  */
 @Incubating
-public interface SwiftExecutable extends SwiftComponent {
+public interface SwiftExecutable extends SwiftBinary {
 }

@@ -27,9 +27,9 @@ import org.gradle.api.provider.ProviderFactory;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
+import org.gradle.language.cpp.CppApplication;
 import org.gradle.language.cpp.CppComponent;
-import org.gradle.language.cpp.CppExecutable;
-import org.gradle.language.cpp.internal.DefaultCppExecutable;
+import org.gradle.language.cpp.internal.DefaultCppApplication;
 import org.gradle.nativeplatform.tasks.InstallExecutable;
 import org.gradle.nativeplatform.tasks.LinkExecutable;
 
@@ -63,16 +63,16 @@ public class CppExecutablePlugin implements Plugin<ProjectInternal> {
         ProviderFactory providers = project.getProviders();
         TaskContainer tasks = project.getTasks();
 
-        // Add the component extension
-        final CppComponent component = project.getExtensions().create(CppExecutable.class, "executable", DefaultCppExecutable.class, "main", fileOperations, providers);
-        project.getComponents().add(component);
+        // Add the application extension
+        final CppApplication application = project.getExtensions().create(CppApplication.class, "executable", DefaultCppApplication.class,  "main", project.getObjects(), fileOperations, providers, configurations);
+        project.getComponents().add(application);
+        project.getComponents().add(application.getDebugExecutable());
+        project.getComponents().add(application.getReleaseExecutable());
 
         // Configure the component
-        component.getBaseName().set(project.getName());
-        component.getCompileIncludePath().from(configurations.getByName(CppBasePlugin.CPP_INCLUDE_PATH));
-        component.getLinkLibraries().from(configurations.getByName(CppBasePlugin.NATIVE_LINK));
+        application.getBaseName().set(project.getName());
 
-        LinkExecutable link = (LinkExecutable) tasks.getByName("linkMain");
+        LinkExecutable link = (LinkExecutable) tasks.getByName("linkDebug");
 
         // Add an install task
         // TODO - move this up to the base plugin
@@ -82,7 +82,7 @@ public class CppExecutablePlugin implements Plugin<ProjectInternal> {
         install.setDestinationDir(buildDirectory.dir(providers.provider(new Callable<String>() {
             @Override
             public String call() throws Exception {
-                return "install/" + component.getBaseName().get();
+                return "install/" + application.getBaseName().get();
             }
         })));
         install.setExecutable(link.getBinaryFile());
@@ -93,7 +93,7 @@ public class CppExecutablePlugin implements Plugin<ProjectInternal> {
                 return install.getExecutable().exists();
             }
         });
-        install.lib(configurations.getByName(CppBasePlugin.NATIVE_RUNTIME));
+        install.lib(application.getDebugExecutable().getRuntimeLibraries());
 
         tasks.getByName(LifecycleBasePlugin.ASSEMBLE_TASK_NAME).dependsOn(install);
 

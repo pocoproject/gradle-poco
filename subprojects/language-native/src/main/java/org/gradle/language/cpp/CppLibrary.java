@@ -18,6 +18,7 @@ package org.gradle.language.cpp;
 
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
+import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
 
@@ -46,4 +47,25 @@ public interface CppLibrary extends CppComponent {
      * Returns the public header files of this component, as defined in {@link #getPublicHeaders()}.
      */
     FileCollection getPublicHeaderDirs();
+
+    /**
+     * Returns the API dependencies of this library.
+     */
+    Configuration getApiDependencies();
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    CppSharedLibrary getDevelopmentBinary();
+
+    /**
+     * Returns the debug shared library for this library.
+     */
+    CppSharedLibrary getDebugSharedLibrary();
+
+    /**
+     * Returns the release shared library for this library.
+     */
+    CppSharedLibrary getReleaseSharedLibrary();
 }

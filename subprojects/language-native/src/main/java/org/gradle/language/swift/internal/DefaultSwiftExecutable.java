@@ -16,15 +16,15 @@
 
 package org.gradle.language.swift.internal;
 
-import org.gradle.api.internal.file.FileOperations;
-import org.gradle.api.provider.ProviderFactory;
+import org.gradle.api.artifacts.Configuration;
+import org.gradle.api.artifacts.ConfigurationContainer;
+import org.gradle.api.file.FileCollection;
+import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.provider.Provider;
 import org.gradle.language.swift.SwiftExecutable;
 
-import javax.inject.Inject;
-
-public class DefaultSwiftExecutable extends DefaultSwiftComponent implements SwiftExecutable {
-    @Inject
-    public DefaultSwiftExecutable(String name, FileOperations fileOperations, ProviderFactory providerFactory) {
-        super(name, fileOperations, providerFactory);
+public class DefaultSwiftExecutable extends DefaultSwiftBinary implements SwiftExecutable {
+    public DefaultSwiftExecutable(String name, ObjectFactory objectFactory, Provider<String> module, boolean debuggable, FileCollection source, ConfigurationContainer configurations, Configuration implementation) {
+        super(name, objectFactory, module, debuggable, source, configurations, implementation);
     }
 }

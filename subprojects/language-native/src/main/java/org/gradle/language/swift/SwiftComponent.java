@@ -18,6 +18,7 @@ package org.gradle.language.swift;
 
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
+import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.component.SoftwareComponent;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
@@ -57,12 +58,12 @@ public interface SwiftComponent extends SoftwareComponent {
     FileCollection getSwiftSource();
 
     /**
-     * Returns the import directories to use to compile this component. Includes the import directories of the component's dependencies.
+     * Returns the binary of the component to use as the default for development.
      */
-    ConfigurableFileCollection getCompileImportPath();
+    SwiftBinary getDevelopmentBinary();
 
     /**
-     * Returns the link libraries to use to link this component. Includes the link libraries of the component's dependencies.
+     * Returns the implementation dependencies of this component.
      */
-    ConfigurableFileCollection getLinkLibraries();
+    Configuration getImplementationDependencies();
 }
