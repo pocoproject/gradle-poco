@@ -22,19 +22,30 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import org.gradle.api.Task;
 import org.gradle.api.file.FileCollection;
 import org.gradle.nativeplatform.SemiStaticLibraryBinary;
 import org.gradle.nativeplatform.SemiStaticLibraryBinarySpec;
+import org.gradle.nativeplatform.platform.NativePlatform;
 import org.gradle.nativeplatform.tasks.CreateSemiStaticLibrary;
 import org.gradle.nativeplatform.tasks.ObjectFilesToBinary;
+import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 import org.gradle.platform.base.BinaryTasksCollection;
+import org.gradle.platform.base.internal.BinaryBuildAbility;
 import org.gradle.platform.base.internal.BinaryTasksCollectionWrapper;
+import org.gradle.platform.base.internal.FixedBuildAbility;
 
 public class DefaultSemiStaticLibraryBinarySpec extends AbstractNativeLibraryBinarySpec implements SemiStaticLibraryBinary, SemiStaticLibraryBinarySpecInternal {
     private final List<FileCollection> additionalLinkFiles = new ArrayList<FileCollection>();
     private final DefaultTasksCollection tasks = new DefaultTasksCollection(super.getTasks());
     private File staticLibraryFile;
+
+    @Override
+    protected BinaryBuildAbility getBinaryBuildAbility() {
+        // Default behavior is to always be buildable.  Binary implementations should define what
+        // criteria make them buildable or not.
+    	NativePlatform nativePlatform = this.getTargetPlatform();
+    	return new FixedBuildAbility(nativePlatform.getOperatingSystem().isWindows());
+    }
 
     @Override
     public File getSemiStaticLibraryFile() {
