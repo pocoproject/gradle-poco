@@ -97,10 +97,6 @@ public class DefaultSemiStaticLibraryBinarySpec extends AbstractNativeLibraryBin
           return findSingleTaskWithType(CreateSemiStaticLibrary.class);
 		}
 
-//        @Override
-//        public CreateSemiStaticLibrary getCreateStaticLib() {
-//            return findSingleTaskWithType(CreateSemiStaticLibrary.class);
-//        }
     }
 
     private class StaticLibraryLinkOutputs extends LibraryOutputs {

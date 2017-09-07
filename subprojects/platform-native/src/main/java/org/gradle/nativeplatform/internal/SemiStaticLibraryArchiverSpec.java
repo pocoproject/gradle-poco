@@ -16,9 +16,6 @@
 
 package org.gradle.nativeplatform.internal;
 
-import java.io.File;
-import java.util.List;
-
 public interface SemiStaticLibraryArchiverSpec extends StaticLibraryArchiverSpec {
 
 }
