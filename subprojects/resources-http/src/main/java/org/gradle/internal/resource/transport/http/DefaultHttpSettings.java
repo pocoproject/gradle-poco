@@ -37,7 +37,6 @@ public class DefaultHttpSettings implements HttpSettings {
     private final HostnameVerifier hostnameVerifier;
     private HttpProxySettings proxySettings;
     private HttpProxySettings secureProxySettings;
-    private HttpTimeoutSettings timeoutSettings;
 
     public static DefaultHttpSettings allowUntrustedSslConnections(Collection<Authentication> authenticationSettings) {
         return new DefaultHttpSettings(authenticationSettings, ALL_TRUSTING_SSL_CONTEXT_FACTORY, ALL_TRUSTING_HOSTNAME_VERIFIER);
@@ -74,14 +73,6 @@ public class DefaultHttpSettings implements HttpSettings {
     }
 
     @Override
-    public HttpTimeoutSettings getTimeoutSettings() {
-        if (timeoutSettings == null) {
-            timeoutSettings = new JavaSystemPropertiesHttpTimeoutSettings();
-        }
-        return timeoutSettings;
-    }
-
-    @Override
     public Collection<Authentication> getAuthenticationSettings() {
         return authenticationSettings;
     }
@@ -104,12 +95,12 @@ public class DefaultHttpSettings implements HttpSettings {
     };
 
     private static final SslContextFactory ALL_TRUSTING_SSL_CONTEXT_FACTORY = new SslContextFactory() {
-        private final Supplier<SSLContext> SSL_CONTEXT_SUPPLIER = Suppliers.memoize(new Supplier<SSLContext>() {
+        private final Supplier<SSLContext> sslContextSupplier = Suppliers.memoize(new Supplier<SSLContext>() {
             @Override
             public SSLContext get() {
                 try {
                     SSLContext sslcontext = SSLContext.getInstance("TLS");
-                    sslcontext.init(null, ALL_TRUSTING_TRUST_MANAGER, null);
+                    sslcontext.init(null, allTrustingTrustManager, null);
                     return sslcontext;
                 } catch (GeneralSecurityException e) {
                     throw new UncheckedException(e);
@@ -119,10 +110,10 @@ public class DefaultHttpSettings implements HttpSettings {
 
         @Override
         public SSLContext createSslContext() {
-            return SSL_CONTEXT_SUPPLIER.get();
+            return sslContextSupplier.get();
         }
 
-        private final TrustManager[] ALL_TRUSTING_TRUST_MANAGER = new TrustManager[]{
+        private final TrustManager[] allTrustingTrustManager = new TrustManager[]{
             new X509TrustManager() {
                 @Override
                 public X509Certificate[] getAcceptedIssuers() {
