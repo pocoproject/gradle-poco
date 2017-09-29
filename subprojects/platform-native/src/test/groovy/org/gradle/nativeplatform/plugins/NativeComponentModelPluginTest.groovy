@@ -16,6 +16,8 @@
 
 package org.gradle.nativeplatform.plugins
 
+import static org.gradle.model.internal.type.ModelTypes.modelMap
+
 import org.gradle.api.Task
 import org.gradle.api.tasks.TaskDependency
 import org.gradle.language.base.plugins.LifecycleBasePlugin
@@ -31,6 +33,7 @@ import org.gradle.nativeplatform.FlavorContainer
 import org.gradle.nativeplatform.NativeExecutableBinarySpec
 import org.gradle.nativeplatform.NativeExecutableSpec
 import org.gradle.nativeplatform.NativeLibrarySpec
+import org.gradle.nativeplatform.SemiStaticLibraryBinarySpec
 import org.gradle.nativeplatform.SharedLibraryBinarySpec
 import org.gradle.nativeplatform.StaticLibraryBinarySpec
 import org.gradle.nativeplatform.internal.DefaultFlavor
@@ -43,9 +46,8 @@ import org.gradle.platform.base.ComponentSpecContainer
 import org.gradle.platform.base.PlatformContainer
 import org.gradle.test.fixtures.AbstractProjectBuilderSpec
 import org.gradle.util.TestUtil
-import spock.lang.Issue
 
-import static org.gradle.model.internal.type.ModelTypes.modelMap
+import spock.lang.Issue
 
 class NativeComponentModelPluginTest extends AbstractProjectBuilderSpec {
     def registry
@@ -214,8 +216,21 @@ class NativeComponentModelPluginTest extends AbstractProjectBuilderSpec {
         }
 
         and:
+        SemiStaticLibraryBinarySpec semiStaticLibraryBinary = binaries.testSemiStaticLibrary as SemiStaticLibraryBinarySpec
+        with(semiStaticLibraryBinary) {
+            name == 'semiStaticLibrary'
+            component == library
+
+            toolChain.name == "tc"
+            targetPlatform.name == "platform"
+            buildType.name == "bt"
+            flavor.name == "flavor1"
+        }
+
+        and:
         library.binaries.values().contains(sharedLibraryBinary)
         library.binaries.values().contains(staticLibraryBinary)
+        library.binaries.values().contains(semiStaticLibraryBinary)
     }
 
     def "creates lifecycle task for each binary"() {
@@ -242,6 +257,11 @@ class NativeComponentModelPluginTest extends AbstractProjectBuilderSpec {
         StaticLibraryBinarySpec staticLibraryBinary = binaries.libStaticLibrary as StaticLibraryBinarySpec
         with(oneTask(staticLibraryBinary.buildDependencies)) {
             name == "libStaticLibrary"
+            group == LifecycleBasePlugin.BUILD_GROUP
+        }
+        SemiStaticLibraryBinarySpec semiStaticLibraryBinary = binaries.libSemiStaticLibrary as SemiStaticLibraryBinarySpec
+        with(oneTask(semiStaticLibraryBinary.buildDependencies)) {
+            name == "libSemiStaticLibrary"
             group == LifecycleBasePlugin.BUILD_GROUP
         }
     }

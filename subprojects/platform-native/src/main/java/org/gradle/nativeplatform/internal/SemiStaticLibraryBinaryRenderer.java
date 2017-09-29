@@ -35,6 +35,6 @@ public class SemiStaticLibraryBinaryRenderer extends AbstractNativeBinaryRendere
 
     @Override
     protected void renderOutputs(SemiStaticLibraryBinarySpec binary, TextReportBuilder builder) {
-        builder.item("semi static library file", binary.getSemiStaticLibraryFile());
+        builder.item("semistatic library file", binary.getSemiStaticLibraryFile());
     }
 }

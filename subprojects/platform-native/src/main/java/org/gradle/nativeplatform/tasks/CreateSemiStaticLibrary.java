@@ -46,7 +46,7 @@ import org.gradle.nativeplatform.toolchain.NativeToolChain;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
 
 /**
- * Assembles a static library from object files.
+ * Assembles a semistatic library from object files.
  */
 @Incubating
 public class CreateSemiStaticLibrary extends DefaultTask implements ObjectFilesToBinary {
@@ -106,7 +106,7 @@ public class CreateSemiStaticLibrary extends DefaultTask implements ObjectFilesT
     }
 
     /**
-     * The tool chain used for creating the static library.
+     * The tool chain used for creating the semistatic library.
      */
     @Internal
     public NativeToolChain getToolChain() {
@@ -126,6 +126,8 @@ public class CreateSemiStaticLibrary extends DefaultTask implements ObjectFilesT
     }
 
     public void setTargetPlatform(NativePlatform targetPlatform) {
+    	if (!targetPlatform.getOperatingSystem().isWindows())
+    		setEnabled(false);
         this.targetPlatform = (NativePlatformInternal) targetPlatform;
     }
 

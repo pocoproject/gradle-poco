@@ -22,13 +22,13 @@ import org.gradle.internal.HasInternalProtocol;
 import java.io.File;
 
 /**
- * A {@link NativeLibrary} that has been compiled and archived into a static library.
+ * A {@link NativeLibrary} that has been compiled and archived into a semistatic library.
  */
 @Incubating
 @HasInternalProtocol
 public interface SemiStaticLibraryBinary extends NativeLibraryBinary {
     /**
-     * The static library file.
+     * The semistatic library file.
      */
     File getSemiStaticLibraryFile();
 }

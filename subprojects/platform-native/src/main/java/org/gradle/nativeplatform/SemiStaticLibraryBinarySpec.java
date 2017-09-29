@@ -33,18 +33,18 @@ public interface SemiStaticLibraryBinarySpec extends NativeLibraryBinarySpec {
      */
     interface TasksCollection extends BinaryTasksCollection {
         /**
-         * The create static library task.
+         * The create semistatic library task.
          */
         Task getCreateSemiStaticLib();
     }
 
     /**
-     * The static library file.
+     * The semistatic library file.
      */
     File getSemiStaticLibraryFile();
 
     /**
-     * The static library binary file.
+     * The semistatic library binary file.
      */
     void setSemiStaticLibraryFile(File staticLibraryFile);
 

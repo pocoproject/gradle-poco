@@ -28,7 +28,6 @@ import org.gradle.nativeplatform.SemiStaticLibraryBinarySpec;
 import org.gradle.nativeplatform.platform.NativePlatform;
 import org.gradle.nativeplatform.tasks.CreateSemiStaticLibrary;
 import org.gradle.nativeplatform.tasks.ObjectFilesToBinary;
-import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 import org.gradle.platform.base.BinaryTasksCollection;
 import org.gradle.platform.base.internal.BinaryBuildAbility;
 import org.gradle.platform.base.internal.BinaryTasksCollectionWrapper;

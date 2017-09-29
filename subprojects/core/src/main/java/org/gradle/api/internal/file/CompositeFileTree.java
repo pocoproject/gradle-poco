@@ -99,19 +99,22 @@ public abstract class CompositeFileTree extends CompositeFileCollection implemen
         return this;
     }
 
-    private abstract class FilteredFileTree extends CompositeFileTree {
+//FA    private abstract class FilteredFileTree extends CompositeFileTree {
+    private static abstract class FilteredFileTree extends CompositeFileTree {
 
         protected abstract FileTree filter(FileTree set);
 
         @Override
         public String getDisplayName() {
-            return CompositeFileTree.this.getDisplayName();
+//FA        return CompositeFileTree.this.getDisplayName();
+            return getDisplayName();
         }
 
         @Override
         public void visitContents(FileCollectionResolveContext context) {
             ResolvableFileCollectionResolveContext nestedContext = context.newContext();
-            CompositeFileTree.this.visitContents(nestedContext);
+//FA        CompositeFileTree.this.visitContents(nestedContext);
+            visitContents(nestedContext);
             for (FileTree set : nestedContext.resolveAsFileTrees()) {
                 context.add(filter(set));
             }
@@ -119,7 +122,8 @@ public abstract class CompositeFileTree extends CompositeFileCollection implemen
 
         @Override
         public void visitDependencies(TaskDependencyResolveContext context) {
-            CompositeFileTree.this.visitDependencies(context);
+//FA        CompositeFileTree.this.visitDependencies(context);
+            visitDependencies(context);
         }
     }
 }
