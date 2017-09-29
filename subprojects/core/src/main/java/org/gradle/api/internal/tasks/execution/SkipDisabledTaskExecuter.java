@@ -40,13 +40,9 @@ public class SkipDisabledTaskExecuter implements TaskExecuter {
 
     public void execute(TaskInternal task, TaskStateInternal state, TaskExecutionContext context) {
         boolean skip = false;
-        Convention c = task.getConvention();
-        
-        TaskArtifactState tas = context.getTaskArtifactState();
-        task.setEnabled(false);
         
         try {
-            skip = task.getEnabled();
+            skip = !task.getEnabled();
         } catch (Throwable t) {
             state.setOutcome(new GradleException(String.format("Could not evaluate getEnabled() predicate for %s.", task), t));
             return;
