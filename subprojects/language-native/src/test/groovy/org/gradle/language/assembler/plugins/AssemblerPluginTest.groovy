@@ -133,6 +133,9 @@ class AssemblerPluginTest extends PlatformBaseSpecification {
                         binaries.withType(StaticLibraryBinarySpec) {
                             assembler.args "STATIC1", "STATIC2"
                         }
+                        binaries.withType(SemiStaticLibraryBinarySpec) {
+                            assembler.args "SEMISTATIC1", "SEMISTATIC2"
+                        }
                     }
                 }
             }
@@ -152,12 +155,23 @@ class AssemblerPluginTest extends PlatformBaseSpecification {
         StaticLibraryBinarySpec staticLib = realizeBinaries().testStaticLibrary
         staticLib.tasks.withType(Assemble)*.name == ["assembleTestStaticLibraryTestAnotherOne", "assembleTestStaticLibraryTestAsm"]
         staticLib.tasks.withType(Assemble).each { compile ->
-            compile.toolChain == sharedLib.toolChain
+            compile.toolChain == staticLib.toolChain
             compile.assemblerArgs == ["ARG1", "ARG2", "STATIC1", "STATIC2"]
         }
         def staticLibTask = staticLib.tasks.createStaticLib
         staticLibTask TaskDependencyMatchers.dependsOn("assembleTestStaticLibraryTestAnotherOne", "assembleTestStaticLibraryTestAsm")
-    }
+
+		
+		        and:
+        SemiStaticLibraryBinarySpec semiStaticLib = realizeBinaries().testSemiStaticLibrary
+        semiStaticLib.tasks.withType(Assemble)*.name == ["assembleTestSemiStaticLibraryTestAnotherOne", "assembleTestSemiStaticLibraryTestAsm"]
+        semiStaticLib.tasks.withType(Assemble).each { compile ->
+            compile.toolChain == semiStaticLib.toolChain
+            compile.assemblerArgs == ["ARG1", "ARG2", "SEMISTATIC1", "SEMISTATIC2"]
+        }
+        def semiStaticLibTask = semiStaticLib.tasks.createSemiStaticLib
+        semiStaticLibTask TaskDependencyMatchers.dependsOn("assembleTestSemiStaticLibraryTestAnotherOne", "assembleSemiTestStaticLibraryTestAsm")
+}
 
     def touch(String filePath) {
         GFileUtils.touch(project.file(filePath))

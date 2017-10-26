@@ -20,7 +20,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DefaultStaticLibraryArchiverSpec extends AbstractBinaryToolSpec implements StaticLibraryArchiverSpec {
+public class DefaultStaticLibraryArchiverSpec extends AbstractBinaryToolSpec implements StaticLibraryArchiverSpec, SemiStaticLibraryArchiverSpec {
 
     private final List<File> objectFiles = new ArrayList<File>();
     private File outputFile;

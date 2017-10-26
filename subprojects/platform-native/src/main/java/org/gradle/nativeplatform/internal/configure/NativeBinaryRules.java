@@ -54,6 +54,8 @@ public class NativeBinaryRules extends RuleSource {
             assignToolsToSharedLibraryBinary(nativeBinary, buildDir);
         } else if (nativeBinary instanceof StaticLibraryBinarySpec) {
             assignToolsToStaticLibraryBinary(buildDir, nativeBinary);
+        } else if (nativeBinary instanceof SemiStaticLibraryBinarySpec) {
+            assignToolsToSemiStaticLibraryBinary(buildDir, nativeBinary);
         }
     }
 
@@ -74,6 +76,11 @@ public class NativeBinaryRules extends RuleSource {
     private static void assignToolsToStaticLibraryBinary(File buildDir, NativeBinarySpecInternal nativeBinary) {
         StaticLibraryBinarySpec staticLibrary = (StaticLibraryBinarySpec) nativeBinary;
         staticLibrary.setStaticLibraryFile(staticLibraryFileFor(nativeBinary, buildDir));
+    }
+
+    private static void assignToolsToSemiStaticLibraryBinary(File buildDir, NativeBinarySpecInternal nativeBinary) {
+        SemiStaticLibraryBinarySpec semiStaticLibrary = (SemiStaticLibraryBinarySpec) nativeBinary;
+        semiStaticLibrary.setSemiStaticLibraryFile(staticLibraryFileFor(nativeBinary, buildDir));
     }
 
     public static File executableFileFor(NativeBinarySpecInternal nativeBinary, File buildDir) {

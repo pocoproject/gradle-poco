@@ -18,6 +18,7 @@ package org.gradle.test.fixtures.maven
 
 import groovy.xml.MarkupBuilder
 import org.gradle.test.fixtures.AbstractModule
+import org.gradle.test.fixtures.GradleModuleMetadata
 import org.gradle.test.fixtures.Module
 import org.gradle.test.fixtures.ModuleArtifact
 import org.gradle.test.fixtures.file.TestFile
@@ -34,7 +35,8 @@ abstract class AbstractMavenModule extends AbstractModule implements MavenModule
     String type = 'jar'
     String packaging
     int publishCount = 1
-    boolean noMetaData
+    private boolean noMetaData
+    private boolean moduleMetadata
     private final List dependencies = []
     private final List artifacts = []
     final updateFormat = new SimpleDateFormat("yyyyMMddHHmmss")
@@ -73,6 +75,12 @@ abstract class AbstractMavenModule extends AbstractModule implements MavenModule
 
     TestFile getArtifactFile(Map options = [:]) {
         return getModuleArtifact(options).file
+    }
+
+    @Override
+    MavenModule withModuleMetadata() {
+        moduleMetadata = true
+        return this
     }
 
     abstract boolean getUniqueSnapshots()
@@ -215,6 +223,10 @@ abstract class AbstractMavenModule extends AbstractModule implements MavenModule
         return new MavenPom(pomFile)
     }
 
+    GradleModuleMetadata getParsedModuleMetadata() {
+        return new GradleModuleMetadata(artifactFile(classifier: 'module', type: 'json'))
+    }
+
     DefaultMavenMetaData getRootMetaData() {
         new DefaultMavenMetaData("$moduleRootPath/${MAVEN_METADATA_FILE}", rootMetaDataFile)
     }
@@ -227,6 +239,11 @@ abstract class AbstractMavenModule extends AbstractModule implements MavenModule
     @Override
     ModuleArtifact getPom() {
         return getModuleArtifact(type: 'pom')
+    }
+
+    @Override
+    ModuleArtifact getModuleMetadata() {
+        return getModuleArtifact(classifier: 'module', type: 'json')
     }
 
     TestFile getPomFile() {
@@ -251,11 +268,12 @@ abstract class AbstractMavenModule extends AbstractModule implements MavenModule
 
     ModuleArtifact getModuleArtifact(Map<String, ?> options) {
         def artifact = toArtifact(options)
+        def suffix = (artifact.classifier ? "-${artifact.classifier}" : "") + (artifact.type ? ".${artifact.type}" : "")
         def fileName
         if (version.endsWith("-SNAPSHOT") && !metaDataFile.exists() && uniqueSnapshots) {
-            fileName = moduleDir.file("${artifactId}-${version}${artifact.classifier ? "-${artifact.classifier}" : ""}.${artifact.type}")
+            fileName = moduleDir.file("${artifactId}-${version}${suffix}")
         } else {
-            fileName = "$artifactId-${publishArtifactVersion}${artifact.classifier ? "-${artifact.classifier}" : ""}.${artifact.type}"
+            fileName = "$artifactId-${publishArtifactVersion}${suffix}"
         }
         def artifactPath = "$path/$fileName"
         def file = moduleDir.file(fileName)
@@ -279,13 +297,32 @@ abstract class AbstractMavenModule extends AbstractModule implements MavenModule
 
     protected Map<String, Object> toArtifact(Map<String, ?> options) {
         options = new HashMap<String, Object>(options)
-        def artifact = [type: options.remove('type') ?: type, classifier: options.remove('classifier') ?: null]
+        def artifact = [type: options.containsKey('type') ? options.remove('type') : type, classifier: options.remove('classifier') ?: null]
         assert options.isEmpty(): "Unknown options : ${options.keySet()}"
         return artifact
     }
 
     Date getPublishTimestamp() {
         return new Date(updateFormat.parse("20100101120000").time + publishCount * 1000)
+    }
+
+    private void publishModuleMetadata() {
+        moduleDir.createDir()
+        def file = moduleDir.file("$artifactId-${publishArtifactVersion}-module.json")
+        file.text = '''
+            { 
+                "formatVersion": "0.1", 
+                "builtBy": { "gradle": { } },
+                "variants": [
+                    { 
+                        "name": "java-compile"
+                    },
+                    { 
+                        "name": "java-runtime" 
+                    }
+                ]
+            }
+        '''
     }
 
     MavenModule publishPom() {
@@ -379,8 +416,7 @@ abstract class AbstractMavenModule extends AbstractModule implements MavenModule
 
     abstract String getMetaDataFileContent()
 
-
-    MavenModule withNoMetaData() {
+    MavenModule withNoPom() {
         noMetaData = true
         return this
     }
@@ -388,6 +424,9 @@ abstract class AbstractMavenModule extends AbstractModule implements MavenModule
     MavenModule publish() {
         if(!noMetaData) {
             publishPom()
+        }
+        if (moduleMetadata) {
+            publishModuleMetadata()
         }
 
         artifacts.each { artifact ->

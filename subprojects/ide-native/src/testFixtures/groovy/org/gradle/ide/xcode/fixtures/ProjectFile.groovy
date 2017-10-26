@@ -21,6 +21,7 @@ import com.dd.plist.NSDictionary
 import com.dd.plist.NSObject
 import com.dd.plist.NSString
 import com.dd.plist.PropertyListParser
+import com.google.common.base.Objects
 import org.gradle.ide.xcode.internal.xcodeproj.PBXTarget.ProductType
 import org.gradle.test.fixtures.file.TestFile
 
@@ -46,8 +47,20 @@ class ProjectFile {
         return file
     }
 
+    PBXObject getBuildConfigurationList() {
+        return rootObject.getProperty("buildConfigurationList")
+    }
+
     List<PBXTarget> getTargets() {
         return rootObject.getProperty("targets")
+    }
+
+    PBXNativeTarget getIndexTarget() {
+        return targets.find { it instanceof PBXNativeTarget }
+    }
+
+    PBXLegacyTarget getGradleTarget() {
+        return targets.find { it instanceof PBXLegacyTarget }
     }
 
     PBXGroup getMainGroup() {
@@ -71,7 +84,7 @@ class ProjectFile {
     }
 
     void assertTargetsAre(ProductType productType) {
-        assert targets.every { it.productType == productType.identifier }
+        targets.each { it.assertIs(productType) }
     }
 
     private <T extends PBXObject> T toPbxObject(String id) {
@@ -79,8 +92,12 @@ class ProjectFile {
 
         if (object.isa.toJavaObject() == "PBXGroup") {
             return new PBXGroup(id, object)
-        } else if (object.isa.toJavaObject() == "PBXTarget") {
-            return new PBXTarget(id, object)
+        } else if (object.isa.toJavaObject() == "PBXLegacyTarget") {
+            return new PBXLegacyTarget(id, object)
+        } else if (object.isa.toJavaObject() == "PBXNativeTarget") {
+            return new PBXNativeTarget(id, object)
+        } else if (object.isa.toJavaObject() == "XCBuildConfiguration") {
+            return new XCBuildConfiguration(id, object)
         } else {
             return new PBXObject(id, object)
         }
@@ -118,8 +135,34 @@ class ProjectFile {
         }
 
         private static boolean isId(NSObject obj) {
-            // Check if the value is a FB generated id (static 24 chars) or Gradle generated id (static 36 chars - uuid)
-            return obj instanceof NSString && (obj.getContent().length() == 24 || obj.getContent().length() == 36)
+            // Check if the value is a FB generated id (static 24 chars)
+            if (obj instanceof NSString && (obj.getContent().length() == 24)) {
+                return obj.getContent().toCharArray().every {
+                    Character.isDigit(it) || Character.isUpperCase(it)
+                }
+            }
+            return false
+        }
+
+        @Override
+        String toString() {
+            Objects.toStringHelper(this)
+                .add('isa', getProperty("isa"))
+                .toString()
+        }
+    }
+
+    class XCBuildConfiguration extends PBXObject {
+        XCBuildConfiguration(String id, NSDictionary object) {
+            super(id, object)
+        }
+
+        Map<String, String> getBuildSettings() {
+            def map = [:]
+            getProperty("buildSettings").entrySet().each {
+                map.put(it.key, toNSString(it.value).getContent())
+            }
+            return map
         }
     }
 
@@ -149,8 +192,52 @@ class ProjectFile {
             return getProperty("name")
         }
 
+        String getProductName() {
+            return getProperty("productName")
+        }
+
         PBXObject getProductReference() {
             return getProperty("productReference")
+        }
+
+        void assertIsTool() {
+            assertIs(ProductType.TOOL)
+        }
+
+        void assertIsDynamicLibrary() {
+            assertIs(ProductType.DYNAMIC_LIBRARY)
+        }
+
+        void assertIsUnitTest() {
+            assertIs(ProductType.UNIT_TEST)
+        }
+
+        void assertIs(ProductType productType) {
+            assert getProperty("productType") == productType.identifier
+        }
+
+        @Override
+        String toString() {
+            Objects.toStringHelper(this)
+                .add('name', getName())
+                .add('productName', getProductName())
+                .toString()
+        }
+    }
+
+    class PBXNativeTarget extends PBXTarget {
+        PBXNativeTarget(String id, NSDictionary object) {
+            super(id, object)
+        }
+
+        Map<String, ?> getBuildSettings() {
+            return buildConfigurationList.buildConfigurations[0].buildSettings
+        }
+    }
+
+    class PBXLegacyTarget extends PBXTarget {
+        PBXLegacyTarget(String id, NSDictionary object) {
+            super(id, object)
         }
     }
 }

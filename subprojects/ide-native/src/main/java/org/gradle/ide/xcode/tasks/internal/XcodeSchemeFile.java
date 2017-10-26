@@ -120,7 +120,6 @@ public class XcodeSchemeFile extends XmlPersistableConfigurationObject {
         }
     }
 
-
     public static class TestAction {
         private final Node xml;
 
@@ -130,6 +129,26 @@ public class XcodeSchemeFile extends XmlPersistableConfigurationObject {
 
         public void setBuildConfiguration(String buildConfiguration) {
             xml.attributes().put("buildConfiguration", buildConfiguration);
+        }
+
+        public void entry(Action<TestableEntry> action) {
+            action.execute(new TestableEntry(getOrAppendNode(xml, "Testables").appendNode("TestableReference")));
+        }
+    }
+
+    public static class TestableEntry {
+        private final Node xml;
+
+        TestableEntry(Node xml) {
+            this.xml = xml;
+        }
+
+        public void setSkipped(boolean skipped) {
+            xml.attributes().put("skipped", toYesNo(skipped));
+        }
+
+        public void setBuildableReference(BuildableReference buildableReference) {
+            xml.append(buildableReference.toXml());
         }
     }
 
@@ -144,8 +163,12 @@ public class XcodeSchemeFile extends XmlPersistableConfigurationObject {
             xml.attributes().put("buildConfiguration", buildConfiguration);
         }
 
-        public void setRunnablePath(String runnablePath) {
-            getOrAppendNode(xml, "PathRunnable").attributes().put("FilePath", runnablePath);
+        public void setBuildableProductRunnable(BuildableReference buildableReference) {
+            xml.appendNode("BuildableProductRunnable").append(buildableReference.toXml());
+        }
+
+        public void setBuildableReference(BuildableReference buildableReference) {
+            xml.append(buildableReference.toXml());
         }
     }
 

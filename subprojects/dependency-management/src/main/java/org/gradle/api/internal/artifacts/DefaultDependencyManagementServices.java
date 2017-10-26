@@ -46,6 +46,7 @@ import org.gradle.api.internal.artifacts.ivyservice.ShortCircuitEmptyConfigurati
 import org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution.DependencySubstitutionRules;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ResolveIvyFactory;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.GradlePomModuleDescriptorParser;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.ModuleMetadataParser;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelectorScheme;
 import org.gradle.api.internal.artifacts.ivyservice.moduleconverter.ConfigurationComponentMetaDataBuilder;
 import org.gradle.api.internal.artifacts.ivyservice.publisher.DefaultIvyDependencyPublisher;
@@ -67,7 +68,7 @@ import org.gradle.api.internal.artifacts.type.DefaultArtifactTypeRegistry;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.DefaultAttributesSchema;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
-import org.gradle.api.internal.changedetection.state.ValueSnapshotter;
+import org.gradle.api.internal.changedetection.state.isolation.IsolatableFactory;
 import org.gradle.api.internal.component.ComponentTypeRegistry;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileResolver;
@@ -89,6 +90,7 @@ import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.internal.service.ServiceRegistration;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.typeconversion.NotationParser;
+import org.gradle.vcs.internal.VcsMappingsInternal;
 
 import java.util.List;
 
@@ -119,8 +121,8 @@ public class DefaultDependencyManagementServices implements DependencyManagement
             return instantiatorFactory.decorate().newInstance(DefaultAttributesSchema.class, new ComponentAttributeMatcher(), instantiatorFactory);
         }
 
-        VariantTransformRegistry createVariantTransforms(InstantiatorFactory instantiatorFactory, ImmutableAttributesFactory attributesFactory, TransformedFileCache transformedFileCache, ValueSnapshotter valueSnapshotter, ClassLoaderHierarchyHasher classLoaderHierarchyHasher) {
-            return new DefaultVariantTransformRegistry(instantiatorFactory, attributesFactory, transformedFileCache, valueSnapshotter, classLoaderHierarchyHasher);
+        VariantTransformRegistry createVariantTransforms(InstantiatorFactory instantiatorFactory, ImmutableAttributesFactory attributesFactory, TransformedFileCache transformedFileCache, IsolatableFactory isolatableFactory, ClassLoaderHierarchyHasher classLoaderHierarchyHasher) {
+            return new DefaultVariantTransformRegistry(instantiatorFactory, attributesFactory, transformedFileCache, isolatableFactory, classLoaderHierarchyHasher);
         }
 
         BaseRepositoryFactory createBaseRepositoryFactory(LocalMavenRepositoryLocator localMavenRepositoryLocator,
@@ -132,6 +134,7 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                                                           VersionSelectorScheme versionSelectorScheme,
                                                           AuthenticationSchemeRegistry authenticationSchemeRegistry,
                                                           IvyContextManager ivyContextManager,
+                                                          ImmutableAttributesFactory attributesFactory,
                                                           ImmutableModuleIdentifierFactory moduleIdentifierFactory,
                                                           ModuleExclusions moduleExclusions,
                                                           InstantiatorFactory instantiatorFactory,
@@ -144,6 +147,7 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                 artifactIdentifierFileStore,
                 externalResourceFileStore,
                 new GradlePomModuleDescriptorParser(versionSelectorScheme, moduleIdentifierFactory, moduleExclusions, fileResourceRepository),
+                new ModuleMetadataParser(attributesFactory),
                 authenticationSchemeRegistry,
                 ivyContextManager,
                 moduleIdentifierFactory,
@@ -159,7 +163,7 @@ public class DefaultDependencyManagementServices implements DependencyManagement
         ConfigurationContainerInternal createConfigurationContainer(Instantiator instantiator, ConfigurationResolver configurationResolver, DomainObjectContext domainObjectContext,
                                                                     ListenerManager listenerManager, DependencyMetaDataProvider metaDataProvider, ProjectAccessListener projectAccessListener,
                                                                     ProjectFinder projectFinder, ConfigurationComponentMetaDataBuilder metaDataBuilder, FileCollectionFactory fileCollectionFactory,
-                                                                    GlobalDependencyResolutionRules globalDependencyResolutionRules, ComponentIdentifierFactory componentIdentifierFactory,
+                                                                    GlobalDependencyResolutionRules globalDependencyResolutionRules, VcsMappingsInternal vcsMappingsInternal, ComponentIdentifierFactory componentIdentifierFactory,
                                                                     BuildOperationExecutor buildOperationExecutor, ImmutableAttributesFactory attributesFactory, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
             return instantiator.newInstance(DefaultConfigurationContainer.class,
                     configurationResolver,
@@ -172,6 +176,7 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                     metaDataBuilder,
                     fileCollectionFactory,
                     globalDependencyResolutionRules.getDependencySubstitutionRules(),
+                    vcsMappingsInternal,
                     componentIdentifierFactory,
                     buildOperationExecutor,
                     taskResolverFor(domainObjectContext),

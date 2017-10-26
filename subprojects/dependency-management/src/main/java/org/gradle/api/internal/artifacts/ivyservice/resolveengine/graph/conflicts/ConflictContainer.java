@@ -18,8 +18,8 @@ package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflic
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.LinkedHashMultimap;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
-import com.google.common.collect.Sets;
 
 import javax.annotation.Nullable;
 import java.util.Collection;
@@ -30,7 +30,7 @@ import java.util.Set;
 
 import static com.google.common.collect.Lists.newLinkedList;
 import static com.google.common.collect.Maps.newHashMap;
-import static java.util.Arrays.asList;
+import static java.util.Collections.singletonList;
 
 /**
  * Generic container for conflicts. It's generic so that hopefully it's easier to comprehend (and test).
@@ -38,6 +38,7 @@ import static java.util.Arrays.asList;
 class ConflictContainer<K, T> {
 
     final LinkedList<Conflict> conflicts = newLinkedList();
+    private final Map<K, Conflict> conflictsByParticipant = Maps.newHashMap();
 
     private final Map<K, Collection<? extends T>> elements = newHashMap();
     private final Multimap<K, K> targetToSource = LinkedHashMultimap.create();
@@ -52,6 +53,9 @@ class ConflictContainer<K, T> {
      * @param replacedBy optional element that replaces the target
      */
     public Conflict newElement(K target, Collection<? extends T> candidates, @Nullable K replacedBy) {
+        if (candidates.isEmpty()) {
+            return null;
+        }
         elements.put(target, candidates);
         if (replacedBy != null) {
             targetToSource.put(replacedBy, target);
@@ -90,8 +94,9 @@ class ConflictContainer<K, T> {
         //If we find any matching conflict we have to hook up with it
 
         //Find an existing matching conflict
-        for (Conflict c : conflicts) {
-            if (!Sets.intersection(participants, c.participants).isEmpty()) {
+        for (K participant : participants) {
+            Conflict c = conflictsByParticipant.get(participant);
+            if (c != null) {
                 //there is already registered conflict with at least one matching participant, hook up to this conflict
                 c.candidates = candidates;
                 c.participants.addAll(participants);
@@ -102,11 +107,14 @@ class ConflictContainer<K, T> {
         //No conflict with matching participants found, create new
         Conflict c = new Conflict(participants, candidates);
         conflicts.add(c);
+        for (K participant : participants) {
+            conflictsByParticipant.put(participant, c);
+        }
         return c;
     }
 
     private Conflict registerConflict(K target, K replacedBy) {
-        return registerConflict(asList(target), replacedBy);
+        return registerConflict(singletonList(target), replacedBy);
     }
 
     public int getSize() {
@@ -115,7 +123,15 @@ class ConflictContainer<K, T> {
 
     public Conflict popConflict() {
         assert !conflicts.isEmpty();
-        return conflicts.pop();
+        Conflict conflict = conflicts.pop();
+        for (K participant : conflict.participants) {
+            conflictsByParticipant.remove(participant);
+        }
+        return conflict;
+    }
+
+    public boolean isEmpty() {
+        return conflicts.isEmpty();
     }
 
     class Conflict {

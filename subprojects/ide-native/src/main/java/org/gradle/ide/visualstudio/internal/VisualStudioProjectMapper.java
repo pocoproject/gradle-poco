@@ -16,15 +16,16 @@
 
 package org.gradle.ide.visualstudio.internal;
 
+import java.util.List;
+
 import org.apache.commons.lang.StringUtils;
 import org.gradle.nativeplatform.NativeBinarySpec;
 import org.gradle.nativeplatform.NativeExecutableBinarySpec;
+import org.gradle.nativeplatform.SemiStaticLibraryBinarySpec;
 import org.gradle.nativeplatform.SharedLibraryBinarySpec;
 import org.gradle.nativeplatform.StaticLibraryBinarySpec;
 import org.gradle.nativeplatform.internal.NativeBinarySpecInternal;
 import org.gradle.nativeplatform.test.NativeTestSuiteBinarySpec;
-
-import java.util.List;
 
 public class VisualStudioProjectMapper {
 
@@ -57,6 +58,7 @@ public class VisualStudioProjectMapper {
     private String projectSuffix(NativeBinarySpec nativeBinary) {
         return nativeBinary instanceof SharedLibraryBinarySpec ? "Dll"
                 : nativeBinary instanceof StaticLibraryBinarySpec ? "Lib"
+                : nativeBinary instanceof SemiStaticLibraryBinarySpec ? "SemiLib"
                 : nativeBinary instanceof NativeExecutableBinarySpec ? "Exe"
                 : nativeBinary instanceof NativeTestSuiteBinarySpec ? "Exe"
                 : "";

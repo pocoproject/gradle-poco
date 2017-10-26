@@ -22,19 +22,18 @@ import org.gradle.api.artifacts.transform.ArtifactTransform
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.attributes.AttributeContainer
 import org.gradle.api.internal.artifacts.VariantTransformRegistry
+import org.gradle.api.internal.attributes.AttributeContainerInternal
 import org.gradle.api.internal.attributes.AttributesSchemaInternal
-import org.gradle.api.internal.attributes.DefaultImmutableAttributesFactory
-import org.gradle.api.internal.attributes.DefaultMutableAttributeContainer
 import org.gradle.internal.component.model.AttributeMatcher
+import org.gradle.util.TestUtil
 import spock.lang.Specification
 
 class VariantAttributeMatchingCacheTest extends Specification {
     def matcher = Mock(AttributeMatcher)
     def schema = Mock(AttributesSchemaInternal)
-    def immutableAttributesFactory = new DefaultImmutableAttributesFactory()
+    def immutableAttributesFactory = TestUtil.attributesFactory()
     def transformRegistrations = Mock(VariantTransformRegistry)
-    def producerSchema = Mock(AttributesSchemaInternal)
-    def matchingCache = new VariantAttributeMatchingCache(transformRegistrations, schema, new DefaultImmutableAttributesFactory())
+    def matchingCache = new VariantAttributeMatchingCache(transformRegistrations, schema, immutableAttributesFactory)
 
     def a1 = Attribute.of("a1", String)
     def a2 = Attribute.of("a2", Integer)
@@ -325,8 +324,8 @@ class VariantAttributeMatchingCacheTest extends Specification {
         0 * matcher._
     }
 
-    private DefaultMutableAttributeContainer attributes() {
-        new DefaultMutableAttributeContainer(immutableAttributesFactory)
+    private AttributeContainerInternal attributes() {
+        immutableAttributesFactory.mutable()
     }
 
     private VariantTransformRegistry.Registration registration(AttributeContainer from, AttributeContainer to, Transformer transformer) {

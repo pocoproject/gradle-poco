@@ -21,6 +21,7 @@ import org.gradle.api.internal.changedetection.state.isolation.Isolatable;
 import org.gradle.api.internal.changedetection.state.isolation.IsolationException;
 import org.gradle.caching.internal.BuildCacheHasher;
 
+import javax.annotation.Nullable;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -47,15 +48,6 @@ public class SetValueSnapshot implements ValueSnapshot, Isolatable<Set> {
     @Override
     public ValueSnapshot snapshot(Object value, ValueSnapshotter snapshotter) {
         ValueSnapshot newSnapshot = snapshotter.snapshot(value);
-        if (isEqualSetValueSnapshot(newSnapshot)) {
-            return this;
-        }
-        return newSnapshot;
-    }
-
-    @Override
-    public ValueSnapshot isolatableSnapshot(Object value, ValueSnapshotter snapshotter) {
-        ValueSnapshot newSnapshot = snapshotter.isolatableSnapshot(value);
         if (isEqualSetValueSnapshot(newSnapshot)) {
             return this;
         }
@@ -101,5 +93,11 @@ public class SetValueSnapshot implements ValueSnapshot, Isolatable<Set> {
             }
         }
         return set;
+    }
+
+    @Nullable
+    @Override
+    public <S> Isolatable<S> coerce(Class<S> type) {
+        return null;
     }
 }

@@ -16,14 +16,12 @@
 
 package org.gradle.api.internal.changedetection.state;
 
-import org.gradle.api.internal.changedetection.state.isolation.Isolatable;
-
 /**
  * A snapshot of an immutable scalar value. Should only be used for immutable JVM provided or core Gradle types.
  *
  * @param <T>
  */
-public abstract class AbstractScalarValueSnapshot<T> implements ValueSnapshot, Isolatable<T> {
+public abstract class AbstractScalarValueSnapshot<T> implements ValueSnapshot {
     private final T value;
 
     public AbstractScalarValueSnapshot(T value) {
@@ -34,24 +32,12 @@ public abstract class AbstractScalarValueSnapshot<T> implements ValueSnapshot, I
         return value;
     }
 
-    public T isolate() {
-        return getValue();
-    }
-
     @Override
     public ValueSnapshot snapshot(Object value, ValueSnapshotter snapshotter) {
         if (this.value.equals(value)) {
             return this;
         }
         return snapshotter.snapshot(value);
-    }
-
-    @Override
-    public ValueSnapshot isolatableSnapshot(Object value, ValueSnapshotter snapshotter) {
-        if (this.value.equals(value)) {
-            return this;
-        }
-        return snapshotter.isolatableSnapshot(value);
     }
 
     @Override

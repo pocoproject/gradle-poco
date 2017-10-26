@@ -88,6 +88,7 @@ class HttpServer extends ServerWithExpectations implements HttpServerFixture {
     Handler getCustomHandler() {
         return new AbstractHandler() {
             void handle(String target, HttpServletRequest request, HttpServletResponse response, int dispatch) {
+                String d = request.getQueryString()
                 if (request.handled) {
                     return
                 }

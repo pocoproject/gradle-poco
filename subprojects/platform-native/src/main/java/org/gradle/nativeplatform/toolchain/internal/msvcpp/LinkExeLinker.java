@@ -57,7 +57,7 @@ class LinkExeLinker extends AbstractCompiler<LinkerSpec> {
     @Override
     protected Action<BuildOperationQueue<CommandLineToolInvocation>> newInvocationAction(final LinkerSpec spec, List<String> args) {
         final CommandLineToolInvocation invocation = invocationContext.createInvocation(
-            "linking " + spec.getOutputFile().getName(), spec.getOutputFile().getParentFile(), args, spec.getOperationLogger());
+            "linking " + spec.getOutputFile().getName(), args, spec.getOperationLogger());
 
         return new Action<BuildOperationQueue<CommandLineToolInvocation>>() {
             @Override
@@ -76,6 +76,9 @@ class LinkExeLinker extends AbstractCompiler<LinkerSpec> {
         @Override
         public List<String> transform(LinkerSpec spec) {
             List<String> args = new ArrayList<String>();
+            if (spec.isDebuggable()) {
+                args.add("/DEBUG");
+            }
             args.addAll(escapeUserArgs(spec.getAllArgs()));
             args.add("/OUT:" + spec.getOutputFile().getAbsolutePath());
             args.add("/NOLOGO");
