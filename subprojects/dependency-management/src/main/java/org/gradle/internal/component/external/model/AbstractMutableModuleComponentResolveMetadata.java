@@ -20,8 +20,6 @@ import com.google.common.collect.ImmutableList;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier;
-import org.gradle.internal.component.external.descriptor.Configuration;
-import org.gradle.internal.component.external.descriptor.ModuleDescriptorState;
 import org.gradle.internal.component.model.DefaultIvyArtifactName;
 import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.IvyArtifactName;
@@ -31,44 +29,38 @@ import org.gradle.internal.hash.HashValue;
 
 import javax.annotation.Nullable;
 import java.util.List;
-import java.util.Map;
 
 import static org.gradle.internal.component.model.ComponentResolveMetadata.DEFAULT_STATUS_SCHEME;
 
 abstract class AbstractMutableModuleComponentResolveMetadata implements MutableModuleComponentResolveMetadata {
     public static final HashValue EMPTY_CONTENT = HashUtil.createHash("", "MD5");
-    private final ModuleDescriptorState descriptor;
     private ModuleComponentIdentifier componentId;
     private ModuleVersionIdentifier id;
     private boolean changing;
-    private String status;
+    private boolean missing;
+    private String status = "integration";
     private List<String> statusScheme = DEFAULT_STATUS_SCHEME;
     private ModuleSource moduleSource;
     private List<? extends DependencyMetadata> dependencies;
-    private Map<String, Configuration> configurationDefinitions;
     private HashValue contentHash = EMPTY_CONTENT;
     @Nullable
-    private List<ModuleComponentArtifactMetadata> artifacts;
+    private List<? extends ModuleComponentArtifactMetadata> artifacts;
 
-    protected AbstractMutableModuleComponentResolveMetadata(ModuleVersionIdentifier id, ModuleComponentIdentifier componentIdentifier, ModuleDescriptorState moduleDescriptor, Map<String, Configuration> configurations, List<? extends DependencyMetadata> dependencies) {
-        this.descriptor = moduleDescriptor;
+    protected AbstractMutableModuleComponentResolveMetadata(ModuleVersionIdentifier id, ModuleComponentIdentifier componentIdentifier, List<? extends DependencyMetadata> dependencies) {
         this.componentId = componentIdentifier;
         this.id = id;
-        this.status = moduleDescriptor.getStatus();
         this.dependencies = dependencies;
-        this.configurationDefinitions = configurations;
     }
 
     protected AbstractMutableModuleComponentResolveMetadata(ModuleComponentResolveMetadata metadata) {
-        this.descriptor = metadata.getDescriptor();
         this.componentId = metadata.getComponentId();
         this.id = metadata.getId();
         this.changing = metadata.isChanging();
+        this.missing = metadata.isMissing();
         this.status = metadata.getStatus();
         this.statusScheme = metadata.getStatusScheme();
         this.moduleSource = metadata.getSource();
-        this.configurationDefinitions = metadata.getConfigurationDefinitions();
-        this.artifacts = metadata.getArtifacts();
+        this.artifacts = metadata.getArtifactOverrides();
         this.dependencies = metadata.getDependencies();
         this.contentHash = metadata.getContentHash();
     }
@@ -90,11 +82,6 @@ abstract class AbstractMutableModuleComponentResolveMetadata implements MutableM
     }
 
     @Override
-    public ModuleDescriptorState getDescriptor() {
-        return descriptor;
-    }
-
-    @Override
     public String getStatus() {
         return status;
     }
@@ -112,6 +99,16 @@ abstract class AbstractMutableModuleComponentResolveMetadata implements MutableM
     @Override
     public void setStatusScheme(List<String> statusScheme) {
         this.statusScheme = statusScheme;
+    }
+
+    @Override
+    public boolean isMissing() {
+        return missing;
+    }
+
+    @Override
+    public void setMissing(boolean missing) {
+        this.missing = missing;
     }
 
     @Override
@@ -145,11 +142,6 @@ abstract class AbstractMutableModuleComponentResolveMetadata implements MutableM
     }
 
     @Override
-    public Map<String, Configuration> getConfigurationDefinitions() {
-        return configurationDefinitions;
-    }
-
-    @Override
     public ModuleComponentArtifactMetadata artifact(String type, @Nullable String extension, @Nullable String classifier) {
         IvyArtifactName ivyArtifactName = new DefaultIvyArtifactName(getId().getName(), type, extension, classifier);
         return new DefaultModuleComponentArtifactMetadata(getComponentId(), ivyArtifactName);
@@ -157,12 +149,12 @@ abstract class AbstractMutableModuleComponentResolveMetadata implements MutableM
 
     @Nullable
     @Override
-    public List<ModuleComponentArtifactMetadata> getArtifacts() {
+    public List<? extends ModuleComponentArtifactMetadata> getArtifactOverrides() {
         return artifacts;
     }
 
     @Override
-    public void setArtifacts(Iterable<? extends ModuleComponentArtifactMetadata> artifacts) {
+    public void setArtifactOverrides(Iterable<? extends ModuleComponentArtifactMetadata> artifacts) {
         this.artifacts = ImmutableList.copyOf(artifacts);
     }
 

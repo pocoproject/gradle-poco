@@ -20,15 +20,20 @@ import org.gradle.performance.AbstractCrossVersionPerformanceTest
 import spock.lang.Unroll
 
 class NativeBuildPerformanceTest extends AbstractCrossVersionPerformanceTest {
+
+    def setup() {
+        runner.targetVersions = ["4.3-20171011120745+0000"]
+    }
+
     @Unroll
     def "clean assemble on #testProject"() {
         given:
         runner.testProject = testProject
-        runner.tasksToRun = ["clean", "assemble"]
+        runner.tasksToRun = ["assemble"]
+        runner.cleanTasks = ["clean"]
         runner.gradleOpts = ["-Xms$maxMemory", "-Xmx$maxMemory"]
         runner.runs = iterations
         runner.warmUpRuns = iterations
-        runner.targetVersions = ["4.2-20170817235727+0000"]
 
         when:
         def result = runner.run()
@@ -47,8 +52,8 @@ class NativeBuildPerformanceTest extends AbstractCrossVersionPerformanceTest {
     def "clean assemble on manyProjectsNative"() {
         given:
         runner.testProject = "manyProjectsNative"
-        runner.tasksToRun = ["clean", "assemble"]
-        runner.targetVersions = ["4.2-20170817235727+0000"]
+        runner.tasksToRun = ["assemble"]
+        runner.cleanTasks = ["clean"]
 
         when:
         def result = runner.run()

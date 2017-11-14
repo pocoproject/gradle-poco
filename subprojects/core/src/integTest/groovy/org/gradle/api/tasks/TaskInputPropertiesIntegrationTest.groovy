@@ -559,21 +559,12 @@ task someTask(type: SomeTask) {
         """
         expect:
         executer.expectDeprecationWarning().withFullDeprecationStackTraceDisabled()
-        if (expectToFail) {
-            // Singular null outputs will cause build to fail, but message should still be printed
-            fails "test"
-        } else {
-            succeeds "test"
-        }
+        succeeds "test"
         output.contains """A problem was found with the configuration of task ':test'. Registering invalid inputs and outputs via TaskInputs and TaskOutputs methods has been deprecated and is scheduled to be removed in Gradle 5.0.
  - No value has been specified for property 'output'."""
 
         where:
-        method  | expectToFail
-        "file"  | true
-        "files" | false
-        "dir"   | true
-        "dirs"  | false
+        method << ["file", "files", "dir", "dirs"]
     }
 
     @Unroll
@@ -661,5 +652,41 @@ task someTask(type: SomeTask) {
         "files" | "input-dir"      | false        | "Cannot write to file '<PATH>' specified for property 'output' as it is a directory."
         "dir"   | "input-file.txt" | true         | "Directory '<PATH>' specified for property 'output' is not a directory."
         "dirs"  | "input-file.txt" | true         | "Directory '<PATH>' specified for property 'output' is not a directory."
+    }
+
+    def "can specify null as an input property in ad-hoc task"() {
+        buildFile << """
+            task foo {
+                inputs.property("a", null).optional(true)
+                doLast {}
+            }
+        """
+
+        expect:
+        succeeds "foo"
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/3366")
+    def "can specify null as an input property in Java task"() {
+        file("buildSrc/src/main/java/Foo.java") << """
+            import org.gradle.api.DefaultTask;
+            import org.gradle.api.tasks.TaskAction;
+
+            public class Foo extends DefaultTask {
+                public Foo() {
+                    getInputs().property("a", null).optional(true);
+                }
+                
+                @TaskAction
+                public void doSomething() {}
+            }
+        """
+
+        buildFile << """
+            task foo(type: Foo)
+        """
+
+        expect:
+        succeeds "foo"
     }
 }

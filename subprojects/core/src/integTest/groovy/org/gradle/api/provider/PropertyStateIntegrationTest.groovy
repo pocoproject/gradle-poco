@@ -17,6 +17,7 @@
 package org.gradle.api.provider
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import spock.lang.Issue
 import spock.lang.Unroll
 
 import static PropertyStateProjectUnderTest.Language
@@ -25,6 +26,26 @@ import static org.gradle.util.TextUtil.normaliseFileSeparators
 class PropertyStateIntegrationTest extends AbstractIntegrationSpec {
 
     private final PropertyStateProjectUnderTest projectUnderTest = new PropertyStateProjectUnderTest(testDirectory)
+
+    @Issue("https://github.com/gradle/gradle/issues/3262")
+    @Unroll
+    def "does not receive deprecation warning when using #expr"() {
+        given:
+        buildFile << """
+PropertyState<String> p = $expr
+p.set("123")
+p.get()
+"""
+
+        expect:
+        succeeds()
+
+        where:
+        expr                         | _
+        "providers.property(String)" | _
+        "project.property(String)"   | _
+        "property(String)"           | _
+    }
 
     @Unroll
     def "can create and use property state by custom task written as #language class"() {
@@ -88,10 +109,10 @@ class PropertyStateIntegrationTest extends AbstractIntegrationSpec {
         buildFile << """
 class SomeTask extends DefaultTask {
     @Input
-    final PropertyState<String> prop = project.providers.property(String)
+    final Property<String> prop = project.objects.property(String)
     
     @OutputFile
-    final PropertyState<RegularFile> outputFile = newOutputFile()
+    final Property<RegularFile> outputFile = newOutputFile()
     
     @TaskAction
     void go() { 
@@ -139,19 +160,19 @@ task thing(type: SomeTask) {
         given:
         buildFile << """
 class SomeExtension {
-    final PropertyState<String> prop
+    final Property<String> prop
     
     @javax.inject.Inject
-    SomeExtension(ProviderFactory providers) {
-        prop = providers.property(String)
+    SomeExtension(ObjectFactory objects) {
+        prop = objects.property(String)
     }
 }
 
 class SomeTask extends DefaultTask {
-    final PropertyState<String> prop = project.providers.property(String)
+    final Property<String> prop = project.objects.property(String)
 }
 
-extensions.create('custom', SomeExtension, providers)
+extensions.create('custom', SomeExtension, objects)
 custom.prop = "value"
 assert custom.prop.get() == "value"
 
@@ -176,15 +197,15 @@ assert tasks.t.prop.get() == "changed"
         given:
         buildFile << """
 class SomeExtension {
-    final PropertyState<String> prop
+    final Property<String> prop
     
     @javax.inject.Inject
-    SomeExtension(ProviderFactory providers) {
-        prop = providers.property(String)
+    SomeExtension(ObjectFactory objects) {
+        prop = objects.property(String)
     }
 }
 
-extensions.create('custom', SomeExtension, providers)
+extensions.create('custom', SomeExtension, objects)
 
 task wrongValueType {
     doLast {
@@ -192,9 +213,9 @@ task wrongValueType {
     }
 }
 
-task wrongPropertyStateType {
+task wrongPropertyType {
     doLast {
-        custom.prop = providers.property(Integer)
+        custom.prop = objects.property(Integer)
     }
 }
 
@@ -214,10 +235,10 @@ task wrongRuntimeType {
         failure.assertHasCause("Cannot set the value of a property of type java.lang.String using an instance of type java.lang.Integer.")
 
         when:
-        fails("wrongPropertyStateType")
+        fails("wrongPropertyType")
 
         then:
-        failure.assertHasDescription("Execution failed for task ':wrongPropertyStateType'.")
+        failure.assertHasDescription("Execution failed for task ':wrongPropertyType'.")
         failure.assertHasCause("Cannot set the value of a property of type java.lang.String using a provider of type java.lang.Integer.")
 
         when:

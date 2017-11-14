@@ -23,7 +23,6 @@ import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationS
 import org.gradle.nativeplatform.fixtures.app.IncrementalHelloWorldApp
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.GUtil
-import spock.lang.Unroll
 
 abstract class AbstractNativeLanguageIncrementalCompileIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
     IncrementalHelloWorldApp app
@@ -36,7 +35,7 @@ abstract class AbstractNativeLanguageIncrementalCompileIntegrationTest extends A
     TestFile objectFileDir
     CompilationOutputsFixture outputs
 
-    abstract IncrementalHelloWorldApp getHelloWorldApp();
+    abstract IncrementalHelloWorldApp getHelloWorldApp()
 
     String getSourceType() {
         GUtil.toCamelCase(app.sourceType)
@@ -383,7 +382,7 @@ model {
 
         then:
         executedAndNotSkipped compileTask
-        failure.assertHasDescription("Execution failed for task '${compileTask}'.");
+        failure.assertHasDescription("Execution failed for task '${compileTask}'.")
     }
 
     def "does not recompile any sources when unused header file is changed"() {
@@ -403,53 +402,6 @@ model {
 
         and:
         outputs.noneRecompiled()
-    }
-
-    // We can't implement this because we rebuild everything when the include path changes
-    @NotYetImplemented
-    @Unroll
-    def "does not recompile when include path has #testCase"() {
-        given:
-        outputs.snapshot { run "mainExecutable" }
-
-        file("src/additional-headers/other.h") << """
-    // extra header file that is not included in source
-"""
-        file("src/replacement-headers/${sharedHeaderFile.name}") << """
-    // replacement header file that is included in source
-"""
-
-        when:
-        buildFile << """
-    model {
-        components {
-            main {
-                sources {
-                    ${app.sourceType} {
-                        exportedHeaders {
-                            srcDirs ${headerDirs}
-                        }
-                    }
-                }
-            }
-        }
-    }
-"""
-        and:
-        run "mainExecutable"
-
-        then:
-        executed compileTask
-        skipped compileTask
-
-        and:
-        outputs.noneRecompiled()
-
-        where:
-        testCase                       | headerDirs
-        "extra header dir after"       | '"src/main/headers", "src/additional-headers"'
-        "extra header dir before"      | '"src/additional-headers", "src/main/headers"'
-        "replacement header dir after" | '"src/main/headers", "src/replacement-headers"'
     }
 
     def "recompiles when include path is changed so that replacement header file occurs before previous header"() {

@@ -20,7 +20,6 @@ import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.model.ObjectFactory;
-import org.gradle.api.provider.ProviderFactory;
 import org.gradle.language.swift.SwiftLibrary;
 import org.gradle.language.swift.SwiftSharedLibrary;
 
@@ -32,12 +31,12 @@ public class DefaultSwiftLibrary extends DefaultSwiftComponent implements SwiftL
     private final Configuration api;
 
     @Inject
-    public DefaultSwiftLibrary(String name, ObjectFactory objectFactory, FileOperations fileOperations, ProviderFactory providerFactory, ConfigurationContainer configurations) {
-        super(name, fileOperations, providerFactory, configurations);
+    public DefaultSwiftLibrary(String name, ObjectFactory objectFactory, FileOperations fileOperations, ConfigurationContainer configurations) {
+        super(name, fileOperations, objectFactory, configurations);
         debug = objectFactory.newInstance(DefaultSwiftSharedLibrary.class, name + "Debug", objectFactory, getModule(), true, getSwiftSource(), configurations, getImplementationDependencies());
         release = objectFactory.newInstance(DefaultSwiftSharedLibrary.class, name + "Release", objectFactory, getModule(), false, getSwiftSource(), configurations, getImplementationDependencies());
 
-        api = configurations.create(getNames().withSuffix("api"));
+        api = configurations.maybeCreate(getNames().withSuffix("api"));
         api.setCanBeConsumed(false);
         api.setCanBeResolved(false);
         getImplementationDependencies().extendsFrom(api);

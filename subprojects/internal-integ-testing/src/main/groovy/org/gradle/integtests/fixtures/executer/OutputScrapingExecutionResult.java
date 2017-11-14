@@ -25,13 +25,13 @@ import org.gradle.internal.jvm.UnsupportedJavaRuntimeException;
 import org.gradle.launcher.daemon.client.DaemonStartupMessage;
 import org.gradle.launcher.daemon.server.DaemonStateCoordinator;
 import org.gradle.launcher.daemon.server.health.LowTenuredSpaceDaemonExpirationStrategy;
+import org.gradle.util.GUtil;
 import org.gradle.util.TextUtil;
 import org.hamcrest.core.StringContains;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -56,6 +56,10 @@ public class OutputScrapingExecutionResult implements ExecutionResult {
     private final Pattern taskPattern = Pattern.compile(TASK_LOGGER_DEBUG_PATTERN + "(:\\S+?(:\\S+?)*)((\\s+SKIPPED)|(\\s+UP-TO-DATE)|(\\s+FROM-CACHE)|(\\s+NO-SOURCE)|(\\s+FAILED)|(\\s*))");
 
     private static final Pattern BUILD_RESULT_PATTERN = Pattern.compile("BUILD (SUCCESSFUL|FAILED)( \\d+[smh])+");
+
+    public static List<String> flattenTaskPaths(Object[] taskPaths) {
+        return org.gradle.util.CollectionUtils.toStringList(GUtil.flatten(taskPaths, Lists.newArrayList()));
+    }
 
     public OutputScrapingExecutionResult(String output, String error) {
         this.output = TextUtil.normaliseLineSeparators(output);
@@ -143,15 +147,15 @@ public class OutputScrapingExecutionResult implements ExecutionResult {
 
     public ExecutionResult assertTasksExecutedInOrder(Object... taskPaths) {
         Set<String> allTasks = TaskOrderSpecs.exact(taskPaths).getTasks();
-        assertTasksExecuted(allTasks.toArray(new String[]{}));
+        assertTasksExecuted(allTasks);
         assertTaskOrder(taskPaths);
         return this;
     }
 
     @Override
-    public ExecutionResult assertTasksExecuted(String... taskPaths) {
-        List<String> expectedTasks = Arrays.asList(taskPaths);
-        assertThat(String.format("Expected tasks %s not found in process output:%n%s", expectedTasks, getOutput()), getExecutedTasks(), containsInAnyOrder(taskPaths));
+    public ExecutionResult assertTasksExecuted(Object... taskPaths) {
+        List<String> expectedTasks = flattenTaskPaths(taskPaths);
+        assertThat(String.format("Expected tasks %s not found in process output:%n%s", expectedTasks, getOutput()), getExecutedTasks(), containsInAnyOrder(expectedTasks.toArray()));
         return this;
     }
 
@@ -165,8 +169,9 @@ public class OutputScrapingExecutionResult implements ExecutionResult {
         return new HashSet<String>(grepTasks(skippedTaskPattern));
     }
 
-    public ExecutionResult assertTasksSkipped(String... taskPaths) {
-        Set<String> expectedTasks = new HashSet<String>(Arrays.asList(taskPaths));
+    @Override
+    public ExecutionResult assertTasksSkipped(Object... taskPaths) {
+        Set<String> expectedTasks = new HashSet<String>(flattenTaskPaths(taskPaths));
         assertThat(String.format("Expected skipped tasks %s not found in process output:%n%s", expectedTasks, getOutput()), getSkippedTasks(), equalTo(expectedTasks));
         return this;
     }
@@ -177,9 +182,10 @@ public class OutputScrapingExecutionResult implements ExecutionResult {
         return this;
     }
 
-    public ExecutionResult assertTasksNotSkipped(String... taskPaths) {
+    @Override
+    public ExecutionResult assertTasksNotSkipped(Object... taskPaths) {
         Set<String> tasks = new HashSet<String>(getNotSkippedTasks());
-        Set<String> expectedTasks = new HashSet<String>(Arrays.asList(taskPaths));
+        Set<String> expectedTasks = new HashSet<String>(flattenTaskPaths(taskPaths));
         assertThat(String.format("Expected executed tasks %s not found in process output:%n%s", expectedTasks, getOutput()), tasks, equalTo(expectedTasks));
         return this;
     }

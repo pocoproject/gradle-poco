@@ -67,6 +67,12 @@ import org.gradle.api.internal.project.taskfactory.TaskClassValidatorExtractor;
 import org.gradle.api.internal.project.taskfactory.TaskFactory;
 import org.gradle.api.internal.tasks.execution.statistics.TaskExecutionStatisticsEventAdapter;
 import org.gradle.api.internal.tasks.execution.statistics.TaskExecutionStatisticsListener;
+import org.gradle.api.internal.tasks.userinput.BuildScanUserInputHandler;
+import org.gradle.api.internal.tasks.userinput.DefaultBuildScanUserInputHandler;
+import org.gradle.api.internal.tasks.userinput.DefaultUserInputHandler;
+import org.gradle.api.internal.tasks.userinput.DefaultUserInputReader;
+import org.gradle.api.internal.tasks.userinput.NonInteractiveUserInputHandler;
+import org.gradle.api.internal.tasks.userinput.UserInputHandler;
 import org.gradle.api.provider.ProviderFactory;
 import org.gradle.cache.CacheRepository;
 import org.gradle.cache.CacheValidator;
@@ -125,6 +131,7 @@ import org.gradle.internal.actor.ActorFactory;
 import org.gradle.internal.actor.internal.DefaultActorFactory;
 import org.gradle.internal.authentication.AuthenticationSchemeRegistry;
 import org.gradle.internal.authentication.DefaultAuthenticationSchemeRegistry;
+import org.gradle.internal.buildevents.BuildStartedTime;
 import org.gradle.internal.classloader.ClassLoaderFactory;
 import org.gradle.internal.classloader.ClassLoaderHierarchyHasher;
 import org.gradle.internal.classpath.CachedClasspathTransformer;
@@ -135,6 +142,7 @@ import org.gradle.internal.hash.FileHasher;
 import org.gradle.internal.hash.StreamHasher;
 import org.gradle.internal.logging.LoggingManagerInternal;
 import org.gradle.internal.logging.progress.ProgressLoggerFactory;
+import org.gradle.internal.logging.sink.OutputEventRenderer;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.operations.logging.BuildOperationLoggerFactory;
 import org.gradle.internal.operations.logging.DefaultBuildOperationLoggerFactory;
@@ -146,9 +154,9 @@ import org.gradle.internal.service.CachingServiceLocator;
 import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.internal.service.ServiceRegistration;
 import org.gradle.internal.service.ServiceRegistry;
-import org.gradle.internal.buildevents.BuildStartedTime;
 import org.gradle.internal.time.Clock;
 import org.gradle.model.internal.inspect.ModelRuleSourceDetector;
+import org.gradle.plugin.management.internal.autoapply.AutoAppliedPluginHandler;
 import org.gradle.plugin.repository.internal.PluginRepositoryFactory;
 import org.gradle.plugin.repository.internal.PluginRepositoryRegistry;
 import org.gradle.plugin.use.internal.PluginRequestApplicator;
@@ -302,7 +310,8 @@ public class BuildScopeServices extends DefaultServiceRegistry {
             get(ProviderFactory.class),
             get(TextResourceLoader.class),
             get(StreamHasher.class),
-            get(FileHasher.class));
+            get(FileHasher.class),
+            get(AutoAppliedPluginHandler.class));
     }
 
     protected SettingsLoaderFactory createSettingsLoaderFactory(SettingsProcessor settingsProcessor, NestedBuildFactory nestedBuildFactory,
@@ -438,5 +447,17 @@ public class BuildScopeServices extends DefaultServiceRegistry {
             registryAction.execute(registry);
         }
         return registry;
+    }
+
+    protected UserInputHandler createUserInputHandler(StartParameter startParameter, OutputEventRenderer outputEventRenderer) {
+        if (!startParameter.isInteractive()) {
+            return new NonInteractiveUserInputHandler();
+        }
+
+        return new DefaultUserInputHandler(outputEventRenderer, new DefaultUserInputReader());
+    }
+
+    protected BuildScanUserInputHandler createBuildScanUserInputHandler(UserInputHandler userInputHandler) {
+        return new DefaultBuildScanUserInputHandler(userInputHandler);
     }
 }

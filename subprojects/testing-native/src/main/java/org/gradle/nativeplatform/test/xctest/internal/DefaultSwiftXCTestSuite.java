@@ -17,11 +17,10 @@
 package org.gradle.nativeplatform.test.xctest.internal;
 
 import org.gradle.api.artifacts.ConfigurationContainer;
-import org.gradle.api.file.DirectoryVar;
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.model.ObjectFactory;
-import org.gradle.api.provider.ProviderFactory;
 import org.gradle.language.swift.SwiftBundle;
 import org.gradle.language.swift.internal.DefaultSwiftBundle;
 import org.gradle.language.swift.internal.DefaultSwiftComponent;
@@ -31,19 +30,19 @@ import javax.inject.Inject;
 
 public class DefaultSwiftXCTestSuite extends DefaultSwiftComponent implements SwiftXCTestSuite {
     private final DefaultSwiftBundle bundle;
-    private final DirectoryVar resourceDirectory;
+    private final DirectoryProperty resourceDirectory;
 
     @Inject
-    public DefaultSwiftXCTestSuite(String name, ObjectFactory objectFactory, FileOperations fileOperations, ProviderFactory providerFactory, ConfigurationContainer configurations, ProjectLayout projectLayout) {
-        super(name, fileOperations, providerFactory, configurations);
+    public DefaultSwiftXCTestSuite(String name, ObjectFactory objectFactory, FileOperations fileOperations, ConfigurationContainer configurations, ProjectLayout projectLayout) {
+        super(name, fileOperations, objectFactory, configurations);
 
-        resourceDirectory = projectLayout.newDirectoryVar();
+        resourceDirectory = projectLayout.directoryProperty();
         resourceDirectory.set(projectLayout.getProjectDirectory().dir("src/" + name + "/resources"));
         bundle = objectFactory.newInstance(DefaultSwiftBundle.class, name + "Bundle", objectFactory, getModule(), true, getSwiftSource(), configurations, getImplementationDependencies(), getResourceDir());
     }
 
     @Override
-    public DirectoryVar getResourceDir() {
+    public DirectoryProperty getResourceDir() {
         return resourceDirectory;
     }
 

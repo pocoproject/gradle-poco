@@ -24,7 +24,6 @@ import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.server.http.HttpServer
 import org.gradle.test.matchers.UserAgentMatcher
 import org.gradle.util.GradleVersion
-import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
@@ -35,11 +34,6 @@ import static org.junit.Assert.assertThat
 public class ExternalScriptExecutionIntegrationTest extends AbstractIntegrationTest {
     @Rule
     public final HttpServer server = new HttpServer()
-
-    @Before
-    void setUp(){
-        server.enablePortAllocator()
-    }
 
     @Test
     public void executesExternalScriptAgainstAProjectWithCorrectEnvironment() {
@@ -154,6 +148,8 @@ class ListenerImpl extends BuildAdapter {
 
     @Test
     public void canFetchScriptViaHttp() {
+        executer.requireOwnGradleUserHomeDir() //we need an empty external resource cache
+
         TestFile script = testFile('external.gradle')
         server.expectUserAgent(UserAgentMatcher.matchesNameAndVersion("Gradle", GradleVersion.current().getVersion()))
         server.expectGet('/external.gradle', script)

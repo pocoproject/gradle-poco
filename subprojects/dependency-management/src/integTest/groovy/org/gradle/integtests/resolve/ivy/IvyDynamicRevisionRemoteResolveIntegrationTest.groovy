@@ -375,19 +375,19 @@ dependencies {
     """
 
         when:
-        def projectA12 = repo1.module("group", "projectA", "1.2").publish()
-        def projectA11 = repo2.module("group", "projectA", "1.1").publish()
+        def repo1projectA12 = repo1.module("group", "projectA", "1.2").publish()
+        def repo2projectA11 = repo2.module("group", "projectA", "1.1").publish()
 
         and: "projectA is broken in repo1"
         repo1.directoryList("group", "projectA").expectGetBroken()
-        expectGetDynamicRevision(projectA11)
+        expectGetDynamicRevision(repo2projectA11)
 
         then:
         checkResolve "group:projectA:1.+": "group:projectA:1.1"
 
         when:
         server.resetExpectations()
-        expectGetDynamicRevision(projectA12)
+        expectGetDynamicRevision(repo1projectA12)
 
         then:
         checkResolve "group:projectA:1.+": "group:projectA:1.2"
@@ -1217,6 +1217,11 @@ dependencies {
         expectListVersions(module)
         module.ivy.expectGet()
         module.jar.expectGet()
+    }
+
+    def expectGetDynamicRevisionMetadata(IvyHttpModule module) {
+        expectListVersions(module)
+        module.ivy.expectGet()
     }
 
     private expectListVersions(IvyHttpModule module) {

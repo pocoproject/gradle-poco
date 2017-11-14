@@ -21,7 +21,7 @@ import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 import org.gradle.api.Task;
 import org.gradle.api.file.Directory;
-import org.gradle.api.file.DirectoryVar;
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.tasks.TaskContainerInternal;
@@ -49,6 +49,7 @@ import org.gradle.nativeplatform.toolchain.internal.NativeToolChainRegistryInter
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 import org.gradle.nativeplatform.toolchain.plugins.SwiftCompilerPlugin;
 
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 
 /**
@@ -66,7 +67,7 @@ public class SwiftBasePlugin implements Plugin<ProjectInternal> {
         // TODO - Merge with CppBasePlugin to remove code duplication
 
         final TaskContainerInternal tasks = project.getTasks();
-        final DirectoryVar buildDirectory = project.getLayout().getBuildDirectory();
+        final DirectoryProperty buildDirectory = project.getLayout().getBuildDirectory();
         final ModelRegistry modelRegistry = project.getModelRegistry();
         final ProviderFactory providers = project.getProviders();
 
@@ -118,6 +119,9 @@ public class SwiftBasePlugin implements Plugin<ProjectInternal> {
                     install.setExecutable(link.getBinaryFile());
                     install.lib(binary.getRuntimeLibraries());
                 } else if (binary instanceof SwiftSharedLibrary) {
+                    // Specific compiler arguments
+                    compile.getCompilerArgs().set(Arrays.asList("-parse-as-library"));
+
                     // Add a link task
                     final LinkSharedLibrary link = tasks.create(names.getTaskName("link"), LinkSharedLibrary.class);
                     link.source(compile.getObjectFileDir().getAsFileTree().matching(new PatternSet().include("**/*.obj", "**/*.o")));
@@ -135,6 +139,9 @@ public class SwiftBasePlugin implements Plugin<ProjectInternal> {
                     link.setToolChain(toolChain);
                     link.setDebuggable(binary.isDebuggable());
                 } else if (binary instanceof SwiftBundle) {
+                    // Specific compiler arguments
+                    compile.getCompilerArgs().set(Arrays.asList("-parse-as-library"));
+
                     // Add a link task
                     LinkMachOBundle link = tasks.create(names.getTaskName("link"), LinkMachOBundle.class);
                     link.source(compile.getObjectFileDir().getAsFileTree().matching(new PatternSet().include("**/*.obj", "**/*.o")));

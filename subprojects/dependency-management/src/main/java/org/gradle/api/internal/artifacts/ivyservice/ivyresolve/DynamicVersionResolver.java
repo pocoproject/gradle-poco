@@ -50,8 +50,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.gradle.internal.resolve.result.BuildableModuleComponentMetaDataResolveResult.State.Failed;
-import static org.gradle.internal.resolve.result.BuildableModuleComponentMetaDataResolveResult.State.Resolved;
+import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ConnectionFailureRepositoryBlacklister.hasCriticalFailure;
+import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ConnectionFailureRepositoryBlacklister.isCriticalFailure;
+import static org.gradle.internal.resolve.result.BuildableModuleComponentMetaDataResolveResult.State.*;
 
 public class DynamicVersionResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(DynamicVersionResolver.class);
@@ -115,6 +116,9 @@ public class DynamicVersionResolver {
 
         // A first pass to do local resolves only
         RepositoryChainModuleResolution best = findLatestModule(queue, failures, missing);
+        if (hasCriticalFailure(failures)) {
+            return null;
+        }
         if (best != null) {
             return best;
         }
@@ -133,11 +137,18 @@ public class DynamicVersionResolver {
                 request.resolve();
             } catch (Throwable t) {
                 failures.add(t);
+                if (isCriticalFailure(t)) {
+                    queue.clear();
+                }
                 continue;
             }
             switch (request.resolvedVersionMetadata.getState()) {
                 case Failed:
                     failures.add(request.resolvedVersionMetadata.getFailure());
+                    if (isCriticalFailure(request.resolvedVersionMetadata.getFailure())) {
+                        // TODO:DAZ Consider re-throwing here
+                        queue.clear();
+                    }
                     break;
                 case Missing:
                 case Unknown:

@@ -16,18 +16,12 @@
 
 package org.gradle.language.cpp
 
-import org.gradle.nativeplatform.fixtures.AbstractNativePublishingIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibrariesWithApiDependencies
 import org.gradle.nativeplatform.fixtures.app.CppLib
 import org.gradle.test.fixtures.archive.ZipTestFixture
 import org.gradle.test.fixtures.maven.MavenFileRepository
-import org.junit.Assume
 
-class CppLibraryPublishingIntegrationTest extends AbstractNativePublishingIntegrationSpec {
-    def setup() {
-        // TODO - currently the customizations to the tool chains are ignored by the plugins, so skip these tests until this is fixed
-        Assume.assumeTrue(toolChain.id != "mingw" && toolChain.id != "gcccygwin")
-    }
+class CppLibraryPublishingIntegrationTest extends AbstractCppInstalledToolChainIntegrationTest implements CppTaskNames {
 
     def "can publish the binaries and headers of a library to a Maven repository"() {
         def lib = new CppLib()
@@ -53,7 +47,21 @@ class CppLibraryPublishingIntegrationTest extends AbstractNativePublishingIntegr
         run('publish')
 
         then:
-        result.assertTasksExecuted(":compileDebugCpp", ":linkDebug", ":generatePomFileForDebugPublication", ":generateMetadataFileForDebugPublication", ":publishDebugPublicationToMavenRepository", ":cppHeaders", ":generatePomFileForMainPublication", ":generateMetadataFileForMainPublication", ":publishMainPublicationToMavenRepository", ":compileReleaseCpp", ":linkRelease", ":generatePomFileForReleasePublication", ":generateMetadataFileForReleasePublication", ":publishReleasePublicationToMavenRepository", ":publish")
+        result.assertTasksExecuted(
+            compileAndLinkTasks(debug),
+            compileAndLinkTasks(release),
+            ":generatePomFileForDebugPublication",
+            ":generateMetadataFileForDebugPublication",
+            ":publishDebugPublicationToMavenRepository",
+            ":cppHeaders",
+            ":generatePomFileForMainPublication",
+            ":generateMetadataFileForMainPublication",
+            ":publishMainPublicationToMavenRepository",
+            ":generatePomFileForReleasePublication",
+            ":generateMetadataFileForReleasePublication",
+            ":publishReleasePublicationToMavenRepository",
+            ":publish"
+        )
 
         def headersZip = file("build/headers/cpp-api-headers.zip")
         new ZipTestFixture(headersZip).hasDescendants(lib.publicHeaders.files*.name)
@@ -273,4 +281,5 @@ class CppLibraryPublishingIntegrationTest extends AbstractNativePublishingIntegr
         sharedLibrary(consumer.file("build/install/main/debug/lib/shuffle")).file.assertExists()
         installation(consumer.file("build/install/main/debug")).exec().out == app.expectedOutput
     }
+
 }
