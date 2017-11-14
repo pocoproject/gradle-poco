@@ -29,6 +29,8 @@ import org.gradle.api.Incubating;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.changedetection.changes.DiscoveredInputRecorder;
+import org.gradle.api.internal.file.collections.DirectoryFileTreeFactory;
+import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
@@ -43,6 +45,7 @@ import org.gradle.internal.operations.logging.BuildOperationLoggerFactory;
 import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.language.base.internal.compile.CompilerUtil;
 import org.gradle.language.mc.internal.DefaultWindowsMessageCompileSpec;
+import org.gradle.language.nativeplatform.internal.incremental.DefaultHeaderDependenciesCollector;
 import org.gradle.language.nativeplatform.internal.incremental.IncrementalCompilerBuilder;
 import org.gradle.nativeplatform.internal.BuildOperationLoggingCompilerDecorator;
 import org.gradle.nativeplatform.platform.NativePlatform;
@@ -110,11 +113,15 @@ public class WindowsMessageCompile extends DefaultTask {
     private <T extends NativeCompileSpec> WorkResult doCompile(T spec, PlatformToolProvider platformToolProvider) {
         Class<T> specType = Cast.uncheckedCast(spec.getClass());
         Compiler<T> baseCompiler = platformToolProvider.newCompiler(specType);
-        Compiler<T> incrementalCompiler = getIncrementalCompilerBuilder().createIncrementalCompiler(this, baseCompiler, toolChain);
+        Compiler<T> incrementalCompiler = getIncrementalCompilerBuilder().createIncrementalCompiler(this, baseCompiler, toolChain, createDependenciesCollector());
         Compiler<T> loggingCompiler = BuildOperationLoggingCompilerDecorator.wrap(incrementalCompiler);
         return CompilerUtil.castCompiler(loggingCompiler).execute(spec);
     }
 
+    private DefaultHeaderDependenciesCollector createDependenciesCollector() {
+        DirectoryFileTreeFactory directoryFileTreeFactory = ((ProjectInternal) getProject()).getServices().get(DirectoryFileTreeFactory.class);
+        return new DefaultHeaderDependenciesCollector(directoryFileTreeFactory);
+    }
     /**
      * The tool chain used for compilation.
      */
