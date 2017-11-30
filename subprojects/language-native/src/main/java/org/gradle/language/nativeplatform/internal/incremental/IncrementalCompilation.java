@@ -15,8 +15,11 @@
  */
 package org.gradle.language.nativeplatform.internal.incremental;
 
+import org.gradle.language.nativeplatform.internal.IncludeDirectives;
+
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public interface IncrementalCompilation {
@@ -27,9 +30,16 @@ public interface IncrementalCompilation {
     CompilationState getFinalState();
 
     /**
+     * The include directives for those source files that are to be recompiled.
+     */
+    Map<File, IncludeDirectives> getSourceFileIncludeDirectives();
+
+    /**
      * The set of all input locations that were discovered as part of resolving the dependencies for this compilation.
      */
     Set<File> getDiscoveredInputs();
 
-    boolean isMacroIncludeUsedInSources();
+    Set<File> getExistingHeaders();
+
+    boolean isUnresolvedHeaders();
 }

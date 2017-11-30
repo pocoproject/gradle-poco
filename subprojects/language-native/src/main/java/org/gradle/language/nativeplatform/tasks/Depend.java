@@ -26,16 +26,18 @@ import org.gradle.api.NonNullApi;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.internal.changedetection.changes.IncrementalTaskInputsInternal;
+import org.gradle.api.internal.changedetection.state.FileSystemSnapshotter;
 import org.gradle.api.internal.file.collections.DirectoryFileTreeFactory;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.SkipWhenEmpty;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
 import org.gradle.cache.PersistentStateCache;
-import org.gradle.internal.hash.FileHasher;
 import org.gradle.language.nativeplatform.internal.incremental.CompilationState;
 import org.gradle.language.nativeplatform.internal.incremental.CompilationStateCacheFactory;
 import org.gradle.language.nativeplatform.internal.incremental.DefaultHeaderDependenciesCollector;
@@ -46,7 +48,6 @@ import org.gradle.language.nativeplatform.internal.incremental.IncrementalCompil
 import org.gradle.language.nativeplatform.internal.incremental.IncrementalCompileFilesFactory;
 import org.gradle.language.nativeplatform.internal.incremental.IncrementalCompileProcessor;
 import org.gradle.language.nativeplatform.internal.incremental.sourceparser.CSourceParser;
-import org.gradle.language.nativeplatform.internal.incremental.sourceparser.RegexBackedCSourceParser;
 
 import javax.inject.Inject;
 import java.io.BufferedWriter;
@@ -75,18 +76,19 @@ public class Depend extends DefaultTask {
     private final RegularFileProperty headerDependenciesFile;
 
     private CSourceParser sourceParser;
-    private final FileHasher hasher;
+    private final FileSystemSnapshotter fileSystemSnapshotter;
     private final CompilationStateCacheFactory compilationStateCacheFactory;
 
     @Inject
-    public Depend(FileHasher hasher, CompilationStateCacheFactory compilationStateCacheFactory, DirectoryFileTreeFactory directoryFileTreeFactory) {
-        this.hasher = hasher;
+    public Depend(FileSystemSnapshotter fileSystemSnapshotter, CompilationStateCacheFactory compilationStateCacheFactory, DirectoryFileTreeFactory directoryFileTreeFactory, CSourceParser sourceParser) {
+        this.fileSystemSnapshotter = fileSystemSnapshotter;
         this.compilationStateCacheFactory = compilationStateCacheFactory;
         this.includes = getProject().files();
         this.source = getProject().files();
-        this.sourceParser = new RegexBackedCSourceParser();
+        this.sourceParser = sourceParser;
         this.headerDependenciesFile = newOutputFile();
-        this.importsAreIncludes = getProject().getObjects().property(Boolean.class);
+        ObjectFactory objectFactory = getProject().getObjects();
+        this.importsAreIncludes = objectFactory.property(Boolean.class);
         this.headerDependenciesCollector = new DefaultHeaderDependenciesCollector(directoryFileTreeFactory);
         dependsOn(includes);
     }
@@ -95,13 +97,16 @@ public class Depend extends DefaultTask {
     public void detectHeaders(IncrementalTaskInputs incrementalTaskInputs) throws IOException {
         IncrementalTaskInputsInternal inputs = (IncrementalTaskInputsInternal) incrementalTaskInputs;
         List<File> includeRoots = ImmutableList.copyOf(includes);
-        IncrementalCompileProcessor incrementalCompileProcessor = createIncrementalCompileProcessor(includeRoots);
+        PersistentStateCache<CompilationState> compileStateCache = compilationStateCacheFactory.create(getPath());
+        IncrementalCompileProcessor incrementalCompileProcessor = createIncrementalCompileProcessor(includeRoots, compileStateCache);
 
         IncrementalCompilation incrementalCompilation = incrementalCompileProcessor.processSourceFiles(source.getFiles());
-        ImmutableSortedSet<File> headerDependencies = headerDependenciesCollector.collectHeaderDependencies(getName(), includeRoots, incrementalCompilation);
+        ImmutableSortedSet<File> headerDependencies = headerDependenciesCollector.collectHeaderDependencies(getPath(), includeRoots, incrementalCompilation);
+        ImmutableSortedSet<File> existingHeaderDependencies = headerDependenciesCollector.collectExistingHeaderDependencies(getPath(), includeRoots, incrementalCompilation);
+        compileStateCache.set(incrementalCompilation.getFinalState());
 
         inputs.newInputs(headerDependencies);
-        writeHeaderDependenciesFile(headerDependencies);
+        writeHeaderDependenciesFile(existingHeaderDependencies);
     }
 
     private void writeHeaderDependenciesFile(ImmutableSortedSet<File> headerDependencies) throws IOException {
@@ -117,25 +122,34 @@ public class Depend extends DefaultTask {
         }
     }
 
-    private IncrementalCompileProcessor createIncrementalCompileProcessor(List<File> includeRoots) {
-        PersistentStateCache<CompilationState> compileStateCache = compilationStateCacheFactory.create(getPath());
+    private IncrementalCompileProcessor createIncrementalCompileProcessor(List<File> includeRoots, PersistentStateCache<CompilationState> compileStateCache) {
         DefaultSourceIncludesParser sourceIncludesParser = new DefaultSourceIncludesParser(sourceParser, importsAreIncludes.getOrElse(false));
         DefaultSourceIncludesResolver dependencyParser = new DefaultSourceIncludesResolver(includeRoots);
-        IncrementalCompileFilesFactory incrementalCompileFilesFactory = new IncrementalCompileFilesFactory(sourceIncludesParser, dependencyParser, hasher);
+        IncrementalCompileFilesFactory incrementalCompileFilesFactory = new IncrementalCompileFilesFactory(sourceIncludesParser, dependencyParser, fileSystemSnapshotter);
         return new IncrementalCompileProcessor(compileStateCache, incrementalCompileFilesFactory);
     }
 
     @Input
     protected Collection<String> getIncludePaths() {
         if (includePaths == null) {
-            Set<File> roots = includes.getFiles();
             ImmutableList.Builder<String> builder = ImmutableList.builder();
+            Set<File> roots = includes.getFiles();
             for (File root : roots) {
                 builder.add(root.getAbsolutePath());
             }
             includePaths = builder.build();
         }
         return includePaths;
+    }
+
+    /**
+     * Returns the set of directory where the compiler should search for header files.
+     *
+     * @since 4.4
+     */
+    @Internal("tracked through getIncludePaths()")
+    public ConfigurableFileCollection getIncludes() {
+        return includes;
     }
 
     /**
@@ -170,5 +184,4 @@ public class Depend extends DefaultTask {
     public Property<Boolean> getImportsAreIncludes() {
         return importsAreIncludes;
     }
-
 }

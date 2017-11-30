@@ -17,10 +17,14 @@
 package org.gradle.internal.component.external.model;
 
 import com.google.common.collect.Lists;
+import org.gradle.api.Transformer;
 import org.gradle.api.artifacts.PublishArtifact;
+import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.internal.artifacts.configurations.OutgoingVariant;
-import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.external.descriptor.Configuration;
 import org.gradle.internal.component.local.model.BuildableLocalComponentMetadata;
 import org.gradle.internal.component.local.model.LocalFileDependencyMetadata;
@@ -28,6 +32,7 @@ import org.gradle.internal.component.model.DefaultIvyArtifactName;
 import org.gradle.internal.component.model.Exclude;
 import org.gradle.internal.component.model.IvyArtifactName;
 import org.gradle.internal.component.model.LocalOriginDependencyMetadata;
+import org.gradle.util.CollectionUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -40,6 +45,7 @@ import java.util.Map;
 import java.util.Set;
 
 public class DefaultIvyModulePublishMetadata implements BuildableIvyModulePublishMetadata, BuildableLocalComponentMetadata {
+    private static final Transformer<String, String> VERSION_TRANSFORMER = new IvyVersionTransformer();
     private final ModuleComponentIdentifier id;
     private final String status;
     private final Map<ModuleComponentArtifactIdentifier, IvyModuleArtifactPublishMetadata> artifactsById = new LinkedHashMap<ModuleComponentArtifactIdentifier, IvyModuleArtifactPublishMetadata>();
@@ -82,7 +88,7 @@ public class DefaultIvyModulePublishMetadata implements BuildableIvyModulePublis
     }
 
     @Override
-    public void addConfiguration(String name, String description, Set<String> extendsFrom, Set<String> hierarchy, boolean visible, boolean transitive, AttributeContainerInternal attributes, boolean canBeConsumed, boolean canBeResolved) {
+    public void addConfiguration(String name, String description, Set<String> extendsFrom, Set<String> hierarchy, boolean visible, boolean transitive, ImmutableAttributes attributes, boolean canBeConsumed, boolean canBeResolved) {
         List<String> sortedExtends = Lists.newArrayList(extendsFrom);
         Collections.sort(sortedExtends);
         Configuration configuration = new Configuration(name, transitive, visible, sortedExtends);
@@ -103,10 +109,15 @@ public class DefaultIvyModulePublishMetadata implements BuildableIvyModulePublis
      * [1.0] is a valid version in maven, but not in Ivy: strip the surrounding '[' and ']' characters for ivy publish.
      */
     private static LocalOriginDependencyMetadata normalizeVersionForIvy(LocalOriginDependencyMetadata dependency) {
-        String version = dependency.getRequested().getVersion();
-        if (version.startsWith("[") && version.endsWith("]") && version.indexOf(',') == -1) {
-            String normalizedVersion = version.substring(1, version.length() - 1);
-            return dependency.withRequestedVersion(normalizedVersion);
+        if (dependency.getSelector() instanceof ModuleComponentSelector) {
+            ModuleComponentSelector selector = (ModuleComponentSelector) dependency.getSelector();
+            VersionConstraint versionConstraint = selector.getVersionConstraint();
+            DefaultImmutableVersionConstraint transformedConstraint =
+                new DefaultImmutableVersionConstraint(
+                    VERSION_TRANSFORMER.transform(versionConstraint.getPreferredVersion()),
+                    CollectionUtils.collect(versionConstraint.getRejectedVersions(), VERSION_TRANSFORMER));
+            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getGroup(), selector.getModule(), transformedConstraint);
+            return dependency.withTarget(newSelector);
         }
         return dependency;
     }
@@ -154,5 +165,15 @@ public class DefaultIvyModulePublishMetadata implements BuildableIvyModulePublis
     @Override
     public void addFiles(String configuration, LocalFileDependencyMetadata files) {
         // Ignore
+    }
+
+    private static class IvyVersionTransformer implements Transformer<String, String> {
+        @Override
+        public String transform(String version) {
+            if (version != null && version.startsWith("[") && version.endsWith("]") && version.indexOf(',') == -1) {
+                return version.substring(1, version.length() - 1);
+            }
+            return version;
+        }
     }
 }

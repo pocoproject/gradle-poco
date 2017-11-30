@@ -16,10 +16,10 @@
 
 package org.gradle.internal.component.local.model;
 
-import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ProjectComponentSelector;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
@@ -57,16 +57,6 @@ public class DefaultProjectDependencyMetadata implements DependencyMetadata {
     }
 
     @Override
-    public ModuleVersionSelector getRequested() {
-        return delegate.getRequested();
-    }
-
-    @Override
-    public DependencyMetadata withRequestedVersion(String requestedVersion) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public DependencyMetadata withTarget(ComponentSelector target) {
         if (target.equals(selector)) {
             return this;
@@ -85,6 +75,11 @@ public class DefaultProjectDependencyMetadata implements DependencyMetadata {
     }
 
     @Override
+    public boolean isOptional() {
+        return false;
+    }
+
+    @Override
     public boolean isTransitive() {
         return delegate.isTransitive();
     }
@@ -95,13 +90,8 @@ public class DefaultProjectDependencyMetadata implements DependencyMetadata {
     }
 
     @Override
-    public String getDynamicConstraintVersion() {
-        return delegate.getDynamicConstraintVersion();
-    }
-
-    @Override
-    public Set<ConfigurationMetadata> selectConfigurations(ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
-        return delegate.selectConfigurations(fromComponent, fromConfiguration, targetComponent, consumerSchema);
+    public Set<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
+        return delegate.selectConfigurations(consumerAttributes, fromComponent, fromConfiguration, targetComponent, consumerSchema);
     }
 
     @Override

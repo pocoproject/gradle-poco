@@ -17,25 +17,39 @@
 package org.gradle.internal.component.external.model;
 
 import com.google.common.collect.ImmutableList;
+import org.gradle.api.Action;
+import org.gradle.api.artifacts.DependenciesMetadata;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.GradlePomModuleDescriptorBuilder;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
-import org.gradle.internal.component.model.DependencyMetadata;
+import org.gradle.internal.Describables;
+import org.gradle.internal.DisplayName;
+import org.gradle.internal.component.external.descriptor.Configuration;
+import org.gradle.internal.component.model.ComponentArtifactMetadata;
+import org.gradle.internal.component.model.ConfigurationMetadata;
+import org.gradle.internal.component.model.DefaultIvyArtifactName;
+import org.gradle.internal.component.model.VariantMetadata;
+import org.gradle.internal.reflect.Instantiator;
+import org.gradle.internal.typeconversion.NotationParser;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 import static org.gradle.internal.component.external.model.DefaultMavenModuleResolveMetadata.JAR_PACKAGINGS;
 import static org.gradle.internal.component.external.model.DefaultMavenModuleResolveMetadata.POM_PACKAGING;
 
-public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableModuleComponentResolveMetadata implements MutableMavenModuleResolveMetadata {
+public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableModuleComponentResolveMetadata<MavenConfigurationMetadata> implements MutableMavenModuleResolveMetadata {
     private String packaging = "jar";
     private boolean relocated;
     private String snapshotTimestamp;
-    private List<MutableVariantImpl> addedVariants;
+    private List<MutableVariantImpl> newVariants;
     private ImmutableList<? extends ComponentVariant> variants;
+    private ImmutableList<? extends ConfigurationMetadata> graphVariants;
 
     /**
      * Creates default metadata for a Maven module with no POM.
@@ -47,10 +61,10 @@ public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableMod
     }
 
     public DefaultMutableMavenModuleResolveMetadata(ModuleVersionIdentifier id, ModuleComponentIdentifier componentIdentifier) {
-        this(id, componentIdentifier, ImmutableList.<DependencyMetadata>of());
+        this(id, componentIdentifier, ImmutableList.<ModuleDependencyMetadata>of());
     }
 
-    public DefaultMutableMavenModuleResolveMetadata(ModuleVersionIdentifier id, ModuleComponentIdentifier componentIdentifier, Collection<? extends DependencyMetadata> dependencies) {
+    public DefaultMutableMavenModuleResolveMetadata(ModuleVersionIdentifier id, ModuleComponentIdentifier componentIdentifier, Collection<? extends ModuleDependencyMetadata> dependencies) {
         super(id, componentIdentifier, ImmutableList.copyOf(dependencies));
     }
 
@@ -60,11 +74,63 @@ public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableMod
         this.relocated = metadata.isRelocated();
         this.snapshotTimestamp = metadata.getSnapshotTimestamp();
         variants = metadata.getVariants();
+        graphVariants = metadata.getVariantsForGraphTraversal();
+    }
+
+    @Override
+    protected MavenConfigurationMetadata createConfiguration(ModuleComponentIdentifier componentId, String name, boolean transitive, boolean visible, ImmutableList<MavenConfigurationMetadata> parents, ImmutableList<? extends ModuleComponentArtifactMetadata> artifactOverrides) {
+        ImmutableList<? extends ModuleComponentArtifactMetadata> artifacts;
+        if (artifactOverrides != null) {
+            artifacts = artifactOverrides;
+        } else {
+            if (name.equals("compile") || name.equals("runtime") || name.equals("default") || name.equals("test")) {
+                artifacts = ImmutableList.of(new DefaultModuleComponentArtifactMetadata(getComponentId(), new DefaultIvyArtifactName(getComponentId().getModule(), "jar", "jar")));
+            } else {
+                artifacts = ImmutableList.of();
+            }
+        }
+        return new MavenConfigurationMetadata(componentId, name, transitive, visible, parents, artifacts);
     }
 
     @Override
     public MavenModuleResolveMetadata asImmutable() {
         return new DefaultMavenModuleResolveMetadata(this);
+    }
+
+    @Override
+    protected Map<String, Configuration> getConfigurationDefinitions() {
+        return GradlePomModuleDescriptorBuilder.MAVEN2_CONFIGURATIONS;
+    }
+
+    @Override
+    public boolean definesVariant(String name) {
+        if (explicitlyDefinesVariants()) {
+            return containsNamedVariant(name);
+        } else {
+            return getConfigurationDefinitions().containsKey(name);
+        }
+    }
+
+    private boolean explicitlyDefinesVariants() {
+        return (variants != null && !variants.isEmpty()) || (newVariants != null && !newVariants.isEmpty());
+    }
+
+    private boolean containsNamedVariant(String name) {
+        if (variants != null) {
+            for (ComponentVariant variant : variants) {
+                if (variant.getName().equals(name)) {
+                    return true;
+                }
+            }
+        }
+        if (newVariants != null) {
+            for (MutableVariantImpl variant : newVariants) {
+                if (variant.name.equals(name)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Nullable
@@ -109,29 +175,53 @@ public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableMod
     }
 
     @Override
+    public void addDependencyMetadataRule(String variantName, Action<DependenciesMetadata> action, Instantiator instantiator, NotationParser<Object, org.gradle.api.artifacts.DependencyMetadata> dependencyNotationParser) {
+        super.addDependencyMetadataRule(variantName, action, instantiator, dependencyNotationParser);
+        graphVariants = null;
+    }
+
+    @Override
     public MutableComponentVariant addVariant(String variantName, ImmutableAttributes attributes) {
         MutableVariantImpl variant = new MutableVariantImpl(variantName, attributes);
-        if (addedVariants == null) {
-            addedVariants = new ArrayList<MutableVariantImpl>();
+        if (newVariants == null) {
+            newVariants = new ArrayList<MutableVariantImpl>();
         }
-        addedVariants.add(variant);
+        newVariants.add(variant);
+        graphVariants = null;
         return variant;
     }
 
     @Override
+    public ImmutableList<? extends ConfigurationMetadata> getVariantsForGraphTraversal() {
+        if (graphVariants == null) {
+            ImmutableList<? extends ComponentVariant> variants = getVariants();
+            if (variants.isEmpty()) {
+                graphVariants = ImmutableList.of();
+            } else {
+                List<VariantBackedConfigurationMetadata> configurations = new ArrayList<VariantBackedConfigurationMetadata>(variants.size());
+                for (ComponentVariant variant : variants) {
+                    configurations.add(new VariantBackedConfigurationMetadata(getComponentId(), variant, dependencyMetadataRules.get(variant.getName())));
+                }
+                graphVariants = ImmutableList.copyOf(configurations);
+            }
+        }
+        return graphVariants;
+    }
+
+    @Override
     public ImmutableList<? extends ComponentVariant> getVariants() {
-        if (variants == null && addedVariants == null) {
+        if (variants == null && newVariants == null) {
             return ImmutableList.of();
         }
-        if (variants != null && addedVariants == null) {
+        if (variants != null && newVariants == null) {
             return variants;
         }
         ImmutableList.Builder<ComponentVariant> builder = new ImmutableList.Builder<ComponentVariant>();
         if (variants != null) {
             builder.addAll(variants);
         }
-        for (MutableVariantImpl variant : addedVariants) {
-            builder.add(new ImmutableVariantImpl(variant.name, variant.attributes, ImmutableList.copyOf(variant.files)));
+        for (MutableVariantImpl variant : newVariants) {
+            builder.add(new ImmutableVariantImpl(getComponentId(), variant.name, variant.attributes, ImmutableList.copyOf(variant.dependencies), ImmutableList.copyOf(variant.files)));
         }
         return builder.build();
     }
@@ -139,11 +229,17 @@ public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableMod
     private static class MutableVariantImpl implements MutableComponentVariant {
         private final String name;
         private final ImmutableAttributes attributes;
+        private final List<DependencyImpl> dependencies = new ArrayList<DependencyImpl>();
         private final List<FileImpl> files = new ArrayList<FileImpl>();
 
         MutableVariantImpl(String name, ImmutableAttributes attributes) {
             this.name = name;
             this.attributes = attributes;
+        }
+
+        @Override
+        public void addDependency(String group, String module, VersionConstraint versionConstraint) {
+            dependencies.add(new DependencyImpl(group, module, versionConstraint));
         }
 
         @Override
@@ -172,14 +268,45 @@ public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableMod
         }
     }
 
-    private static class ImmutableVariantImpl implements ComponentVariant {
+    private static class DependencyImpl implements ComponentVariant.Dependency {
+        private final String group;
+        private final String module;
+        private final VersionConstraint versionConstraint;
+
+        DependencyImpl(String group, String module, VersionConstraint versionConstraint) {
+            this.group = group;
+            this.module = module;
+            this.versionConstraint = versionConstraint;
+        }
+
+        @Override
+        public String getGroup() {
+            return group;
+        }
+
+        @Override
+        public String getModule() {
+            return module;
+        }
+
+        @Override
+        public VersionConstraint getVersionConstraint() {
+            return versionConstraint;
+        }
+    }
+
+    private static class ImmutableVariantImpl implements ComponentVariant, VariantMetadata {
+        private final ModuleComponentIdentifier componentId;
         private final String name;
         private final ImmutableAttributes attributes;
+        private final ImmutableList<DependencyImpl> dependencies;
         private final ImmutableList<FileImpl> files;
 
-        ImmutableVariantImpl(String name, ImmutableAttributes attributes, ImmutableList<FileImpl> files) {
+        ImmutableVariantImpl(ModuleComponentIdentifier componentId, String name, ImmutableAttributes attributes, ImmutableList<DependencyImpl> dependencies, ImmutableList<FileImpl> files) {
+            this.componentId = componentId;
             this.name = name;
             this.attributes = attributes;
+            this.dependencies = dependencies;
             this.files = files;
         }
 
@@ -189,13 +316,33 @@ public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableMod
         }
 
         @Override
+        public DisplayName asDescribable() {
+            return Describables.of(componentId, "variant", name);
+        }
+
+        @Override
         public ImmutableAttributes getAttributes() {
             return attributes;
+        }
+
+        @Override
+        public ImmutableList<? extends Dependency> getDependencies() {
+            return dependencies;
         }
 
         @Override
         public ImmutableList<? extends File> getFiles() {
             return files;
         }
+
+        @Override
+        public List<? extends ComponentArtifactMetadata> getArtifacts() {
+            List<ComponentArtifactMetadata> artifacts = new ArrayList<ComponentArtifactMetadata>(files.size());
+            for (ComponentVariant.File file : files) {
+                artifacts.add(new UrlBackedArtifactMetadata(componentId, file.getName(), file.getUri()));
+            }
+            return artifacts;
+        }
+
     }
 }

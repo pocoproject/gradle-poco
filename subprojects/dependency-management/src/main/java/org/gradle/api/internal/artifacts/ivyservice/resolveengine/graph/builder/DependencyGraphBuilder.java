@@ -23,9 +23,12 @@ import org.gradle.api.Action;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
-import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
+import org.gradle.api.internal.ExperimentalFeatures;
+import org.gradle.api.internal.artifacts.ComponentSelectorConverter;
 import org.gradle.api.internal.artifacts.ResolveContext;
+import org.gradle.api.internal.artifacts.ResolvedVersionConstraint;
 import org.gradle.api.internal.artifacts.dsl.ModuleReplacementsData;
+import org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution.DependencySubstitutionApplicator;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelector;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector;
@@ -65,27 +68,33 @@ public class DependencyGraphBuilder {
     private final DependencyToComponentIdResolver idResolver;
     private final ComponentMetaDataResolver metaDataResolver;
     private final AttributesSchemaInternal attributesSchema;
-    private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
     private final ModuleExclusions moduleExclusions;
     private final BuildOperationExecutor buildOperationExecutor;
     private final ModuleReplacementsData moduleReplacementsData;
+    private final ComponentSelectorConverter componentSelectorConverter;
+    private final DependencySubstitutionApplicator dependencySubstitutionApplicator;
+    private final ExperimentalFeatures experimentalFeatures;
 
     public DependencyGraphBuilder(DependencyToComponentIdResolver componentIdResolver, ComponentMetaDataResolver componentMetaDataResolver,
                                   ResolveContextToComponentResolver resolveContextToComponentResolver,
                                   ConflictHandler conflictHandler, Spec<? super DependencyMetadata> edgeFilter,
                                   AttributesSchemaInternal attributesSchema,
-                                  ImmutableModuleIdentifierFactory moduleIdentifierFactory, ModuleExclusions moduleExclusions,
-                                  BuildOperationExecutor buildOperationExecutor, ModuleReplacementsData moduleReplacementsData) {
+                                  ModuleExclusions moduleExclusions,
+                                  BuildOperationExecutor buildOperationExecutor, ModuleReplacementsData moduleReplacementsData,
+                                  DependencySubstitutionApplicator dependencySubstitutionApplicator, ComponentSelectorConverter componentSelectorConverter,
+                                  ExperimentalFeatures experimentalFeatures) {
         this.idResolver = componentIdResolver;
         this.metaDataResolver = componentMetaDataResolver;
         this.moduleResolver = resolveContextToComponentResolver;
         this.conflictHandler = conflictHandler;
         this.edgeFilter = edgeFilter;
         this.attributesSchema = attributesSchema;
-        this.moduleIdentifierFactory = moduleIdentifierFactory;
         this.moduleExclusions = moduleExclusions;
         this.buildOperationExecutor = buildOperationExecutor;
         this.moduleReplacementsData = moduleReplacementsData;
+        this.dependencySubstitutionApplicator = dependencySubstitutionApplicator;
+        this.componentSelectorConverter = componentSelectorConverter;
+        this.experimentalFeatures = experimentalFeatures;
     }
 
     public void resolve(final ResolveContext resolveContext, final DependencyGraphVisitor modelVisitor) {
@@ -94,7 +103,7 @@ public class DependencyGraphBuilder {
         DefaultBuildableComponentResolveResult rootModule = new DefaultBuildableComponentResolveResult();
         moduleResolver.resolve(resolveContext, rootModule);
 
-        final ResolveState resolveState = new ResolveState(idGenerator, rootModule, resolveContext.getName(), idResolver, metaDataResolver, edgeFilter, attributesSchema, moduleIdentifierFactory, moduleExclusions, moduleReplacementsData);
+        final ResolveState resolveState = new ResolveState(idGenerator, rootModule, resolveContext.getName(), idResolver, metaDataResolver, edgeFilter, attributesSchema, moduleExclusions, moduleReplacementsData, componentSelectorConverter);
         conflictHandler.registerResolver(new DirectDependencyForcingResolver(resolveState.getRoot().getComponent()));
 
         traverseGraph(resolveState);
@@ -114,6 +123,13 @@ public class DependencyGraphBuilder {
         final List<EdgeState> dependenciesMissingLocalMetadata = Lists.newArrayList();
         final Map<ModuleVersionIdentifier, ComponentIdentifier> componentIdentifierCache = Maps.newHashMap();
 
+        final OptionalDependenciesHandler optionalDependenciesHandler;
+        if (experimentalFeatures.isEnabled()) {
+            optionalDependenciesHandler = new DefaultOptionalDependenciesHandler(componentSelectorConverter, dependencySubstitutionApplicator);
+        } else {
+            optionalDependenciesHandler = OptionalDependenciesHandler.IGNORE;
+        }
+
         while (resolveState.peek() != null || conflictHandler.hasConflicts()) {
             if (resolveState.peek() != null) {
                 final NodeState node = resolveState.pop();
@@ -122,7 +138,7 @@ public class DependencyGraphBuilder {
                 // Calculate the outgoing edges of this configuration
                 dependencies.clear();
                 dependenciesMissingLocalMetadata.clear();
-                node.visitOutgoingDependencies(dependencies);
+                node.visitOutgoingDependencies(dependencies, optionalDependenciesHandler);
 
                 resolveEdges(node, dependencies, dependenciesMissingLocalMetadata, resolveState, componentIdentifierCache);
             } else {
@@ -250,9 +266,8 @@ public class DependencyGraphBuilder {
     }
 
     /**
-     * Prepares the resolution of edges, either serially or concurrently. It uses a simple heuristic to determine
-     * if we should perform concurrent resolution, based on the the number of edges, and whether they have unresolved
-     * metadata. Determining this requires calls to `resolveModuleRevisionId`, which will *not* trigger metadata download.
+     * Prepares the resolution of edges, either serially or concurrently. It uses a simple heuristic to determine if we should perform concurrent resolution, based on the the number of edges, and
+     * whether they have unresolved metadata. Determining this requires calls to `resolveModuleRevisionId`, which will *not* trigger metadata download.
      *
      * @param dependencies the dependencies to be resolved
      * @param dependenciesToBeResolvedInParallel output, edges which will need parallel metadata download
@@ -315,7 +330,7 @@ public class DependencyGraphBuilder {
         while (!queue.isEmpty()) {
             ComponentState component = queue.get(0);
             if (component.getVisitState() == VisitState.NotSeen) {
-                component.setVisitState(VisitState.Visting);
+                component.setVisitState(VisitState.Visiting);
                 int pos = 0;
                 for (NodeState node : component.getNodes()) {
                     if (!node.isSelected()) {
@@ -339,7 +354,7 @@ public class DependencyGraphBuilder {
                         }
                     }
                 }
-            } else if (component.getVisitState() == VisitState.Visting) {
+            } else if (component.getVisitState() == VisitState.Visiting) {
                 // have visited all consumers, so visit this node
                 component.setVisitState(VisitState.Visited);
                 queue.remove(0);
@@ -361,11 +376,18 @@ public class DependencyGraphBuilder {
         boolean atLeastOneAgrees = false;
         for (SelectorState selectorState : allSelectors) {
             if (filter.apply(selectorState)) {
-                VersionSelector candidateSelector = selectorState.getVersionSelector();
-                if (candidateSelector == null || !candidateSelector.canShortCircuitWhenVersionAlreadyPreselected() || !candidateSelector.accept(version)) {
-                    return false;
+                ResolvedVersionConstraint versionConstraint = selectorState.getVersionConstraint();
+                if (versionConstraint != null) {
+                    VersionSelector candidateSelector = versionConstraint.getPreferredSelector();
+                    if (candidateSelector == null || !candidateSelector.canShortCircuitWhenVersionAlreadyPreselected() || !candidateSelector.accept(version)) {
+                        return false;
+                    }
+                    candidateSelector = versionConstraint.getRejectedSelector();
+                    if (candidateSelector != null && candidateSelector.accept(version)) {
+                        return false;
+                    }
+                    atLeastOneAgrees = true;
                 }
-                atLeastOneAgrees = true;
             }
         }
         return atLeastOneAgrees;
@@ -373,7 +395,7 @@ public class DependencyGraphBuilder {
 
 
     enum VisitState {
-        NotSeen, Visting, Visited
+        NotSeen, Visiting, Visited
     }
 
 }

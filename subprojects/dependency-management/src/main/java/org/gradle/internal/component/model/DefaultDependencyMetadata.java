@@ -19,13 +19,13 @@ package org.gradle.internal.component.model;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import org.gradle.api.artifacts.ModuleVersionSelector;
+import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.artifacts.component.ProjectComponentSelector;
-import org.gradle.api.internal.artifacts.DefaultModuleVersionSelector;
 import org.gradle.internal.component.external.descriptor.Artifact;
 import org.gradle.internal.component.external.model.DefaultModuleComponentSelector;
+import org.gradle.internal.component.external.model.ModuleDependencyMetadata;
 import org.gradle.internal.component.local.model.DefaultProjectDependencyMetadata;
 
 import java.util.Collection;
@@ -33,17 +33,17 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-public abstract class DefaultDependencyMetadata implements DependencyMetadata {
-    private final ModuleVersionSelector requested;
+public abstract class DefaultDependencyMetadata extends AbstractDependencyMetadata implements ModuleDependencyMetadata {
     private final Set<IvyArtifactName> artifacts;
     private final List<Artifact> dependencyArtifacts;
     private final ModuleComponentSelector selector;
+    private final boolean optional;
 
-    protected DefaultDependencyMetadata(ModuleVersionSelector requested, List<Artifact> artifacts) {
-        this.requested = requested;
+    protected DefaultDependencyMetadata(ModuleComponentSelector selector, List<Artifact> artifacts, boolean optional) {
+        this.selector = selector;
         dependencyArtifacts = ImmutableList.copyOf(artifacts);
+        this.optional = optional;
         this.artifacts = map(dependencyArtifacts);
-        selector = DefaultModuleComponentSelector.newSelector(requested.getGroup(), requested.getName(), requested.getVersion());
     }
 
     private static Set<IvyArtifactName> map(List<Artifact> dependencyArtifacts) {
@@ -55,11 +55,6 @@ public abstract class DefaultDependencyMetadata implements DependencyMetadata {
             result.add(artifact.getArtifactName());
         }
         return result;
-    }
-
-    @Override
-    public ModuleVersionSelector getRequested() {
-        return requested;
     }
 
     @Override
@@ -82,7 +77,7 @@ public abstract class DefaultDependencyMetadata implements DependencyMetadata {
         return artifacts;
     }
 
-    protected boolean include(Iterable<String> configurations, Collection<String> acceptedConfigurations) {
+    protected static boolean include(Iterable<String> configurations, Collection<String> acceptedConfigurations) {
         for (String configuration : configurations) {
             if (configuration.equals("*")) {
                 return true;
@@ -100,23 +95,23 @@ public abstract class DefaultDependencyMetadata implements DependencyMetadata {
     }
 
     @Override
-    public DependencyMetadata withRequestedVersion(String requestedVersion) {
-        if (requestedVersion.equals(requested.getVersion())) {
+    public ModuleDependencyMetadata withRequestedVersion(VersionConstraint requestedVersion) {
+        if (requestedVersion.equals(selector.getVersionConstraint())) {
             return this;
         }
-        ModuleVersionSelector newRequested = DefaultModuleVersionSelector.newSelector(requested.getGroup(), requested.getName(), requestedVersion);
-        return withRequested(newRequested);
+        ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getGroup(), selector.getModule(), requestedVersion);
+        return withRequested(newSelector);
     }
 
     @Override
     public DependencyMetadata withTarget(ComponentSelector target) {
         if (target instanceof ModuleComponentSelector) {
             ModuleComponentSelector moduleTarget = (ModuleComponentSelector) target;
-            ModuleVersionSelector requestedVersion = DefaultModuleVersionSelector.newSelector(moduleTarget.getGroup(), moduleTarget.getModule(), moduleTarget.getVersion());
-            if (requestedVersion.equals(requested)) {
+            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(moduleTarget.getGroup(), moduleTarget.getModule(), moduleTarget.getVersionConstraint());
+            if (newSelector.equals(selector)) {
                 return this;
             }
-            return withRequested(requestedVersion);
+            return withRequested(newSelector);
         } else if (target instanceof ProjectComponentSelector) {
             ProjectComponentSelector projectTarget = (ProjectComponentSelector) target;
             return new DefaultProjectDependencyMetadata(projectTarget, this);
@@ -125,14 +120,19 @@ public abstract class DefaultDependencyMetadata implements DependencyMetadata {
         }
     }
 
-    protected abstract DependencyMetadata withRequested(ModuleVersionSelector newRequested);
+    protected abstract ModuleDependencyMetadata withRequested(ModuleComponentSelector newRequested);
 
     @Override
-    public ComponentSelector getSelector() {
+    public ModuleComponentSelector getSelector() {
         return selector;
     }
 
     public List<Artifact> getDependencyArtifacts() {
         return dependencyArtifacts;
+    }
+
+    @Override
+    public boolean isOptional() {
+        return optional;
     }
 }

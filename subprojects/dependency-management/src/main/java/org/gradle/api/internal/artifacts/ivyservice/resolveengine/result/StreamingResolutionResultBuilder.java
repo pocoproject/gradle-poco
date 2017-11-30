@@ -20,6 +20,7 @@ import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.result.ResolutionResult;
 import org.gradle.api.artifacts.result.ResolvedComponentResult;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelectorScheme;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.ComponentResult;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphComponent;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphEdge;
@@ -41,6 +42,7 @@ import org.gradle.internal.time.Timer;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -59,14 +61,15 @@ public class StreamingResolutionResultBuilder implements DependencyGraphVisitor 
     private final BinaryStore store;
     private final ComponentResultSerializer componentResultSerializer;
     private final Store<ResolvedComponentResult> cache;
-    private final ComponentSelectorSerializer componentSelectorSerializer = new ComponentSelectorSerializer();
+    private final ComponentSelectorSerializer componentSelectorSerializer;
     private final DependencyResultSerializer dependencyResultSerializer = new DependencyResultSerializer();
     private final Set<Long> visitedComponents = new HashSet<Long>();
 
-    public StreamingResolutionResultBuilder(BinaryStore store, Store<ResolvedComponentResult> cache, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
+    public StreamingResolutionResultBuilder(BinaryStore store, Store<ResolvedComponentResult> cache, ImmutableModuleIdentifierFactory moduleIdentifierFactory, VersionSelectorScheme versionSelectorScheme) {
         this.componentResultSerializer = new ComponentResultSerializer(moduleIdentifierFactory);
         this.store = store;
         this.cache = cache;
+        this.componentSelectorSerializer = new ComponentSelectorSerializer();
     }
 
     public ResolutionResult complete() {
@@ -117,7 +120,7 @@ public class StreamingResolutionResultBuilder implements DependencyGraphVisitor 
     @Override
     public void visitEdges(DependencyGraphNode node) {
         final Long fromComponent = node.getOwner().getResultId();
-        final Set<? extends DependencyGraphEdge> dependencies = node.getOutgoingEdges();
+        final Collection<? extends DependencyGraphEdge> dependencies = node.getOutgoingEdges();
         if (!dependencies.isEmpty()) {
             store.write(new BinaryStore.WriteAction() {
                 public void write(Encoder encoder) throws IOException {

@@ -16,27 +16,31 @@
 
 package org.gradle.internal.component.model
 
-import org.gradle.api.artifacts.ModuleVersionSelector
+import org.gradle.api.artifacts.VersionConstraint
 import org.gradle.api.artifacts.component.ComponentSelector
 import org.gradle.api.artifacts.component.ModuleComponentSelector
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier
+import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.api.internal.attributes.AttributesSchemaInternal
 import org.gradle.internal.component.external.descriptor.Artifact
-import org.gradle.internal.component.external.model.DefaultModuleComponentSelector
 import org.gradle.internal.component.local.model.TestComponentIdentifiers
 import spock.lang.Specification
 
-import static org.gradle.api.internal.artifacts.DefaultModuleVersionSelector.newSelector
+import static org.gradle.internal.component.external.model.DefaultModuleComponentSelector.newSelector
 
 abstract class DefaultDependencyMetadataTest extends Specification {
-    def attributesSchema = Mock(AttributesSchemaInternal)
+    def attributesSchema = Stub(AttributesSchemaInternal)
 
-    def requested = newSelector("org", "module", "1.2+")
+    def requested = newSelector("org", "module", v("1.2+"))
     def id = DefaultModuleVersionIdentifier.newId("org", "module", "1.2+")
 
-    abstract DefaultDependencyMetadata create(ModuleVersionSelector selector)
+    static VersionConstraint v(String version) {
+        new DefaultMutableVersionConstraint(version)
+    }
 
-    abstract DefaultDependencyMetadata createWithArtifacts(ModuleVersionSelector selector, List<Artifact> artifacts)
+    abstract DefaultDependencyMetadata create(ModuleComponentSelector selector)
+
+    abstract DefaultDependencyMetadata createWithArtifacts(ModuleComponentSelector selector, List<Artifact> artifacts)
 
     def "creates a copy with new requested version"() {
         def metadata = create(requested)
@@ -44,20 +48,20 @@ abstract class DefaultDependencyMetadataTest extends Specification {
         given:
 
         when:
-        def copy = metadata.withRequestedVersion("1.3+")
+        def copy = metadata.withRequestedVersion(v("1.3+"))
+        def expected = newSelector("org", "module", v("1.3+"))
 
         then:
         copy != metadata
-        copy.requested == newSelector("org", "module", "1.3+")
-        copy.selector == DefaultModuleComponentSelector.newSelector("org", "module", "1.3+")
+        copy.selector == expected
     }
 
     def "returns this if new requested version is the same as current requested version"() {
         def metadata = create(requested)
 
         expect:
-        metadata.withRequestedVersion("1.2+").is(metadata)
-        metadata.withTarget(DefaultModuleComponentSelector.newSelector("org", "module", "1.2+")).is(metadata)
+        metadata.withRequestedVersion(v("1.2+")).is(metadata)
+        metadata.withTarget(newSelector("org", "module", v("1.2+"))).is(metadata)
     }
 
     def "creates a copy with new requested project selector"() {
@@ -69,7 +73,6 @@ abstract class DefaultDependencyMetadataTest extends Specification {
 
         then:
         copy != metadata
-        copy.requested == requested
         copy.selector == selector
         copy.moduleConfigurations == metadata.moduleConfigurations
     }

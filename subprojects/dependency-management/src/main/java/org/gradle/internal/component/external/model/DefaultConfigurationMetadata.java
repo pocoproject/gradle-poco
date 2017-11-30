@@ -20,51 +20,46 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusion;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions;
-import org.gradle.api.internal.attributes.AttributeContainerInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.Describables;
 import org.gradle.internal.DisplayName;
-import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.DefaultVariantMetadata;
 import org.gradle.internal.component.model.DependencyMetadata;
-import org.gradle.internal.component.model.Exclude;
+import org.gradle.internal.component.model.DependencyMetadataRules;
 import org.gradle.internal.component.model.IvyArtifactName;
 import org.gradle.internal.component.model.VariantMetadata;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-class DefaultConfigurationMetadata implements ConfigurationMetadata {
+/**
+ * This should be made immutable. It is currently effectively immutable. Should also be specialized for Maven, Ivy and Gradle metadata as much of this state is required only for Ivy.
+ */
+abstract class DefaultConfigurationMetadata implements ConfigurationMetadata {
     private final ModuleComponentIdentifier componentId;
     private final String name;
-    private final List<DefaultConfigurationMetadata> parents;
-    private final List<DependencyMetadata> configDependencies = new ArrayList<DependencyMetadata>();
-    private final Set<ComponentArtifactMetadata> artifacts = new LinkedHashSet<ComponentArtifactMetadata>();
+    private final ImmutableList<? extends DefaultConfigurationMetadata> parents;
+    private final List<ModuleDependencyMetadata> configDependencies = Lists.newArrayList();
+    private final ImmutableList<? extends ModuleComponentArtifactMetadata> artifacts;
     private final boolean transitive;
     private final boolean visible;
     private final List<String> hierarchy;
-    private final List<Exclude> excludes;
-    private ModuleExclusion exclusions;
 
-    DefaultConfigurationMetadata(ModuleComponentIdentifier componentId, String name, boolean transitive, boolean visible, List<DefaultConfigurationMetadata> parents, List<Exclude> excludes) {
+    private DependencyMetadataRules dependencyMetadataRules;
+    private List<ModuleDependencyMetadata> calculatedDependencies;
+
+    DefaultConfigurationMetadata(ModuleComponentIdentifier componentId, String name, boolean transitive, boolean visible, ImmutableList<? extends DefaultConfigurationMetadata> parents, ImmutableList<? extends ModuleComponentArtifactMetadata> artifacts) {
         this.componentId = componentId;
         this.name = name;
         this.parents = parents;
         this.transitive = transitive;
         this.visible = visible;
+        this.artifacts = artifacts;
         this.hierarchy = calculateHierarchy();
-        this.excludes = excludes;
-    }
-
-    DefaultConfigurationMetadata(ModuleComponentIdentifier componentId, String name, boolean transitive, boolean visible, List<Exclude> excludes) {
-        this(componentId, name, transitive, visible, null, excludes);
     }
 
     @Override
@@ -82,13 +77,18 @@ class DefaultConfigurationMetadata implements ConfigurationMetadata {
         return name;
     }
 
+    public ImmutableList<? extends DefaultConfigurationMetadata> getParents() {
+        return parents;
+    }
+
     @Override
     public Collection<String> getHierarchy() {
         return hierarchy;
     }
 
     private List<String> calculateHierarchy() {
-        if (parents == null) {
+        List<? extends DefaultConfigurationMetadata> parents = getParents();
+        if (parents.isEmpty()) {
             return Collections.singletonList(name);
         }
         Set<String> hierarchy = new LinkedHashSet<String>(1 + parents.size());
@@ -98,10 +98,8 @@ class DefaultConfigurationMetadata implements ConfigurationMetadata {
 
     private void populateHierarchy(Set<String> accumulator) {
             accumulator.add(name);
-        if (parents != null) {
-            for (DefaultConfigurationMetadata parent : parents) {
-                parent.populateHierarchy(accumulator);
-            }
+        for (DefaultConfigurationMetadata parent : getParents()) {
+            parent.populateHierarchy(accumulator);
         }
     }
 
@@ -116,7 +114,7 @@ class DefaultConfigurationMetadata implements ConfigurationMetadata {
     }
 
     @Override
-    public AttributeContainerInternal getAttributes() {
+    public ImmutableAttributes getAttributes() {
         return ImmutableAttributes.EMPTY;
     }
 
@@ -131,16 +129,25 @@ class DefaultConfigurationMetadata implements ConfigurationMetadata {
     }
 
     @Override
-    public List<DependencyMetadata> getDependencies() {
-        return configDependencies;
+    public List<? extends DependencyMetadata> getDependencies() {
+        if (calculatedDependencies == null) {
+            if (dependencyMetadataRules == null) {
+                calculatedDependencies = configDependencies;
+            } else {
+                calculatedDependencies = dependencyMetadataRules.execute(configDependencies);
+            }
+        }
+        return calculatedDependencies;
     }
 
-    void populateDependencies(Iterable<? extends DependencyMetadata> dependencies) {
-        for (DependencyMetadata dependency : dependencies) {
+    void populateDependencies(Iterable<? extends ModuleDependencyMetadata> dependencies, DependencyMetadataRules dependencyMetadataRules) {
+        for (ModuleDependencyMetadata dependency : dependencies) {
             if (include(dependency)) {
                 this.configDependencies.add(dependency);
             }
         }
+        this.calculatedDependencies = null;
+        this.dependencyMetadataRules = dependencyMetadataRules;
     }
 
     private boolean include(DependencyMetadata dependency) {
@@ -166,29 +173,7 @@ class DefaultConfigurationMetadata implements ConfigurationMetadata {
     }
 
     @Override
-    public ModuleExclusion getExclusions(ModuleExclusions moduleExclusions) {
-        if (exclusions == null) {
-            exclusions = filterExcludes(moduleExclusions, excludes);
-        }
-        return exclusions;
-    }
-
-    private ModuleExclusion filterExcludes(ModuleExclusions exclusions, Iterable<Exclude> excludes) {
-        Collection<String> hierarchy = getHierarchy();
-        List<Exclude> filtered = Lists.newArrayList();
-        for (Exclude exclude : excludes) {
-            for (String config : exclude.getConfigurations()) {
-                if (hierarchy.contains(config)) {
-                    filtered.add(exclude);
-                    break;
-                }
-            }
-        }
-        return exclusions.excludeAny(filtered);
-    }
-
-    @Override
-    public Set<ComponentArtifactMetadata> getArtifacts() {
+    public List<? extends ModuleComponentArtifactMetadata> getArtifacts() {
         return artifacts;
     }
 
@@ -200,27 +185,5 @@ class DefaultConfigurationMetadata implements ConfigurationMetadata {
     @Override
     public ModuleComponentArtifactMetadata artifact(IvyArtifactName artifact) {
         return new DefaultModuleComponentArtifactMetadata(componentId, artifact);
-    }
-
-    void collectInheritedArtifacts(Set<ConfigurationMetadata> visited) {
-        if (!visited.add(this)) {
-            return;
-        }
-        if (parents == null) {
-            return;
-        }
-
-        for (DefaultConfigurationMetadata parent : parents) {
-            parent.collectInheritedArtifacts(visited);
-            artifacts.addAll(parent.artifacts);
-        }
-    }
-
-    void addArtifacts(List<? extends ModuleComponentArtifactMetadata> artifacts) {
-        this.artifacts.addAll(artifacts);
-    }
-
-    void addArtifact(ModuleComponentArtifactMetadata artifact) {
-        this.artifacts.add(artifact);
     }
 }

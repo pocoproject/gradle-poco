@@ -22,8 +22,9 @@ import org.gradle.test.fixtures.file.TestFile
 
 interface MavenModule extends Module {
     /**
-     * Publishes the pom.xml plus main artifact, plus any additional artifacts for this module. Publishes only those artifacts whose content has
-     * changed since the last call to {@code # publish ( )}.
+     * Publishes the pom.xml plus main artifact, plus any additional artifacts for this module. Publishes only those artifacts whose content has changed since the last call to {@code # publish ( )}.
+     *
+     * @return this
      */
     MavenModule publish()
 
@@ -68,9 +69,9 @@ interface MavenModule extends Module {
     MavenModule hasType(String type)
 
     /**
-     * Asserts exactly pom and jar published, along with checksums.
+     * Define a variant with attributes. Variants are only published when using {@link #withModuleMetadata()}.
      */
-    void assertPublishedAsJavaModule()
+    MavenModule variant(String variant, Map<String, String> attributes)
 
     String getPublishArtifactVersion()
 
@@ -85,13 +86,34 @@ interface MavenModule extends Module {
      */
     String getPath()
 
+    /**
+     * Returns the POM file of this module.
+     */
     ModuleArtifact getPom()
 
+    /**
+     * Returns the Gradle module metadata file of this module
+     */
     ModuleArtifact getModuleMetadata()
 
     TestFile getPomFile()
 
+    /**
+     * Returns the main artifact of this module.
+     */
     ModuleArtifact getArtifact()
+
+    /**
+     * Returns an artifact of this module, using Maven coordinates.
+     *
+     * @param options : 'type' and 'classifier'
+     */
+    ModuleArtifact getArtifact(Map<String, ?> options)
+
+    /**
+     * Returns a file relative to this module, use a relative path.
+     */
+    ModuleArtifact getArtifact(String relativePath)
 
     TestFile getArtifactFile()
 
@@ -103,7 +125,23 @@ interface MavenModule extends Module {
 
     GradleModuleMetadata getParsedModuleMetadata()
 
-    MavenMetaData getRootMetaData()
+    ModuleArtifact getRootMetaData()
 
     boolean getUniqueSnapshots()
+
+    /**
+     * Asserts pom and module files have not been published.
+     */
+    void assertNotPublished()
+
+    /**
+     * Asserts pom and module files are published correctly. Does not verify artifacts.
+     */
+    void assertPublished()
+
+    /**
+     * Asserts exactly pom and jar published, along with checksums.
+     * If created {@link #withModuleMetadata()}, module file is also expected.
+     */
+    void assertPublishedAsJavaModule()
 }

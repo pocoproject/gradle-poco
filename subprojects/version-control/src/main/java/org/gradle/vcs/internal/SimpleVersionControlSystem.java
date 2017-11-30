@@ -34,13 +34,18 @@ public class SimpleVersionControlSystem implements VersionControlSystem {
     }
 
     @Override
-    public void populate(File workingDir, VersionRef ref, VersionControlSpec spec) {
-        File sourceDir = ((DirectoryRepository)spec).getSourceDir();
+    public File populate(File versionDir, VersionRef ref, VersionControlSpec spec) {
+        File sourceDir = ((DirectoryRepositorySpec)spec).getSourceDir();
+        File workingDir = new File(versionDir, sourceDir.getName());
+        File checkoutFlag = new File(workingDir, "checkedout");
         try {
-            GFileUtils.copyDirectory(sourceDir, workingDir);
-            new File(workingDir, "checkedout").createNewFile();
+            if (!checkoutFlag.exists()) {
+                GFileUtils.copyDirectory(sourceDir, workingDir);
+                checkoutFlag.createNewFile();
+            }
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        return workingDir;
     }
 }

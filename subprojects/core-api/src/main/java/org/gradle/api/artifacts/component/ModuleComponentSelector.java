@@ -16,6 +16,7 @@
 package org.gradle.api.artifacts.component;
 
 import org.gradle.api.Incubating;
+import org.gradle.api.artifacts.VersionConstraint;
 
 /**
  * Criteria for selecting a component instance that is available as a module version.
@@ -45,4 +46,14 @@ public interface ModuleComponentSelector extends ComponentSelector {
      * @return Module version
      */
     String getVersion();
+
+    /**
+     * The version constraint of the module to select the component from.
+     *
+     * @return Module version constraint
+     *
+     * @since 4.4
+     */
+    @Incubating
+    VersionConstraint getVersionConstraint();
 }

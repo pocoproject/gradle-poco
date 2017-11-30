@@ -20,8 +20,7 @@ import org.gradle.api.Named;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileSystemLocation;
 import org.gradle.api.internal.file.FileOperations;
-import org.gradle.api.model.ObjectFactory;
-import org.gradle.api.provider.Property;
+import org.gradle.api.provider.Provider;
 import org.gradle.ide.xcode.internal.xcodeproj.PBXTarget;
 
 import javax.inject.Inject;
@@ -33,26 +32,26 @@ public class XcodeTarget implements Named {
     private final String id;
     private final String name;
     private final ConfigurableFileCollection headerSearchPaths;
-    private final ConfigurableFileCollection importPaths;
+    private final ConfigurableFileCollection compileModules;
     private final ConfigurableFileCollection sources;
     private String taskName;
     private String gradleCommand;
 
-    private final Property<FileSystemLocation> debugOutputFile;
-    private final Property<FileSystemLocation> releaseOutputFile;
+    private final Provider<FileSystemLocation> debugOutputFile;
+    private final Provider<FileSystemLocation> releaseOutputFile;
     private PBXTarget.ProductType productType;
     private String productName;
     private String outputFileType;
 
     @Inject
-    public XcodeTarget(String name, String id, FileOperations fileOperations, ObjectFactory objectFactory) {
+    public XcodeTarget(String name, String id, FileOperations fileOperations, Provider<FileSystemLocation> debugOutputFile, Provider<FileSystemLocation> releaseOutputFile) {
         this.name = name;
         this.id = id;
-        this.debugOutputFile = objectFactory.property(FileSystemLocation.class);
-        this.releaseOutputFile = objectFactory.property(FileSystemLocation.class);
         this.sources = fileOperations.files();
         this.headerSearchPaths = fileOperations.files();
-        this.importPaths = fileOperations.files();
+        this.compileModules = fileOperations.files();
+        this.debugOutputFile = debugOutputFile;
+        this.releaseOutputFile = releaseOutputFile;
     }
 
     public String getId() {
@@ -64,11 +63,11 @@ public class XcodeTarget implements Named {
         return name;
     }
 
-    public Property<FileSystemLocation> getDebugOutputFile() {
+    public Provider<FileSystemLocation> getDebugOutputFile() {
         return debugOutputFile;
     }
 
-    public Property<FileSystemLocation> getReleaseOutputFile() {
+    public Provider<FileSystemLocation> getReleaseOutputFile() {
         return releaseOutputFile;
     }
 
@@ -86,6 +85,14 @@ public class XcodeTarget implements Named {
 
     public void setProductType(PBXTarget.ProductType productType) {
         this.productType = productType;
+    }
+
+    public boolean isRunnable() {
+        return PBXTarget.ProductType.TOOL.equals(getProductType());
+    }
+
+    public boolean isUnitTest() {
+        return PBXTarget.ProductType.UNIT_TEST.equals(getProductType());
     }
 
     public String getProductName() {
@@ -120,7 +127,7 @@ public class XcodeTarget implements Named {
         return headerSearchPaths;
     }
 
-    public ConfigurableFileCollection getImportPaths() {
-        return importPaths;
+    public ConfigurableFileCollection getCompileModules() {
+        return compileModules;
     }
 }

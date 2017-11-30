@@ -81,6 +81,7 @@ abstract class AbstractModuleExclusion implements ModuleExclusion {
 
     /**
      * Possibly unpack a composite spec into it's constituent parts, if those parts are applied as an intersection.
+     * @param specs
      */
     protected void unpackIntersection(Collection<AbstractModuleExclusion> specs) {
         specs.add(this);

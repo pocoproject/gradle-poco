@@ -21,6 +21,7 @@ import com.dd.plist.NSString;
 import com.google.common.base.Optional;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
+import org.gradle.api.file.FileCollection;
 import org.gradle.api.tasks.Internal;
 import org.gradle.ide.xcode.XcodeProject;
 import org.gradle.ide.xcode.internal.DefaultXcodeProject;
@@ -28,6 +29,7 @@ import org.gradle.ide.xcode.internal.XcodeTarget;
 import org.gradle.ide.xcode.internal.xcodeproj.GidGenerator;
 import org.gradle.ide.xcode.internal.xcodeproj.PBXBuildFile;
 import org.gradle.ide.xcode.internal.xcodeproj.PBXFileReference;
+import org.gradle.ide.xcode.internal.xcodeproj.PBXGroup;
 import org.gradle.ide.xcode.internal.xcodeproj.PBXLegacyTarget;
 import org.gradle.ide.xcode.internal.xcodeproj.PBXNativeTarget;
 import org.gradle.ide.xcode.internal.xcodeproj.PBXProject;
@@ -41,12 +43,12 @@ import org.gradle.plugins.ide.api.PropertyListGeneratorTask;
 
 import javax.inject.Inject;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-import static org.gradle.ide.xcode.internal.DefaultXcodeProject.BUILD_DEBUG;
-import static org.gradle.ide.xcode.internal.DefaultXcodeProject.BUILD_RELEASE;
-import static org.gradle.ide.xcode.internal.DefaultXcodeProject.TEST_DEBUG;
+import static org.gradle.ide.xcode.internal.DefaultXcodeProject.*;
 import static org.gradle.ide.xcode.internal.XcodeUtils.toSpaceSeparatedList;
 
 /**
@@ -73,23 +75,22 @@ public class GenerateXcodeProjectFileTask extends PropertyListGeneratorTask<Xcod
         project.getBuildConfigurationList().getBuildConfigurationsByName().getUnchecked(BUILD_DEBUG);
         project.getBuildConfigurationList().getBuildConfigurationsByName().getUnchecked(BUILD_RELEASE);
 
-        for (File source : xcodeProject.getSources().getAsFileTree()) {
-            PBXFileReference fileReference = toFileReference(source);
-            pathToFileReference.put(source.getAbsolutePath(), fileReference);
-            project.getMainGroup().getChildren().add(fileReference);
-        }
+        addToGroup(project.getMainGroup(), xcodeProject.getGroups().getSources(), "Sources");
+        addToGroup(project.getMainGroup(), xcodeProject.getGroups().getHeaders(), "Headers");
+        addToGroup(project.getMainGroup(), xcodeProject.getGroups().getTests(), "Tests");
+        addToGroup(project.getMainGroup(), xcodeProject.getGroups().getRoot());
 
-        for (XcodeTarget target : xcodeProject.getTargets()) {
-            project.getTargets().add(toGradlePbxTarget(target));
-            project.getTargets().add(toIndexPbxTarget(target));
+        for (XcodeTarget xcodeTarget : xcodeProject.getTargets()) {
+            project.getTargets().add(toGradlePbxTarget(xcodeTarget));
+            project.getTargets().add(toIndexPbxTarget(xcodeTarget));
 
-            if (PBXTarget.ProductType.UNIT_TEST.equals(target.getProductType())) {
+            if (xcodeTarget.isUnitTest()) {
                 // Creates XCTest configuration only if XCTest are present.
                 project.getBuildConfigurationList().getBuildConfigurationsByName().getUnchecked(TEST_DEBUG);
             } else {
-                File debugOutputFile = target.getDebugOutputFile().get().getAsFile();
+                File debugOutputFile = xcodeTarget.getDebugOutputFile().get().getAsFile();
                 PBXFileReference fileReference = new PBXFileReference(debugOutputFile.getName(), debugOutputFile.getAbsolutePath(), PBXReference.SourceTree.ABSOLUTE);
-                fileReference.setExplicitFileType(Optional.of(target.getOutputFileType()));
+                fileReference.setExplicitFileType(Optional.of(xcodeTarget.getOutputFileType()));
                 project.getMainGroup().getOrCreateChildGroupByName(PRODUCTS_GROUP_NAME).getChildren().add(fileReference);
             }
         }
@@ -106,6 +107,20 @@ public class GenerateXcodeProjectFileTask extends PropertyListGeneratorTask<Xcod
         });
     }
 
+    private void addToGroup(PBXGroup mainGroup, FileCollection sources, String groupName) {
+        if (!sources.isEmpty()) {
+            addToGroup(mainGroup.getOrCreateChildGroupByName(groupName), sources);
+        }
+    }
+
+    private void addToGroup(PBXGroup group, FileCollection sources) {
+        for (File source : sources.getAsFileTree()) {
+            PBXFileReference fileReference = toFileReference(source);
+            pathToFileReference.put(source.getAbsolutePath(), fileReference);
+            group.getChildren().add(fileReference);
+        }
+    }
+
     @Override
     protected XcodeProjectFile create() {
         return new XcodeProjectFile(getPropertyListTransformer());
@@ -116,7 +131,7 @@ public class GenerateXcodeProjectFileTask extends PropertyListGeneratorTask<Xcod
     }
 
     private PBXTarget toGradlePbxTarget(XcodeTarget xcodeTarget) {
-        if (PBXTarget.ProductType.UNIT_TEST.equals(xcodeTarget.getProductType())) {
+        if (xcodeTarget.isUnitTest()) {
             return toXCTestPbxTarget(xcodeTarget);
         }
         return toToolAndLibraryPbxTarget(xcodeTarget);
@@ -184,6 +199,12 @@ public class GenerateXcodeProjectFileTask extends PropertyListGeneratorTask<Xcod
         NSDictionary releaseSettings = target.getBuildConfigurationList().getBuildConfigurationsByName().getUnchecked(BUILD_RELEASE).getBuildSettings();
         NSDictionary testRunnerSettings = target.getBuildConfigurationList().getBuildConfigurationsByName().getUnchecked(TEST_DEBUG).getBuildSettings();
 
+        if (!xcodeTarget.getCompileModules().isEmpty()) {
+            debugSettings.put("SWIFT_INCLUDE_PATHS", toSpaceSeparatedList(xcodeTarget.getCompileModules()));
+            releaseSettings.put("SWIFT_INCLUDE_PATHS", toSpaceSeparatedList(xcodeTarget.getCompileModules()));
+            testRunnerSettings.put("SWIFT_INCLUDE_PATHS", toSpaceSeparatedList(xcodeTarget.getCompileModules()));
+        }
+
         testRunnerSettings.put("SWIFT_VERSION", "3.0");  // TODO - Choose the right version for swift
         testRunnerSettings.put("PRODUCT_NAME", target.getProductName());
         testRunnerSettings.put("OTHER_LDFLAGS", "-help");
@@ -219,14 +240,22 @@ public class GenerateXcodeProjectFileTask extends PropertyListGeneratorTask<Xcod
             buildSettings.put("HEADER_SEARCH_PATHS", toSpaceSeparatedList(xcodeTarget.getHeaderSearchPaths()));
         }
 
-        if (!xcodeTarget.getImportPaths().isEmpty()) {
-            buildSettings.put("SWIFT_INCLUDE_PATHS", toSpaceSeparatedList(xcodeTarget.getImportPaths()));
+        if (!xcodeTarget.getCompileModules().isEmpty()) {
+            buildSettings.put("SWIFT_INCLUDE_PATHS", toSpaceSeparatedList(parentDirs(xcodeTarget.getCompileModules())));
         }
 
         target.getBuildConfigurationList().getBuildConfigurationsByName().getUnchecked(BUILD_DEBUG).setBuildSettings(buildSettings);
         target.getBuildPhases().add(buildPhase);
 
         return target;
+    }
+
+    private Iterable<File> parentDirs(Iterable<File> files) {
+        List<File> parents = new ArrayList<File>();
+        for (File file : files) {
+            parents.add(file.getParentFile());
+        }
+        return parents;
     }
 
     @Internal

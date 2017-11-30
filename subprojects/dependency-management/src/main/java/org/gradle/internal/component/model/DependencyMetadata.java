@@ -16,17 +16,15 @@
 
 package org.gradle.internal.component.model;
 
-import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
 public interface DependencyMetadata {
-    ModuleVersionSelector getRequested();
-
     /**
      * Returns the artifacts referenced by this dependency for the given combination of source and target configurations, if any. Returns an empty set if
      * this dependency does not reference any specific artifacts - the defaults for the target configuration should be used in this case.
@@ -39,11 +37,6 @@ public interface DependencyMetadata {
      * defaults should be used in this case.
      */
     Set<IvyArtifactName> getArtifacts();
-
-    /**
-     * Returns a copy of this dependency with the given requested version.
-     */
-    DependencyMetadata withRequestedVersion(String requestedVersion);
 
     /**
      * Returns a copy of this dependency with the given target.
@@ -70,7 +63,7 @@ public interface DependencyMetadata {
      * Select the target configurations for this dependency from the given target component.
      */
     // TODO:ADAM - fromComponent and fromConfiguration should be implicit in this metadata
-    Set<ConfigurationMetadata> selectConfigurations(ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema);
+    Set<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema);
 
     /**
      * Returns the set of source configurations that this dependency should be attached to.
@@ -83,6 +76,6 @@ public interface DependencyMetadata {
 
     boolean isForce();
 
-    String getDynamicConstraintVersion();
+    boolean isOptional();
 
 }

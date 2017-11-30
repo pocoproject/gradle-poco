@@ -62,7 +62,7 @@ atlassian-ide-plugin.xml
 # ----
 .java-version
 
-# OS X
+# macOS
 # ----
 .DS_Store
 

@@ -19,12 +19,14 @@ package org.gradle.api.internal.artifacts.ivyservice.clientmodule
 import org.gradle.api.artifacts.ClientModule
 import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.artifacts.component.ComponentIdentifier
+import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.api.internal.artifacts.ivyservice.moduleconverter.dependencies.DependencyDescriptorFactory
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata
 import org.gradle.internal.component.external.model.MutableModuleComponentResolveMetadata
 import org.gradle.internal.component.local.model.DslOriginDependencyMetadata
 import org.gradle.internal.component.model.ComponentOverrideMetadata
+import org.gradle.internal.component.model.LocalOriginDependencyMetadata
 import org.gradle.internal.resolve.ModuleVersionResolveException
 import org.gradle.internal.resolve.resolver.ComponentMetaDataResolver
 import org.gradle.internal.resolve.result.BuildableComponentResolveResult
@@ -43,12 +45,12 @@ class ClientModuleResolverTest extends Specification {
     def mutableMetaData = Mock(MutableModuleComponentResolveMetadata)
     def updatedMetaData = Mock(ModuleComponentResolveMetadata)
     def componentRequestMetaData = Mock(ComponentOverrideMetadata)
-    def dependency = Mock(DslOriginDependencyMetadata)
+    def dependency = Mock(LocalDslOriginDependencyMetadata)
 
     def "replaces meta-data for a client module dependency"() {
         def clientModule = Mock(ClientModule)
         def dep = Mock(ModuleDependency)
-        def dependencyMetaData = Mock(DslOriginDependencyMetadata)
+        def dependencyMetaData = Mock(LocalDslOriginDependencyMetadata)
         def artifact = Mock(ModuleComponentArtifactMetadata)
 
         when:
@@ -63,7 +65,7 @@ class ClientModuleResolverTest extends Specification {
         1 * clientModule.getDependencies() >> ([dep] as Set)
         1 * dep.getTargetConfiguration() >> "config"
         1 * dependencyDescriptorFactory.createDependencyDescriptor("config", null, dep) >> dependencyMetaData
-        1 * mutableMetaData.setDependencies([dependencyMetaData])
+        1 * mutableMetaData.setDependencies(_)
         1 * mutableMetaData.artifact('jar', 'jar', null) >> artifact
         1 * mutableMetaData.setArtifactOverrides({
             (it as List) == [artifact]
@@ -90,7 +92,9 @@ class ClientModuleResolverTest extends Specification {
 
         then:
         1 * target.resolve(id, componentRequestMetaData, result)
-        _ * result.failure >> new ModuleVersionResolveException(newSelector("a", "b", "c"), "broken")
+        _ * result.failure >> new ModuleVersionResolveException(newSelector("a", "b", new DefaultMutableVersionConstraint("c")), "broken")
         0 * _
     }
+
+    interface LocalDslOriginDependencyMetadata extends LocalOriginDependencyMetadata, DslOriginDependencyMetadata {}
 }

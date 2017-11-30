@@ -19,7 +19,7 @@ package org.gradle.internal.component.model;
 import org.gradle.api.attributes.HasAttributes;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusion;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions;
-import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.DisplayName;
 
 import java.util.Collection;
@@ -37,17 +37,20 @@ public interface ConfigurationMetadata extends HasAttributes {
     DisplayName asDescribable();
 
     @Override
-    AttributeContainerInternal getAttributes();
+    ImmutableAttributes getAttributes();
 
     /**
      * Returns the dependencies that apply to this configuration.
+     *
+     * If the implementation supports {@link DependencyMetadataRules}, this method
+     * is responsible for lazily applying the rules the first time it is called.
      */
     List<? extends DependencyMetadata> getDependencies();
 
     /**
      * Returns the artifacts associated with this configuration, if known.
      */
-    Set<? extends ComponentArtifactMetadata> getArtifacts();
+    List<? extends ComponentArtifactMetadata> getArtifacts();
 
     /**
      * Returns the variants of this configuration. Should include at least one value. Exactly one variant must be selected and the artifacts of that variant used.

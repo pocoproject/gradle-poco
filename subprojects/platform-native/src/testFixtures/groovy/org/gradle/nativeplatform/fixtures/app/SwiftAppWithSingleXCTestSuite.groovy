@@ -16,38 +16,25 @@
 
 package org.gradle.nativeplatform.fixtures.app
 
-import org.gradle.integtests.fixtures.SourceFile
-import org.gradle.test.fixtures.file.TestFile
-
-class SwiftAppWithSingleXCTestSuite extends XCTestSourceElement implements AppElement {
-    final app = new SwiftApp()
-    final test = new XCTestSourceFileElement() {
-        final delegate = new SwiftAppTest(app.greeter, app.sum, app.multiply)
-
+class SwiftAppWithSingleXCTestSuite extends MainWithXCTestSourceElement implements AppElement {
+    final SwiftApp main = new SwiftApp()
+    final XCTestSourceElement test = new XCTestSourceElement(main.projectName) {
         @Override
-        String getTestSuiteName() {
-            return "CombinedTests"
+        List<XCTestSourceFileElement> getTestSuites() {
+            return [new XCTestSourceFileElement("CombinedTests") {
+                final delegate = new SwiftAppTest(main, main.greeter, main.sum, main.multiply)
+
+                @Override
+                List<XCTestCaseElement> getTestCases() {
+                    return delegate.sumTest.testCases + delegate.greeterTest.testCases + delegate.multiplyTest.testCases
+                }
+            }.withTestableImport(main.moduleName)]
         }
+    }
 
-        @Override
-        List<XCTestCaseElement> getTestCases() {
-            return delegate.sumTest.testCases + delegate.greeterTest.testCases + delegate.multiplyTest.testCases
-        }
+    String expectedOutput = main.expectedOutput
 
-        @Override
-        String getModuleName() {
-            return delegate.sumTest.moduleName
-        }
-    }.withTestableImport("App")
-
-    List<SourceFile> files = app.files + test.files
-    List<XCTestSourceFileElement> testSuites = [test]
-
-    String expectedOutput = app.expectedOutput
-
-    @Override
-    void writeToProject(TestFile projectDir) {
-        app.writeToProject(projectDir)
-        test.writeToProject(projectDir)
+    SwiftAppWithSingleXCTestSuite() {
+        super('app')
     }
 }

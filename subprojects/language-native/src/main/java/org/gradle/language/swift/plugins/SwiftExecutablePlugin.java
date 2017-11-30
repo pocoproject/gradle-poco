@@ -16,20 +16,16 @@
 
 package org.gradle.language.swift.plugins;
 
-import com.google.common.collect.Lists;
 import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.internal.project.ProjectInternal;
-import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
 import org.gradle.language.swift.SwiftApplication;
 import org.gradle.language.swift.SwiftComponent;
 import org.gradle.language.swift.internal.DefaultSwiftApplication;
-import org.gradle.language.swift.tasks.SwiftCompile;
-import org.gradle.nativeplatform.tasks.InstallExecutable;
 import org.gradle.util.GUtil;
 
 import javax.inject.Inject;
@@ -65,21 +61,15 @@ public class SwiftExecutablePlugin implements Plugin<ProjectInternal> {
         TaskContainer tasks = project.getTasks();
 
         // Add the component extension
-        SwiftApplication application = project.getExtensions().create(SwiftApplication.class, "executable", DefaultSwiftApplication.class, "main", project.getObjects(), fileOperations, configurations);
+        SwiftApplication application = project.getExtensions().create(SwiftApplication.class, "executable", DefaultSwiftApplication.class, "main", project.getLayout(), project.getObjects(), fileOperations, configurations);
         project.getComponents().add(application);
         project.getComponents().add(application.getDebugExecutable());
         project.getComponents().add(application.getReleaseExecutable());
 
         // Setup component
-        final Property<String> module = application.getModule();
-        module.set(GUtil.toCamelCase(project.getName()));
-
-        // Configure compile task
-        SwiftCompile compile = (SwiftCompile) tasks.getByName("compileDebugSwift");
-        compile.getCompilerArgs().set(Lists.newArrayList("-enable-testing"));
+        application.getModule().set(GUtil.toCamelCase(project.getName()));
 
         // Wire in this install task
-        InstallExecutable install = (InstallExecutable) tasks.getByName("installDebug");
-        tasks.getByName(LifecycleBasePlugin.ASSEMBLE_TASK_NAME).dependsOn(install);
+        tasks.getByName(LifecycleBasePlugin.ASSEMBLE_TASK_NAME).dependsOn(application.getDevelopmentBinary().getInstallDirectory());
     }
 }

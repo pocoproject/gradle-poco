@@ -34,8 +34,8 @@ import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
 
-import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ConnectionFailureRepositoryBlacklister.hasCriticalFailure;
-import static org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ConnectionFailureRepositoryBlacklister.isCriticalFailure;
+import static org.gradle.internal.resolve.ResolveExceptionAnalyzer.hasCriticalFailure;
+import static org.gradle.internal.resolve.ResolveExceptionAnalyzer.isCriticalFailure;
 
 public class RepositoryChainComponentMetaDataResolver implements ComponentMetaDataResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(RepositoryChainComponentMetaDataResolver.class);
@@ -140,7 +140,6 @@ public class RepositoryChainComponentMetaDataResolver implements ComponentMetaDa
                 case Failed:
                     failures.add(metaDataResolveResult.getFailure());
                     if (isCriticalFailure(metaDataResolveResult.getFailure())) {
-                        // TODO:DAZ Consider re-throwing here
                         queue.clear();
                     }
                     break;

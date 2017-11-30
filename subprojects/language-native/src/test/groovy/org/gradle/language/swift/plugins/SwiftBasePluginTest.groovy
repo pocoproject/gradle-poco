@@ -16,16 +16,12 @@
 
 package org.gradle.language.swift.plugins
 
-import org.gradle.api.file.RegularFile
 import org.gradle.internal.os.OperatingSystem
-import org.gradle.language.swift.SwiftBinary
-import org.gradle.language.swift.SwiftBundle
-import org.gradle.language.swift.SwiftExecutable
-import org.gradle.language.swift.SwiftSharedLibrary
-import org.gradle.language.swift.tasks.CreateSwiftBundle
+import org.gradle.language.swift.internal.DefaultSwiftBinary
+import org.gradle.language.swift.internal.DefaultSwiftExecutable
+import org.gradle.language.swift.internal.DefaultSwiftSharedLibrary
 import org.gradle.language.swift.tasks.SwiftCompile
 import org.gradle.nativeplatform.tasks.InstallExecutable
-import org.gradle.nativeplatform.tasks.LinkMachOBundle
 import org.gradle.nativeplatform.tasks.LinkExecutable
 import org.gradle.nativeplatform.tasks.LinkSharedLibrary
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
@@ -40,7 +36,7 @@ class SwiftBasePluginTest extends Specification {
     def project = ProjectBuilder.builder().withProjectDir(projectDir).withName("test").build()
 
     def "adds compile task for component"() {
-        def binary = Stub(SwiftBinary)
+        def binary = Stub(DefaultSwiftBinary)
         binary.name >> name
         binary.module >> project.objects.property(String)
 
@@ -64,7 +60,7 @@ class SwiftBasePluginTest extends Specification {
     def "adds link and install task for executable"() {
         def module = project.objects.property(String)
         module.set("TestApp")
-        def executable = Stub(SwiftExecutable)
+        def executable = Stub(DefaultSwiftExecutable)
         executable.name >> name
         executable.module >> module
 
@@ -92,7 +88,7 @@ class SwiftBasePluginTest extends Specification {
     def "adds link task for shared library"() {
         def module = project.objects.property(String)
         module.set("TestLib")
-        def library = Stub(SwiftSharedLibrary)
+        def library = Stub(DefaultSwiftSharedLibrary)
         library.name >> name
         library.module >> module
 
@@ -111,36 +107,5 @@ class SwiftBasePluginTest extends Specification {
         "mainDebug" | "linkDebug"     | "main/debug/"
         "test"      | "linkTest"      | "test/"
         "testDebug" | "linkTestDebug" | "test/debug/"
-    }
-
-    def "adds link task for bundle"() {
-        def module = project.objects.property(String)
-        module.set("TestBundle")
-        def infoPlist = project.objects.property(RegularFile)
-        def bundleBinary = Stub(SwiftBundle)
-        bundleBinary.name >> name
-        bundleBinary.module >> module
-        bundleBinary.informationPropertyList >> infoPlist
-
-        when:
-        project.pluginManager.apply(SwiftBasePlugin)
-        project.components.add(bundleBinary)
-
-        then:
-        def link = project.tasks[linkTaskName]
-        link instanceof LinkMachOBundle
-        link.binaryFile.get().asFile == projectDir.file("build/exe/${bundleDir}" + OperatingSystem.current().getExecutableName("TestBundle"))
-
-        and:
-        def bundleTask = project.tasks[bundleTaskName]
-        bundleTask instanceof CreateSwiftBundle
-        bundleTask.outputDir.get().asFile == projectDir.file("build/bundle/${bundleDir}TestBundle.xctest")
-
-        where:
-        name        | linkTaskName    | bundleTaskName         | bundleDir
-        "main"      | "link"          | "bundleSwift"          | "main/"
-        "mainDebug" | "linkDebug"     | "bundleSwiftDebug"     | "main/debug/"
-        "test"      | "linkTest"      | "bundleSwiftTest"      | "test/"
-        "testDebug" | "linkTestDebug" | "bundleSwiftTestDebug" | "test/debug/"
     }
 }

@@ -77,7 +77,7 @@ import org.gradle.api.provider.ProviderFactory;
 import org.gradle.cache.CacheRepository;
 import org.gradle.cache.CacheValidator;
 import org.gradle.caching.internal.BuildCacheServices;
-import org.gradle.composite.internal.IncludedBuildFactory;
+import org.gradle.composite.internal.IncludedBuildRegistry;
 import org.gradle.configuration.BuildConfigurer;
 import org.gradle.configuration.DefaultBuildConfigurer;
 import org.gradle.configuration.DefaultInitScriptProcessor;
@@ -135,7 +135,6 @@ import org.gradle.internal.buildevents.BuildStartedTime;
 import org.gradle.internal.classloader.ClassLoaderFactory;
 import org.gradle.internal.classloader.ClassLoaderHierarchyHasher;
 import org.gradle.internal.classpath.CachedClasspathTransformer;
-import org.gradle.internal.composite.CompositeContextBuilder;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.event.ListenerManager;
 import org.gradle.internal.hash.FileHasher;
@@ -157,8 +156,6 @@ import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.time.Clock;
 import org.gradle.model.internal.inspect.ModelRuleSourceDetector;
 import org.gradle.plugin.management.internal.autoapply.AutoAppliedPluginHandler;
-import org.gradle.plugin.repository.internal.PluginRepositoryFactory;
-import org.gradle.plugin.repository.internal.PluginRepositoryRegistry;
 import org.gradle.plugin.use.internal.PluginRequestApplicator;
 import org.gradle.profile.ProfileEventAdapter;
 import org.gradle.profile.ProfileListener;
@@ -305,8 +302,6 @@ public class BuildScopeServices extends DefaultServiceRegistry {
             get(DirectoryFileTreeFactory.class),
             get(DocumentationRegistry.class),
             get(ModelRuleSourceDetector.class),
-            get(PluginRepositoryRegistry.class),
-            get(PluginRepositoryFactory.class),
             get(ProviderFactory.class),
             get(TextResourceLoader.class),
             get(StreamHasher.class),
@@ -314,15 +309,14 @@ public class BuildScopeServices extends DefaultServiceRegistry {
             get(AutoAppliedPluginHandler.class));
     }
 
-    protected SettingsLoaderFactory createSettingsLoaderFactory(SettingsProcessor settingsProcessor, NestedBuildFactory nestedBuildFactory,
+    protected SettingsLoaderFactory createSettingsLoaderFactory(SettingsProcessor settingsProcessor, BuildLayoutFactory buildLayoutFactory, NestedBuildFactory nestedBuildFactory,
                                                                 ClassLoaderScopeRegistry classLoaderScopeRegistry, CacheRepository cacheRepository,
                                                                 BuildOperationExecutor buildOperationExecutor,
                                                                 CachedClasspathTransformer cachedClasspathTransformer,
                                                                 CachingServiceLocator cachingServiceLocator,
-                                                                CompositeContextBuilder compositeContextBuilder,
-                                                                IncludedBuildFactory includedBuildFactory) {
+                                                                IncludedBuildRegistry includedBuildRegistry) {
         return new DefaultSettingsLoaderFactory(
-            new DefaultSettingsFinder(new BuildLayoutFactory()),
+            new DefaultSettingsFinder(buildLayoutFactory),
             settingsProcessor,
             new BuildSourceBuilder(
                 nestedBuildFactory,
@@ -334,8 +328,8 @@ public class BuildScopeServices extends DefaultServiceRegistry {
                     PluginsProjectConfigureActions.of(
                         BuildSrcProjectConfigurationAction.class,
                         cachingServiceLocator))),
-            compositeContextBuilder,
-            includedBuildFactory);
+            nestedBuildFactory,
+            includedBuildRegistry);
     }
 
     protected InitScriptHandler createInitScriptHandler(ScriptPluginFactory scriptPluginFactory, ScriptHandlerFactory scriptHandlerFactory, BuildOperationExecutor buildOperationExecutor) {
@@ -354,10 +348,10 @@ public class BuildScopeServices extends DefaultServiceRegistry {
             new PropertiesLoadingSettingsProcessor(
                 new ScriptEvaluatingSettingsProcessor(
                     scriptPluginFactory,
-                    scriptHandlerFactory,
                     new SettingsFactory(
                         instantiator,
-                        serviceRegistryFactory
+                        serviceRegistryFactory,
+                        scriptHandlerFactory
                     ),
                     propertiesLoader
                 ),

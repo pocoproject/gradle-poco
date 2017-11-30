@@ -16,6 +16,7 @@
 
 package org.gradle.nativeplatform.toolchain.internal.msvcpp;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.gradle.api.Transformer;
 import org.gradle.internal.Transformers;
@@ -23,12 +24,24 @@ import org.gradle.internal.jvm.Jvm;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.work.WorkerLeaseService;
 import org.gradle.language.base.internal.compile.Compiler;
+import org.gradle.language.base.internal.compile.DefaultCompilerVersion;
+import org.gradle.language.base.internal.compile.VersionAwareCompiler;
 import org.gradle.nativeplatform.internal.CompilerOutputFileNamingSchemeFactory;
 import org.gradle.nativeplatform.internal.LinkerSpec;
 import org.gradle.nativeplatform.internal.StaticLibraryArchiverSpec;
 import org.gradle.nativeplatform.platform.internal.NativePlatformInternal;
 import org.gradle.nativeplatform.platform.internal.OperatingSystemInternal;
-import org.gradle.nativeplatform.toolchain.internal.*;
+import org.gradle.nativeplatform.toolchain.internal.AbstractPlatformToolProvider;
+import org.gradle.nativeplatform.toolchain.internal.CommandLineToolContext;
+import org.gradle.nativeplatform.toolchain.internal.CommandLineToolInvocationWorker;
+import org.gradle.nativeplatform.toolchain.internal.DefaultCommandLineToolInvocationWorker;
+import org.gradle.nativeplatform.toolchain.internal.DefaultMutableCommandLineToolContext;
+import org.gradle.nativeplatform.toolchain.internal.MutableCommandLineToolContext;
+import org.gradle.nativeplatform.toolchain.internal.NativeCompileSpec;
+import org.gradle.nativeplatform.toolchain.internal.OutputCleaningCompiler;
+import org.gradle.nativeplatform.toolchain.internal.PCHUtils;
+import org.gradle.nativeplatform.toolchain.internal.SystemIncludesAwarePlatformToolProvider;
+import org.gradle.nativeplatform.toolchain.internal.ToolType;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.AssembleSpec;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.CCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.CPCHCompileSpec;
@@ -42,7 +55,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 
-class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider {
+class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider implements SystemIncludesAwarePlatformToolProvider {
     private final Map<ToolType, CommandLineToolConfigurationInternal> commandLineToolConfigurations;
     private final VisualCppInstall visualCpp;
     private final WindowsSdk sdk;
@@ -65,6 +78,11 @@ class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider {
     }
 
     @Override
+    public boolean producesImportLibrary() {
+        return true;
+    }
+
+    @Override
     public String getSharedLibraryLinkFileName(String libraryName) {
         return getSharedLibraryName(libraryName).replaceFirst("\\.dll$", ".lib");
     }
@@ -72,35 +90,43 @@ class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider {
     @Override
     protected Compiler<CppCompileSpec> createCppCompiler() {
         CommandLineToolInvocationWorker commandLineTool = tool("C++ compiler", visualCpp.getCompiler(targetPlatform));
-        CppCompiler cppCompiler = new CppCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.CPP_COMPILER)), addIncludePathAndDefinitions(CppCompileSpec.class), getObjectFileExtension(), true, workerLeaseService);
-        return new OutputCleaningCompiler<CppCompileSpec>(cppCompiler, compilerOutputFileNamingSchemeFactory, getObjectFileExtension());
+        CppCompiler cppCompiler = new CppCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.CPP_COMPILER)), addDefinitions(CppCompileSpec.class), getObjectFileExtension(), true, workerLeaseService);
+        OutputCleaningCompiler<CppCompileSpec> outputCleaningCompiler = new OutputCleaningCompiler<CppCompileSpec>(cppCompiler, compilerOutputFileNamingSchemeFactory, getObjectFileExtension());
+        return versionAwareCompiler(outputCleaningCompiler);
     }
 
     @Override
     protected Compiler<?> createCppPCHCompiler() {
         CommandLineToolInvocationWorker commandLineTool = tool("C++ PCH compiler", visualCpp.getCompiler(targetPlatform));
         CppPCHCompiler cppPCHCompiler = new CppPCHCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.CPP_COMPILER)), pchSpecTransforms(CppPCHCompileSpec.class), getPCHFileExtension(), true, workerLeaseService);
-        return new OutputCleaningCompiler<CppPCHCompileSpec>(cppPCHCompiler, compilerOutputFileNamingSchemeFactory, getPCHFileExtension());
+        OutputCleaningCompiler<CppPCHCompileSpec> outputCleaningCompiler = new OutputCleaningCompiler<CppPCHCompileSpec>(cppPCHCompiler, compilerOutputFileNamingSchemeFactory, getPCHFileExtension());
+        return versionAwareCompiler(outputCleaningCompiler);
     }
 
     @Override
     protected Compiler<CCompileSpec> createCCompiler() {
         CommandLineToolInvocationWorker commandLineTool = tool("C compiler", visualCpp.getCompiler(targetPlatform));
-        CCompiler cCompiler = new CCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.C_COMPILER)), addIncludePathAndDefinitions(CCompileSpec.class), getObjectFileExtension(), true, workerLeaseService);
-        return new OutputCleaningCompiler<CCompileSpec>(cCompiler, compilerOutputFileNamingSchemeFactory, getObjectFileExtension());
+        CCompiler cCompiler = new CCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.C_COMPILER)), addDefinitions(CCompileSpec.class), getObjectFileExtension(), true, workerLeaseService);
+        OutputCleaningCompiler<CCompileSpec> outputCleaningCompiler = new OutputCleaningCompiler<CCompileSpec>(cCompiler, compilerOutputFileNamingSchemeFactory, getObjectFileExtension());
+        return versionAwareCompiler(outputCleaningCompiler);
     }
 
     @Override
     protected Compiler<?> createCPCHCompiler() {
         CommandLineToolInvocationWorker commandLineTool = tool("C PCH compiler", visualCpp.getCompiler(targetPlatform));
         CPCHCompiler cpchCompiler = new CPCHCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.C_COMPILER)), pchSpecTransforms(CPCHCompileSpec.class), getPCHFileExtension(), true, workerLeaseService);
-        return new OutputCleaningCompiler<CPCHCompileSpec>(cpchCompiler, compilerOutputFileNamingSchemeFactory, getPCHFileExtension());
+        OutputCleaningCompiler<CPCHCompileSpec> outputCleaningCompiler = new OutputCleaningCompiler<CPCHCompileSpec>(cpchCompiler, compilerOutputFileNamingSchemeFactory, getPCHFileExtension());
+        return versionAwareCompiler(outputCleaningCompiler);
+    }
+
+    private <T extends NativeCompileSpec> VersionAwareCompiler<T> versionAwareCompiler(OutputCleaningCompiler<T> outputCleaningCompiler) {
+        return new VersionAwareCompiler<T>(outputCleaningCompiler, new DefaultCompilerVersion(VisualCppToolChain.DEFAULT_NAME, "Microsoft", visualCpp.getVersion()));
     }
 
     @Override
     protected Compiler<AssembleSpec> createAssembler() {
         CommandLineToolInvocationWorker commandLineTool = tool("Assembler", visualCpp.getAssembler(targetPlatform));
-        return new Assembler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.ASSEMBLER)), addIncludePathAndDefinitions(AssembleSpec.class), getObjectFileExtension(), false, workerLeaseService);
+        return new Assembler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.ASSEMBLER)), addDefinitions(AssembleSpec.class), getObjectFileExtension(), false, workerLeaseService);
     }
 
     @Override
@@ -117,7 +143,7 @@ class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider {
     protected Compiler<WindowsResourceCompileSpec> createWindowsResourceCompiler() {
         CommandLineToolInvocationWorker commandLineTool = tool("Windows resource compiler", sdk.getResourceCompiler(targetPlatform));
         String objectFileExtension = ".res";
-        WindowsResourceCompiler windowsResourceCompiler = new WindowsResourceCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.WINDOW_RESOURCES_COMPILER)), addIncludePathAndDefinitions(WindowsResourceCompileSpec.class), objectFileExtension, false, workerLeaseService);
+        WindowsResourceCompiler windowsResourceCompiler = new WindowsResourceCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool, context(commandLineToolConfigurations.get(ToolType.WINDOW_RESOURCES_COMPILER)), addDefinitions(WindowsResourceCompileSpec.class), objectFileExtension, false, workerLeaseService);
         return new OutputCleaningCompiler<WindowsResourceCompileSpec>(windowsResourceCompiler, compilerOutputFileNamingSchemeFactory, objectFileExtension);
     }
 
@@ -168,7 +194,7 @@ class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider {
             public T transform(T original) {
                 List<Transformer<T, T>> transformers = Lists.newArrayList();
                 transformers.add(PCHUtils.getHeaderToSourceFileTransformer(type));
-                transformers.add(addIncludePathAndDefinitions(type));
+                transformers.add(addDefinitions(type));
 
                 T next = original;
                 for (Transformer<T, T> transformer :  transformers) {
@@ -179,14 +205,21 @@ class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider {
         };
     }
 
-    private <T extends NativeCompileSpec> Transformer<T, T> addIncludePathAndDefinitions(Class<T> type) {
+    @Override
+    public List<File> getSystemIncludes() {
+        ImmutableList.Builder<File> builder = ImmutableList.builder();
+        builder.add(visualCpp.getIncludePath(targetPlatform));
+        builder.add(sdk.getIncludeDirs());
+        if (ucrt != null) {
+            builder.add(ucrt.getIncludeDirs());
+        }
+
+        return builder.build();
+    }
+
+    private <T extends NativeCompileSpec> Transformer<T, T> addDefinitions(Class<T> type) {
         return new Transformer<T, T>() {
             public T transform(T original) {
-                original.include(visualCpp.getIncludePath(targetPlatform));
-                original.include(sdk.getIncludeDirs());
-                if (ucrt != null) {
-                    original.include(ucrt.getIncludeDirs());
-                }
                 for (Map.Entry<String, String> definition : visualCpp.getDefinitions(targetPlatform).entrySet()) {
                     original.define(definition.getKey(), definition.getValue());
                 }

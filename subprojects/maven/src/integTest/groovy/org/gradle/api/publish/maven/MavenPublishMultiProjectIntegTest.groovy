@@ -20,9 +20,9 @@ import org.gradle.integtests.fixtures.publish.maven.AbstractMavenPublishIntegTes
 import spock.lang.Issue
 
 class MavenPublishMultiProjectIntegTest extends AbstractMavenPublishIntegTest {
-    def project1 = mavenRepo.module("org.gradle.test", "project1", "1.0")
-    def project2 = mavenRepo.module("org.gradle.test", "project2", "2.0")
-    def project3 = mavenRepo.module("org.gradle.test", "project3", "3.0")
+    def project1 = javaLibrary(mavenRepo.module("org.gradle.test", "project1", "1.0"))
+    def project2 = javaLibrary(mavenRepo.module("org.gradle.test", "project2", "2.0"))
+    def project3 = javaLibrary(mavenRepo.module("org.gradle.test", "project3", "3.0"))
 
     def "project dependency correctly reflected in POM"() {
         createBuildScripts()
@@ -35,7 +35,7 @@ class MavenPublishMultiProjectIntegTest extends AbstractMavenPublishIntegTest {
     }
 
     def "project dependencies reference publication identity of dependent project"() {
-        def project3 = mavenRepo.module("changed.group", "changed-artifact-id", "changed")
+        def project3 = javaLibrary(mavenRepo.module("changed.group", "changed-artifact-id", "changed"))
 
         createBuildScripts("""
 project(":project3") {
@@ -53,14 +53,14 @@ project(":project3") {
         run "publish"
 
         then:
-        project1.assertPublishedAsJavaModule()
-        project1.parsedPom.scopes.compile.assertDependsOn("changed.group:changed-artifact-id:changed", "org.gradle.test:project2:2.0")
+        project1.assertPublished()
+        project1.assertApiDependencies("changed.group:changed-artifact-id:changed", "org.gradle.test:project2:2.0")
 
-        project2.assertPublishedAsJavaModule()
-        project2.parsedPom.scopes.compile.assertDependsOn("changed.group:changed-artifact-id:changed")
+        project2.assertPublished()
+        project2.assertApiDependencies("changed.group:changed-artifact-id:changed")
 
-        project3.assertPublishedAsJavaModule()
-        project3.parsedPom.scopes.compile == null
+        project3.assertPublished()
+        project3.assertNoDependencies()
 
         and:
         resolveArtifacts(project1) == ['changed-artifact-id-changed.jar', 'project1-1.0.jar', 'project2-2.0.jar']
@@ -102,15 +102,15 @@ Found the following publications in project ':project3':
     def "referenced project can have multiple additional publications that contain a child of some other publication"() {
         createBuildScripts("""
 // TODO - replace this with a public API when available
-class ExtraComp implements org.gradle.api.internal.component.SoftwareComponentInternal, ChildComponent {
+class ExtraComp implements org.gradle.api.internal.component.SoftwareComponentInternal, ComponentWithVariants {
     String name = 'extra'
     Set usages = []
-    SoftwareComponent owner
+    Set variants = []
 }
 
 project(":project3") {
-    def c1 = new ExtraComp(owner: components.java)
-    def c2 = new ExtraComp(owner: c1)
+    def c1 = new ExtraComp()
+    def c2 = new ExtraComp(variants: [c1, components.java])
     publishing {
         publications {
             extra1(MavenPublication) {
@@ -121,9 +121,9 @@ project(":project3") {
             }
             extra2(MavenPublication) {
                 from c2
-                groupId "extra.group"
-                artifactId "extra2"
-                version "extra"
+                groupId "custom"
+                artifactId "custom3"
+                version "456"
             }
         }
     }
@@ -134,7 +134,7 @@ project(":project3") {
         succeeds "publish"
 
         then:
-        project1.parsedPom.scopes.compile.assertDependsOn("org.gradle.test:project2:2.0", "org.gradle.test:project3:3.0")
+        project1.assertApiDependencies("org.gradle.test:project2:2.0", "custom:custom3:456")
     }
 
     def "maven-publish plugin does not take archivesBaseName into account when publishing"() {
@@ -174,14 +174,14 @@ project(":project2") {
     }
 
     private def projectsCorrectlyPublished() {
-        project1.assertPublishedAsJavaModule()
-        project1.parsedPom.scopes.compile.assertDependsOn("org.gradle.test:project2:2.0", "org.gradle.test:project3:3.0")
+        project1.assertPublished()
+        project1.assertApiDependencies("org.gradle.test:project2:2.0", "org.gradle.test:project3:3.0")
 
-        project2.assertPublishedAsJavaModule()
-        project2.parsedPom.scopes.compile.assertDependsOn("org.gradle.test:project3:3.0")
+        project2.assertPublished()
+        project2.assertApiDependencies("org.gradle.test:project3:3.0")
 
-        project3.assertPublishedAsJavaModule()
-        project3.parsedPom.scopes == null
+        project3.assertPublished()
+        project3.assertNoDependencies()
 
         resolveArtifacts(project1) == ["project1-1.0.jar", "project2-2.0.jar", "project3-3.0.jar"]
 
@@ -231,9 +231,8 @@ project(":project2") {
         run "publish"
 
         then:
-
-        project1.assertPublishedAsJavaModule()
-        project1.parsedPom.scopes.compile.assertDependsOn("org.gradle.test:project2:2.0")
+        project1.assertPublished()
+        project1.assertApiDependencies("org.gradle.test:project2:2.0")
     }
 
     @Issue("GRADLE-3366")
@@ -288,7 +287,9 @@ project(":project2") {
         run "publish"
 
         then:
-        project2.assertPublishedAsJavaModule()
+        project2.assertPublished()
+        project2.assertApiDependencies("org.gradle.test:project1:1.0")
+
         def dependency = project2.parsedPom.scopes.compile.expectDependency("org.gradle.test:project1:1.0")
         dependency.exclusions.size() == 2
         def sorted = dependency.exclusions.sort { it.groupId }

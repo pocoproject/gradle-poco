@@ -16,9 +16,10 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder.DependencyGraphBuilder;
@@ -56,26 +57,30 @@ public class ModuleExclusions {
 
     private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
 
-    private final Map<List<Exclude>, Map<Set<String>, ModuleExclusion>> cachedExcludes = Maps.newConcurrentMap();
+    private final Map<ImmutableList<Exclude>, Map<ImmutableSet<String>, ModuleExclusion>> cachedExcludes = Maps.newConcurrentMap();
     private final Map<MergeOperation, AbstractModuleExclusion> mergeCache = Maps.newConcurrentMap();
-    private final Map<List<Exclude>, AbstractModuleExclusion> excludeAnyCache = Maps.newConcurrentMap();
-    private final Map<Set<AbstractModuleExclusion>, ImmutableModuleExclusionSet> exclusionSetCache = Maps.newConcurrentMap();
+    private final Map<ImmutableList<Exclude>, AbstractModuleExclusion> excludeAnyCache = Maps.newConcurrentMap();
+    private final Map<ImmutableSet<AbstractModuleExclusion>, IntersectionExclusion> intersectionCache = Maps.newConcurrentMap();
     private final Map<AbstractModuleExclusion[], Map<AbstractModuleExclusion[], MergeOperation>> mergeOperationCache = Maps.newIdentityHashMap();
+    private final Map<ModuleIdentifier, ModuleIdExcludeSpec> moduleIdSpecs = Maps.newConcurrentMap();
+    private final Map<String, ModuleNameExcludeSpec> moduleNameSpecs = Maps.newConcurrentMap();
+    private final Map<String, GroupNameExcludeSpec> groupNameSpecs = Maps.newConcurrentMap();
+
     private final Object mergeOperationLock = new Object();
 
     public ModuleExclusions(ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
         this.moduleIdentifierFactory = moduleIdentifierFactory;
     }
 
-    public ModuleExclusion excludeAny(List<Exclude> excludes, Set<String> hierarchy) {
-        Map<Set<String>, ModuleExclusion> exclusionMap = cachedExcludes.get(excludes);
+    public ModuleExclusion excludeAny(ImmutableList<Exclude> excludes, ImmutableSet<String> hierarchy) {
+        Map<ImmutableSet<String>, ModuleExclusion> exclusionMap = cachedExcludes.get(excludes);
         if (exclusionMap == null) {
             exclusionMap = Maps.newConcurrentMap();
             cachedExcludes.put(excludes, exclusionMap);
         }
         ModuleExclusion moduleExclusion = exclusionMap.get(hierarchy);
         if (moduleExclusion == null) {
-            List<Exclude> filtered = Lists.newArrayList();
+            ImmutableList.Builder<Exclude> filtered = ImmutableList.builder();
             for (Exclude exclude : excludes) {
                 for (String config : exclude.getConfigurations()) {
                     if (hierarchy.contains(config)) {
@@ -84,17 +89,17 @@ public class ModuleExclusions {
                     }
                 }
             }
-            moduleExclusion = excludeAny(filtered);
+            moduleExclusion = excludeAny(filtered.build());
             exclusionMap.put(hierarchy, moduleExclusion);
         }
         return moduleExclusion;
     }
 
-    private ImmutableModuleExclusionSet asImmutable(Set<AbstractModuleExclusion> excludes) {
-        ImmutableModuleExclusionSet cached = exclusionSetCache.get(excludes);
+    private IntersectionExclusion asIntersection(ImmutableSet<AbstractModuleExclusion> excludes) {
+        IntersectionExclusion cached = intersectionCache.get(excludes);
         if (cached == null) {
-            cached = new ImmutableModuleExclusionSet(excludes);
-            exclusionSetCache.put(excludes, cached);
+            cached = new IntersectionExclusion(new ImmutableModuleExclusionSet(excludes));
+            intersectionCache.put(excludes, cached);
         }
         return cached;
     }
@@ -113,13 +118,13 @@ public class ModuleExclusions {
         if (excludes.length == 0) {
             return EXCLUDE_NONE;
         }
-        return excludeAny(Arrays.asList(excludes));
+        return excludeAny(ImmutableList.copyOf(excludes));
     }
 
     /**
      * Returns a spec that excludes those modules and artifacts that are excluded by _any_ of the given exclude rules.
      */
-    public ModuleExclusion excludeAny(List<Exclude> excludes) {
+    public ModuleExclusion excludeAny(ImmutableList<Exclude> excludes) {
         if (excludes.isEmpty()) {
             return EXCLUDE_NONE;
         }
@@ -127,16 +132,16 @@ public class ModuleExclusions {
         if (exclusion != null) {
             return exclusion;
         }
-        Set<AbstractModuleExclusion> exclusions = Sets.newHashSetWithExpectedSize(excludes.size());
+        ImmutableSet.Builder<AbstractModuleExclusion> exclusions = ImmutableSet.builder();
         for (Exclude exclude : excludes) {
             exclusions.add(forExclude(exclude));
         }
-        exclusion = new IntersectionExclusion(asImmutable(exclusions));
+        exclusion = asIntersection(exclusions.build());
         excludeAnyCache.put(excludes, exclusion);
         return exclusion;
     }
 
-    private static AbstractModuleExclusion forExclude(Exclude rule) {
+    private AbstractModuleExclusion forExclude(Exclude rule) {
         // For custom ivy pattern matchers, don't inspect the rule any more deeply: this prevents us from doing smart merging later
         if (!PatternMatchers.isExactMatcher(rule.getMatcher())) {
             return new IvyPatternMatcherExcludeRuleSpec(rule);
@@ -151,17 +156,44 @@ public class ModuleExclusions {
         // Build a strongly typed (mergeable) exclude spec for each supplied rule
         if (anyArtifact) {
             if (!anyOrganisation && !anyModule) {
-                return new ModuleIdExcludeSpec(moduleId);
+                return moduleIdExcludeSpec(moduleId);
             } else if (!anyModule) {
-                return new ModuleNameExcludeSpec(moduleId.getName());
+                return moduleNameExcludeSpec(moduleId.getName());
             } else if (!anyOrganisation) {
-                return new GroupNameExcludeSpec(moduleId.getGroup());
+                return groupNameExcludeSpec(moduleId.getGroup());
             } else {
                 return EXCLUDE_ALL_MODULES_SPEC;
             }
         } else {
             return new ArtifactExcludeSpec(moduleId, artifact);
         }
+    }
+
+    private ModuleIdExcludeSpec moduleIdExcludeSpec(ModuleIdentifier id) {
+        ModuleIdExcludeSpec spec = moduleIdSpecs.get(id);
+        if (spec == null) {
+            spec = new ModuleIdExcludeSpec(id);
+            moduleIdSpecs.put(id, spec);
+        }
+        return spec;
+    }
+
+    private ModuleNameExcludeSpec moduleNameExcludeSpec(String id) {
+        ModuleNameExcludeSpec spec = moduleNameSpecs.get(id);
+        if (spec == null) {
+            spec = new ModuleNameExcludeSpec(id);
+            moduleNameSpecs.put(id, spec);
+        }
+        return spec;
+    }
+
+    private GroupNameExcludeSpec groupNameExcludeSpec(String id) {
+        GroupNameExcludeSpec spec = groupNameSpecs.get(id);
+        if (spec == null) {
+            spec = new GroupNameExcludeSpec(id);
+            groupNameSpecs.put(id, spec);
+        }
+        return spec;
     }
 
     /**
@@ -187,12 +219,22 @@ public class ModuleExclusions {
             return two;
         }
 
-        Set<AbstractModuleExclusion> builder = Sets.newHashSet();
+        AbstractModuleExclusion aOne = (AbstractModuleExclusion) one;
+        AbstractModuleExclusion aTwo = (AbstractModuleExclusion) two;
 
-        ((AbstractModuleExclusion) one).unpackIntersection(builder);
-        ((AbstractModuleExclusion) two).unpackIntersection(builder);
+        List<AbstractModuleExclusion> builder = Lists.newArrayListWithExpectedSize(estimateSize(aOne) + estimateSize(aTwo));
 
-        return new IntersectionExclusion(asImmutable(builder));
+        aOne.unpackIntersection(builder);
+        aTwo.unpackIntersection(builder);
+
+        return asIntersection(ImmutableSet.copyOf(builder));
+    }
+
+    private static int estimateSize(AbstractModuleExclusion ex) {
+        if (ex instanceof AbstractCompositeExclusion) {
+            return ((AbstractCompositeExclusion) ex).getFilters().size();
+        }
+        return 1;
     }
 
     /**
@@ -307,7 +349,7 @@ public class ModuleExclusions {
         if (merged.isEmpty()) {
             exclusion = ModuleExclusions.EXCLUDE_NONE;
         } else {
-            exclusion = new IntersectionExclusion(asImmutable(merged));
+            exclusion = asIntersection(ImmutableSet.copyOf(merged));
         }
         mergeCache.put(merge, exclusion);
         return exclusion;
@@ -366,7 +408,7 @@ public class ModuleExclusions {
         } else if (spec2 instanceof ModuleNameExcludeSpec) {
             // Intersection of group & module name exclude only excludes module with matching group + name
             ModuleNameExcludeSpec moduleNameExcludeSpec = (ModuleNameExcludeSpec) spec2;
-            merged.add(new ModuleIdExcludeSpec(moduleIdentifierFactory.module(spec1.group, moduleNameExcludeSpec.module)));
+            merged.add(moduleIdExcludeSpec(moduleIdentifierFactory.module(spec1.group, moduleNameExcludeSpec.module)));
         } else if (spec2 instanceof ModuleIdExcludeSpec) {
             // Intersection of group + module id exclude only excludes the module id if the excluded groups match
             ModuleIdExcludeSpec moduleIdExcludeSpec = (ModuleIdExcludeSpec) spec2;

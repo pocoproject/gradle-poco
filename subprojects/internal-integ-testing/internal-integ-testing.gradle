@@ -34,6 +34,9 @@ dependencies {
     compile libraries.jcifs
     compile libraries.jansi
     compile libraries.commons_collections
+
+    implementation project(':dependencyManagement')
+
     runtime project(':logging')
 }
 
@@ -43,7 +46,7 @@ useTestFixtures(sourceSet: 'main')
 task prepareVersionsInfo(type: PrepareVersionsInfo) {
     destFile = new File(generatedResourcesDir, "all-released-versions.properties")
     versions = releasedVersions.allVersions
-    mostRecent = releasedVersions.mostRecentFinalRelease
+    mostRecent = releasedVersions.mostRecentRelease
     mostRecentSnapshot = releasedVersions.mostRecentSnapshot
 }
 

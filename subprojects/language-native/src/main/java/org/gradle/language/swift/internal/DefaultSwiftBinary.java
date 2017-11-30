@@ -19,9 +19,13 @@ package org.gradle.language.swift.internal;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.attributes.Usage;
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.ProjectLayout;
+import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Provider;
+import org.gradle.api.tasks.util.PatternSet;
 import org.gradle.language.nativeplatform.internal.Names;
 import org.gradle.language.swift.SwiftBinary;
 
@@ -31,21 +35,27 @@ public class DefaultSwiftBinary implements SwiftBinary {
     private final String name;
     private final Provider<String> module;
     private final boolean debuggable;
+    private final boolean testable;
     private final FileCollection source;
-    private final FileCollection importPath;
+    private final FileCollection compileModules;
     private final FileCollection linkLibs;
     private final Configuration runtimeLibs;
+    private final DirectoryProperty objectsDir;
+    private final RegularFileProperty moduleFile;
 
-    public DefaultSwiftBinary(String name, ObjectFactory objectFactory, Provider<String> module, boolean debuggable, FileCollection source, ConfigurationContainer configurations, Configuration implementation) {
+    public DefaultSwiftBinary(String name, ProjectLayout projectLayout, ObjectFactory objectFactory, Provider<String> module, boolean debuggable, boolean testable, FileCollection source, ConfigurationContainer configurations, Configuration implementation) {
         this.name = name;
         this.module = module;
         this.debuggable = debuggable;
+        this.testable = testable;
         this.source = source;
+        this.objectsDir = projectLayout.directoryProperty();
+        this.moduleFile = projectLayout.fileProperty();
 
         Names names = Names.of(name);
 
         // TODO - reduce duplication with C++ binary
-        Configuration importPathConfig = configurations.maybeCreate(names.withPrefix("swiftImport"));
+        Configuration importPathConfig = configurations.maybeCreate(names.withPrefix("swiftCompile"));
         importPathConfig.extendsFrom(implementation);
         importPathConfig.setCanBeConsumed(false);
         importPathConfig.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.SWIFT_API));
@@ -63,7 +73,7 @@ public class DefaultSwiftBinary implements SwiftBinary {
         nativeRuntime.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.NATIVE_RUNTIME));
         nativeRuntime.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, debuggable);
 
-        importPath = importPathConfig;
+        compileModules = importPathConfig;
         linkLibs = nativeLink;
         runtimeLibs = nativeRuntime;
     }
@@ -84,13 +94,18 @@ public class DefaultSwiftBinary implements SwiftBinary {
     }
 
     @Override
+    public boolean isTestable() {
+        return testable;
+    }
+
+    @Override
     public FileCollection getSwiftSource() {
         return source;
     }
 
     @Override
-    public FileCollection getCompileImportPath() {
-        return importPath;
+    public FileCollection getCompileModules() {
+        return compileModules;
     }
 
     @Override
@@ -101,5 +116,18 @@ public class DefaultSwiftBinary implements SwiftBinary {
     @Override
     public FileCollection getRuntimeLibraries() {
         return runtimeLibs;
+    }
+
+    public DirectoryProperty getObjectsDir() {
+        return objectsDir;
+    }
+
+    public RegularFileProperty getModuleFile() {
+        return moduleFile;
+    }
+
+    @Override
+    public FileCollection getObjects() {
+        return objectsDir.getAsFileTree().matching(new PatternSet().include("**/*.obj", "**/*.o"));
     }
 }

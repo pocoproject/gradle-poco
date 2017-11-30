@@ -18,6 +18,7 @@ package org.gradle.test.fixtures.maven;
 
 import org.gradle.test.fixtures.GradleModuleMetadata;
 import org.gradle.test.fixtures.Module;
+import org.gradle.test.fixtures.ModuleArtifact;
 import org.gradle.test.fixtures.file.TestFile;
 
 import java.util.Map;
@@ -46,6 +47,16 @@ public abstract class DelegatingMavenModule<T extends MavenModule> implements Ma
     @Override
     public String getPath() {
         return backingModule.getPath();
+    }
+
+    @Override
+    public void assertNotPublished() {
+        backingModule.assertNotPublished();
+    }
+
+    @Override
+    public void assertPublished() {
+        backingModule.assertPublished();
     }
 
     @Override
@@ -93,6 +104,31 @@ public abstract class DelegatingMavenModule<T extends MavenModule> implements Ma
     }
 
     @Override
+    public ModuleArtifact getArtifact() {
+        return backingModule.getArtifact();
+    }
+
+    @Override
+    public ModuleArtifact getArtifact(Map<String, ?> options) {
+        return backingModule.getArtifact(options);
+    }
+
+    @Override
+    public ModuleArtifact getArtifact(String relativePath) {
+        return backingModule.getArtifact(relativePath);
+    }
+
+    @Override
+    public ModuleArtifact getPom() {
+        return backingModule.getPom();
+    }
+
+    @Override
+    public ModuleArtifact getModuleMetadata() {
+        return backingModule.getModuleMetadata();
+    }
+
+    @Override
     public String getArtifactId() {
         return backingModule.getArtifactId();
     }
@@ -108,7 +144,7 @@ public abstract class DelegatingMavenModule<T extends MavenModule> implements Ma
     }
 
     @Override
-    public MavenMetaData getRootMetaData() {
+    public ModuleArtifact getRootMetaData() {
         return backingModule.getRootMetaData();
     }
 
@@ -146,6 +182,12 @@ public abstract class DelegatingMavenModule<T extends MavenModule> implements Ma
     @Override
     public T hasType(String type) {
         backingModule.hasType(type);
+        return t();
+    }
+
+    @Override
+    public MavenModule variant(String variant, Map<String, String> attributes) {
+        backingModule.variant(variant, attributes);
         return t();
     }
 

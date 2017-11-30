@@ -15,6 +15,7 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.projectmodule
 
+import org.gradle.api.artifacts.ModuleIdentifier
 import org.gradle.api.artifacts.component.ComponentIdentifier
 import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory
 import org.gradle.internal.component.local.model.LocalComponentMetadata
@@ -42,6 +43,7 @@ class ProjectDependencyResolverTest extends Specification {
         def dependencyMetaData = Stub(DependencyMetadata) {
             getSelector() >> selector
         }
+        def targetModuleId = Stub(ModuleIdentifier)
         def id = newProjectId(":project")
 
         when:
@@ -72,6 +74,7 @@ class ProjectDependencyResolverTest extends Specification {
     def "doesn't try to resolve non-project dependency"() {
         def result = Mock(BuildableComponentIdResolveResult)
         def dependencyMetaData = Stub(DependencyMetadata)
+        def targetModuleId = Stub(ModuleIdentifier)
 
         when:
         resolver.resolve(dependencyMetaData, result)

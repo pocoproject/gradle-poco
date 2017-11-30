@@ -23,6 +23,7 @@ import org.gradle.api.Task;
 import org.gradle.api.execution.TaskExecutionGraph;
 import org.gradle.api.execution.TaskExecutionGraphListener;
 import org.gradle.api.execution.TaskExecutionListener;
+import org.gradle.api.internal.StartParameterInternal;
 import org.gradle.api.internal.classpath.ModuleRegistry;
 import org.gradle.api.internal.file.TestFiles;
 import org.gradle.api.logging.StandardOutputListener;
@@ -37,6 +38,7 @@ import org.gradle.initialization.DefaultBuildRequestContext;
 import org.gradle.initialization.DefaultBuildRequestMetaData;
 import org.gradle.initialization.NoOpBuildEventConsumer;
 import org.gradle.initialization.ReportedException;
+import org.gradle.initialization.layout.BuildLayoutFactory;
 import org.gradle.integtests.fixtures.logging.GroupedOutputFixture;
 import org.gradle.internal.Factory;
 import org.gradle.internal.SystemProperties;
@@ -281,12 +283,13 @@ public class InProcessGradleExecuter extends AbstractGradleExecuter {
         resetTempDirLocation();
 
         // TODO: Fix tests that rely on this being set before we process arguments like this...
-        StartParameter startParameter = new StartParameter();
+        StartParameter startParameter = new StartParameterInternal();
         startParameter.setCurrentDir(getWorkingDir());
 
         // TODO: Reuse more of CommandlineActionFactory
         CommandLineParser parser = new CommandLineParser();
-        ParametersConverter parametersConverter = new ParametersConverter();
+        BuildLayoutFactory buildLayoutFactory = BuildLayoutFactory.forDefaultScriptingLanguages();
+        ParametersConverter parametersConverter = new ParametersConverter(buildLayoutFactory);
         parametersConverter.configure(parser);
         final Parameters parameters = new Parameters(startParameter);
         parametersConverter.convert(parser.parse(getAllArgs()), parameters);

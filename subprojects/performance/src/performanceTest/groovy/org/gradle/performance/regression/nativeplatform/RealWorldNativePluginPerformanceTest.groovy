@@ -29,7 +29,7 @@ import spock.lang.Unroll
 class RealWorldNativePluginPerformanceTest extends AbstractCrossVersionPerformanceTest {
 
     def setup() {
-        runner.targetVersions = ["4.3-20171011120745+0000"]
+        runner.targetVersions = ["4.4-20171108153325+0000"]
     }
 
     @Unroll
@@ -37,7 +37,7 @@ class RealWorldNativePluginPerformanceTest extends AbstractCrossVersionPerforman
         given:
         runner.testProject = testProject
         runner.tasksToRun = ['build']
-        runner.gradleOpts = ["-Xms1500m", "-Xmx1500m"]
+        runner.gradleOpts = ["-Xms1500m", "-Xmx2500m"]
         runner.warmUpRuns = 5
         runner.runs = 10
 

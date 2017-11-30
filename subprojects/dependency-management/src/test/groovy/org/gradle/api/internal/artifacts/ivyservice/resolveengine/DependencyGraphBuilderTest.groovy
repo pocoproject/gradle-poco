@@ -16,30 +16,33 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine
 
 import org.apache.ivy.core.module.id.ModuleRevisionId
+import org.gradle.api.Action
 import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.artifacts.ModuleVersionIdentifier
-import org.gradle.api.artifacts.ModuleVersionSelector
 import org.gradle.api.artifacts.ResolveException
 import org.gradle.api.artifacts.component.ComponentIdentifier
 import org.gradle.api.artifacts.component.ComponentSelector
+import org.gradle.api.internal.ExperimentalFeatures
+import org.gradle.api.internal.artifacts.ComponentSelectorConverter
 import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal
+import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.api.internal.artifacts.dsl.ModuleReplacementsData
+import org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution.DefaultDependencySubstitutionApplicator
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder.DependencyGraphBuilder
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphNode
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphPathResolver
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphVisitor
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder.DependencyGraphBuilder
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.DefaultConflictHandler
 import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact
-import org.gradle.api.internal.attributes.AttributeContainerInternal
 import org.gradle.api.internal.attributes.AttributesSchemaInternal
+import org.gradle.api.internal.attributes.ImmutableAttributes
 import org.gradle.api.specs.Specs
 import org.gradle.internal.component.external.descriptor.DefaultExclude
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
-import org.gradle.internal.component.external.model.DefaultModuleComponentSelector
 import org.gradle.internal.component.local.model.DefaultLocalComponentMetadata
 import org.gradle.internal.component.local.model.DslOriginDependencyMetadataWrapper
 import org.gradle.internal.component.model.ComponentOverrideMetadata
@@ -59,7 +62,7 @@ import org.gradle.internal.resolve.result.BuildableComponentResolveResult
 import spock.lang.Specification
 
 import static org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier.newId
-import static org.gradle.api.internal.artifacts.DefaultModuleVersionSelector.newSelector
+import static org.gradle.internal.component.external.model.DefaultModuleComponentSelector.newSelector
 import static org.gradle.internal.component.local.model.TestComponentIdentifiers.newProjectId
 
 class DependencyGraphBuilderTest extends Specification {
@@ -68,9 +71,7 @@ class DependencyGraphBuilderTest extends Specification {
     def idResolver = Mock(DependencyToComponentIdResolver)
     def metaDataResolver = Mock(ComponentMetaDataResolver)
     def attributesSchema = Mock(AttributesSchemaInternal)
-    def attributes = Mock(AttributeContainerInternal) {
-        isEmpty() >> true
-    }
+    def attributes = ImmutableAttributes.EMPTY
     def root = project('root', '1.0', ['root'])
     def moduleResolver = Mock(ResolveContextToComponentResolver)
     def moduleReplacements = Mock(ModuleReplacementsData)
@@ -90,6 +91,12 @@ class DependencyGraphBuilderTest extends Specification {
             args[0].execute(queue)
         }
     }
+    def dependencySubstitutionApplicator = new DefaultDependencySubstitutionApplicator(Mock(Action))
+    def componentSelectorConverter = Mock(ComponentSelectorConverter) {
+        getModule(_) >> { ComponentSelector selector ->
+            DefaultModuleIdentifier.newId(selector.group, selector.module)
+        }
+    }
 
     DependencyGraphBuilder builder
 
@@ -98,7 +105,7 @@ class DependencyGraphBuilderTest extends Specification {
         _ * configuration.path >> 'root'
         _ * moduleResolver.resolve(_, _) >> { it[1].resolved(root) }
 
-        builder = new DependencyGraphBuilder(idResolver, metaDataResolver, moduleResolver, new DefaultConflictHandler(conflictResolver, moduleReplacements), Specs.satisfyAll(), attributesSchema, moduleIdentifierFactory, moduleExclusions, buildOperationProcessor, moduleReplacements)
+        builder = new DependencyGraphBuilder(idResolver, metaDataResolver, moduleResolver, new DefaultConflictHandler(conflictResolver, moduleReplacements), Specs.satisfyAll(), attributesSchema, moduleExclusions, buildOperationProcessor, moduleReplacements, dependencySubstitutionApplicator, componentSelectorConverter, new ExperimentalFeatures())
     }
 
     private TestGraphVisitor resolve(DependencyGraphBuilder builder = this.builder) {
@@ -544,8 +551,8 @@ class DependencyGraphBuilderTest extends Specification {
 
     def "does not include filtered dependencies"() {
         given:
-        def spec = { DependencyMetadata dep -> dep.requested.name != 'c' }
-        builder = new DependencyGraphBuilder(idResolver, metaDataResolver, moduleResolver, new DefaultConflictHandler(conflictResolver, moduleReplacements), spec, attributesSchema, moduleIdentifierFactory, moduleExclusions, buildOperationProcessor, moduleReplacements)
+        def spec = { DependencyMetadata dep -> dep.selector.module != 'c' }
+        builder = new DependencyGraphBuilder(idResolver, metaDataResolver, moduleResolver, new DefaultConflictHandler(conflictResolver, moduleReplacements), spec, attributesSchema, moduleExclusions, buildOperationProcessor, moduleReplacements, dependencySubstitutionApplicator, componentSelectorConverter, new ExperimentalFeatures())
 
         def a = revision('a')
         def b = revision('b')
@@ -712,7 +719,7 @@ class DependencyGraphBuilderTest extends Specification {
         def result = resolve()
 
         then:
-        result.unresolvedDependencies == [newSelector('group', 'c', '1.0')] as Set
+        result.unresolvedDependencies == [newSelector('group', 'c', new DefaultMutableVersionConstraint('1.0'))] as Set
 
         when:
         result.rethrowFailure()
@@ -739,7 +746,7 @@ class DependencyGraphBuilderTest extends Specification {
         def result = resolve()
 
         then:
-        result.unresolvedDependencies == [newSelector('group', 'unknown', '1.0')] as Set
+        result.unresolvedDependencies == [newSelector('group', 'unknown', new DefaultMutableVersionConstraint('1.0'))] as Set
 
         when:
         result.rethrowFailure()
@@ -765,7 +772,7 @@ class DependencyGraphBuilderTest extends Specification {
         def result = resolve()
 
         then:
-        result.unresolvedDependencies == [newSelector('group', 'c', '1.0')] as Set
+        result.unresolvedDependencies == [newSelector('group', 'c', new DefaultMutableVersionConstraint('1.0'))] as Set
 
         when:
         result.rethrowFailure()
@@ -792,7 +799,7 @@ class DependencyGraphBuilderTest extends Specification {
         def result = resolve()
 
         then:
-        result.unresolvedDependencies == [newSelector('group', 'c', '1.0')] as Set
+        result.unresolvedDependencies == [newSelector('group', 'c', new DefaultMutableVersionConstraint('1.0'))] as Set
 
         when:
         result.rethrowFailure()
@@ -819,7 +826,7 @@ class DependencyGraphBuilderTest extends Specification {
         def result = resolve()
 
         then:
-        result.unresolvedDependencies == [newSelector('group', 'c', '1.0')] as Set
+        result.unresolvedDependencies == [newSelector('group', 'c', new DefaultMutableVersionConstraint('1.0'))] as Set
 
         when:
         result.rethrowFailure()
@@ -845,7 +852,7 @@ class DependencyGraphBuilderTest extends Specification {
         def result = resolve()
 
         then:
-        result.unresolvedDependencies == [newSelector('group', 'c', '1.0')] as Set
+        result.unresolvedDependencies == [newSelector('group', 'c', new DefaultMutableVersionConstraint('1.0'))] as Set
 
         when:
         result.rethrowFailure()
@@ -1041,7 +1048,7 @@ class DependencyGraphBuilderTest extends Specification {
         def dependencyMetaData = dependsOn(args, from, to.id)
         selectorResolvesTo(dependencyMetaData, to.componentId, to.id)
         1 * metaDataResolver.resolve(to.componentId, _, _) >> { ComponentIdentifier id, ComponentOverrideMetadata requestMetaData, BuildableComponentResolveResult result ->
-            result.failed(new ModuleVersionResolveException(newSelector("a", "b", "c"), "broken"))
+            result.failed(new ModuleVersionResolveException(newSelector("a", "b", new DefaultMutableVersionConstraint("c")), "broken"))
         }
     }
 
@@ -1056,7 +1063,7 @@ class DependencyGraphBuilderTest extends Specification {
     def brokenSelector(Map<String, ?> args = [:], def from, String to) {
         def dependencyMetaData = dependsOn(args, from, newId("group", to, "1.0"))
         1 * idResolver.resolve(dependencyMetaData, _) >> { DependencyMetadata dep, BuildableComponentIdResolveResult result ->
-            result.failed(new ModuleVersionResolveException(newSelector("a", "b", "c"), "broken"))
+            result.failed(new ModuleVersionResolveException(newSelector("a", "b", new DefaultMutableVersionConstraint("c")), "broken"))
         }
     }
 
@@ -1064,14 +1071,14 @@ class DependencyGraphBuilderTest extends Specification {
         ModuleVersionIdentifier dependencyId = args.revision ? newId(to.group, to.name, args.revision) : to
         boolean transitive = args.transitive == null || args.transitive
         boolean force = args.force
-        ModuleVersionSelector selector = newSelector(dependencyId.group, dependencyId.name, dependencyId.version)
-        ComponentSelector componentSelector = DefaultModuleComponentSelector.newSelector(selector)
+        boolean optional = args.optional ?: false
+        ComponentSelector componentSelector = newSelector(dependencyId.group, dependencyId.name, new DefaultMutableVersionConstraint(dependencyId.version))
         def excludeRules = []
         if (args.exclude) {
             ComponentResolveMetadata excluded = args.exclude
             excludeRules << new DefaultExclude(moduleIdentifierFactory.module(excluded.id.group, excluded.id.name))
         }
-        def dependencyMetaData = new LocalComponentDependencyMetadata(componentSelector, selector, "default", null, "default", [] as Set<IvyArtifactName>,
+        def dependencyMetaData = new LocalComponentDependencyMetadata(componentSelector, "default", null, "default", [] as Set<IvyArtifactName>,
             excludeRules, force, false, transitive)
         dependencyMetaData = new DslOriginDependencyMetadataWrapper(dependencyMetaData, Stub(ModuleDependency))
         from.getDependencies().add(dependencyMetaData)
@@ -1091,9 +1098,9 @@ class DependencyGraphBuilderTest extends Specification {
     static class TestGraphVisitor implements DependencyGraphVisitor {
         def root
         def components = new LinkedHashSet()
-        final Map<ModuleVersionSelector, FailureDetails> failures = new LinkedHashMap<>()
+        final Map<ComponentSelector, FailureDetails> failures = new LinkedHashMap<>()
 
-        Set<ModuleVersionSelector> getUnresolvedDependencies() {
+        Set<ComponentSelector> getUnresolvedDependencies() {
             return failures.keySet()
         }
 
@@ -1115,10 +1122,10 @@ class DependencyGraphBuilderTest extends Specification {
         void visitEdges(DependencyGraphNode node) {
             node.outgoingEdges.each {
                 if (it.failure) {
-                    def breakage = failures.get(it.requestedModuleVersion)
+                    def breakage = failures.get(it.requested)
                     if (breakage == null) {
                         breakage = new FailureDetails(it.failure)
-                        failures.put(it.requestedModuleVersion, breakage)
+                        failures.put(it.requested, breakage)
                     }
                     breakage.requiredBy << it.from
                 }

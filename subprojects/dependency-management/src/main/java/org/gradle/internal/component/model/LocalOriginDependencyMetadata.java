@@ -18,8 +18,6 @@ package org.gradle.internal.component.model;
 
 import org.gradle.api.artifacts.component.ComponentSelector;
 
-import java.util.List;
-
 /**
  * A simplified dependency, that maps from a single module configuration to a single target configuration.
  */
@@ -27,11 +25,6 @@ public interface LocalOriginDependencyMetadata extends DependencyMetadata {
     String getModuleConfiguration();
 
     String getDependencyConfiguration();
-
-    List<Exclude> getExcludes();
-
-    @Override
-    LocalOriginDependencyMetadata withRequestedVersion(String requestedVersion);
 
     @Override
     LocalOriginDependencyMetadata withTarget(ComponentSelector target);

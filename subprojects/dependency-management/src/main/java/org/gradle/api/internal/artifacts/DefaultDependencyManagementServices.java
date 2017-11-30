@@ -24,6 +24,7 @@ import org.gradle.api.artifacts.dsl.DependencyHandler;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
 import org.gradle.api.attributes.AttributesSchema;
 import org.gradle.api.internal.DomainObjectContext;
+import org.gradle.api.internal.ExperimentalFeatures;
 import org.gradle.api.internal.InstantiatorFactory;
 import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory;
 import org.gradle.api.internal.artifacts.configurations.ConfigurationContainerInternal;
@@ -72,6 +73,7 @@ import org.gradle.api.internal.component.ComponentTypeRegistry;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.filestore.ivy.ArtifactIdentifierFileStore;
+import org.gradle.api.internal.model.NamedObjectInstantiator;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.tasks.TaskResolver;
 import org.gradle.initialization.ProjectAccessListener;
@@ -136,7 +138,8 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                                                           ImmutableAttributesFactory attributesFactory,
                                                           ImmutableModuleIdentifierFactory moduleIdentifierFactory,
                                                           InstantiatorFactory instantiatorFactory,
-                                                          FileResourceRepository fileResourceRepository) {
+                                                          FileResourceRepository fileResourceRepository,
+                                                          ExperimentalFeatures experimentalFeatures) {
             return new DefaultBaseRepositoryFactory(
                 localMavenRepositoryLocator,
                 fileResolver,
@@ -145,12 +148,13 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                 artifactIdentifierFileStore,
                 externalResourceFileStore,
                 new GradlePomModuleDescriptorParser(versionSelectorScheme, moduleIdentifierFactory, fileResourceRepository),
-                new ModuleMetadataParser(attributesFactory),
+                new ModuleMetadataParser(attributesFactory, NamedObjectInstantiator.INSTANCE),
                 authenticationSchemeRegistry,
                 ivyContextManager,
                 moduleIdentifierFactory,
                 instantiatorFactory,
-                fileResourceRepository
+                fileResourceRepository,
+                experimentalFeatures
             );
         }
 
@@ -162,24 +166,27 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                                                                     ListenerManager listenerManager, DependencyMetaDataProvider metaDataProvider, ProjectAccessListener projectAccessListener,
                                                                     ProjectFinder projectFinder, ConfigurationComponentMetaDataBuilder metaDataBuilder, FileCollectionFactory fileCollectionFactory,
                                                                     GlobalDependencyResolutionRules globalDependencyResolutionRules, VcsMappingsInternal vcsMappingsInternal, ComponentIdentifierFactory componentIdentifierFactory,
-                                                                    BuildOperationExecutor buildOperationExecutor, ImmutableAttributesFactory attributesFactory, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
+                                                                    BuildOperationExecutor buildOperationExecutor, ImmutableAttributesFactory attributesFactory,
+                                                                    ImmutableModuleIdentifierFactory moduleIdentifierFactory, ComponentSelectorConverter componentSelectorConverter) {
             return instantiator.newInstance(DefaultConfigurationContainer.class,
-                    configurationResolver,
-                    instantiator,
-                    domainObjectContext,
-                    listenerManager,
-                    metaDataProvider,
-                    projectAccessListener,
-                    projectFinder,
-                    metaDataBuilder,
-                    fileCollectionFactory,
-                    globalDependencyResolutionRules.getDependencySubstitutionRules(),
-                    vcsMappingsInternal,
-                    componentIdentifierFactory,
-                    buildOperationExecutor,
-                    taskResolverFor(domainObjectContext),
-                    attributesFactory, moduleIdentifierFactory
-                );
+                configurationResolver,
+                instantiator,
+                domainObjectContext,
+                listenerManager,
+                metaDataProvider,
+                projectAccessListener,
+                projectFinder,
+                metaDataBuilder,
+                fileCollectionFactory,
+                globalDependencyResolutionRules.getDependencySubstitutionRules(),
+                vcsMappingsInternal,
+                componentIdentifierFactory,
+                buildOperationExecutor,
+                taskResolverFor(domainObjectContext),
+                attributesFactory,
+                moduleIdentifierFactory,
+                componentSelectorConverter
+            );
         }
 
         private TaskResolver taskResolverFor(DomainObjectContext domainObjectContext) {
@@ -235,7 +242,9 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                                                        ImmutableModuleIdentifierFactory moduleIdentifierFactory,
                                                        ImmutableAttributesFactory attributesFactory,
                                                        BuildOperationExecutor buildOperationExecutor,
-                                                       ArtifactTypeRegistry artifactTypeRegistry) {
+                                                       ArtifactTypeRegistry artifactTypeRegistry,
+                                                       VersionSelectorScheme versionSelectorScheme,
+                                                       ComponentSelectorConverter componentSelectorConverter) {
             return new ErrorHandlingConfigurationResolver(
                     new ShortCircuitEmptyConfigurationResolver(
                         new DefaultConfigurationResolver(
@@ -253,7 +262,9 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                                 attributesSchema),
                             moduleIdentifierFactory,
                             buildOperationExecutor,
-                            artifactTypeRegistry),
+                            artifactTypeRegistry,
+                            versionSelectorScheme,
+                            componentSelectorConverter),
                         componentIdentifierFactory,
                         moduleIdentifierFactory));
         }
@@ -311,7 +322,7 @@ public class DefaultDependencyManagementServices implements DependencyManagement
             IvyBackedArtifactPublisher publisher = new IvyBackedArtifactPublisher(
                 services.get(ConfigurationComponentMetaDataBuilder.class),
                 new DefaultIvyDependencyPublisher(),
-                new IvyXmlModuleDescriptorWriter()
+                new IvyXmlModuleDescriptorWriter(services.get(ComponentSelectorConverter.class))
             );
             return new IvyContextualArtifactPublisher(services.get(IvyContextManager.class), publisher);
         }

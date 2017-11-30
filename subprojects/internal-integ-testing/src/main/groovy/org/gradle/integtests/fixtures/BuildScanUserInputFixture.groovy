@@ -28,6 +28,7 @@ final class BuildScanUserInputFixture {
     public static final String NO = 'no'
     public static final int EOF = 4
     public static final String PROMPT = "$QUESTION [$YES, $NO]"
+    public static final String BUILD_SCAN_ERROR_MESSAGE_HINT = 'Run with --scan to get full insights.'
     private static final String ANSWER_PREFIX = 'License accepted:'
 
     private BuildScanUserInputFixture() {}
@@ -63,14 +64,16 @@ final class BuildScanUserInputFixture {
         "$ANSWER_PREFIX $answer"
     }
 
-    static void writeToStdInAndClose(GradleHandle gradleHandle, input) {
+    static void writeToStdIn(GradleHandle gradleHandle, input) {
         gradleHandle.stdinPipe.write(input)
-        writeLineSeparatorToStdInAndClose(gradleHandle)
+        writeLineSeparatorToStdIn(gradleHandle)
     }
 
-    private static void writeLineSeparatorToStdInAndClose(GradleHandle gradleHandle) {
+    private static void writeLineSeparatorToStdIn(GradleHandle gradleHandle) {
         gradleHandle.stdinPipe.write(getPlatformLineSeparator().bytes)
-        gradleHandle.stdinPipe.flush()
+    }
+
+    static void closeStdIn(GradleHandle gradleHandle) {
         gradleHandle.stdinPipe.close()
     }
 

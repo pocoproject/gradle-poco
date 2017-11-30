@@ -22,12 +22,14 @@ import org.gradle.api.artifacts.UnresolvedDependency;
 import org.gradle.api.artifacts.dsl.RepositoryHandler;
 import org.gradle.api.artifacts.result.ResolvedComponentResult;
 import org.gradle.api.internal.artifacts.ArtifactDependencyResolver;
+import org.gradle.api.internal.artifacts.ComponentSelectorConverter;
 import org.gradle.api.internal.artifacts.ConfigurationResolver;
 import org.gradle.api.internal.artifacts.GlobalDependencyResolutionRules;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ResolverResults;
 import org.gradle.api.internal.artifacts.configurations.ConfigurationInternal;
 import org.gradle.api.internal.artifacts.configurations.ResolutionStrategyInternal;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelectorScheme;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.BuildDependenciesOnlyVisitedArtifactSet;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.DefaultResolvedArtifactsBuilder;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.DependencyArtifactsVisitor;
@@ -82,6 +84,8 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
     private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
     private final BuildOperationExecutor buildOperationExecutor;
     private final ArtifactTypeRegistry artifactTypeRegistry;
+    private final VersionSelectorScheme versionSelectorScheme;
+    private final ComponentSelectorConverter componentSelectorConverter;
 
     public DefaultConfigurationResolver(ArtifactDependencyResolver resolver, RepositoryHandler repositories,
                                         GlobalDependencyResolutionRules metadataHandler,
@@ -91,7 +95,9 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
                                         ArtifactTransforms artifactTransforms,
                                         ImmutableModuleIdentifierFactory moduleIdentifierFactory,
                                         BuildOperationExecutor buildOperationExecutor,
-                                        ArtifactTypeRegistry artifactTypeRegistry) {
+                                        ArtifactTypeRegistry artifactTypeRegistry,
+                                        VersionSelectorScheme versionSelectorScheme,
+                                        ComponentSelectorConverter componentSelectorConverter) {
         this.resolver = resolver;
         this.repositories = repositories;
         this.metadataHandler = metadataHandler;
@@ -102,12 +108,14 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
         this.moduleIdentifierFactory = moduleIdentifierFactory;
         this.buildOperationExecutor = buildOperationExecutor;
         this.artifactTypeRegistry = artifactTypeRegistry;
+        this.versionSelectorScheme = versionSelectorScheme;
+        this.componentSelectorConverter = componentSelectorConverter;
     }
 
     @Override
     public void resolveBuildDependencies(ConfigurationInternal configuration, ResolverResults result) {
         ResolutionStrategyInternal resolutionStrategy = configuration.getResolutionStrategy();
-        ResolutionFailureCollector failureCollector = new ResolutionFailureCollector();
+        ResolutionFailureCollector failureCollector = new ResolutionFailureCollector(componentSelectorConverter);
         DefaultResolvedArtifactsBuilder artifactsVisitor = new DefaultResolvedArtifactsBuilder(buildProjectDependencies, resolutionStrategy.getSortOrder());
         resolver.resolve(configuration, ImmutableList.<ResolutionAwareRepository>of(), metadataHandler, IS_LOCAL_EDGE, failureCollector, artifactsVisitor, attributesSchema, artifactTypeRegistry);
         result.graphResolved(new BuildDependenciesOnlyVisitedArtifactSet(failureCollector.complete(), artifactsVisitor.complete(),  artifactTransforms));
@@ -125,13 +133,13 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
 
         BinaryStore newModelStore = stores.nextBinaryStore();
         Store<ResolvedComponentResult> newModelCache = stores.newModelCache();
-        StreamingResolutionResultBuilder newModelBuilder = new StreamingResolutionResultBuilder(newModelStore, newModelCache, moduleIdentifierFactory);
+        StreamingResolutionResultBuilder newModelBuilder = new StreamingResolutionResultBuilder(newModelStore, newModelCache, moduleIdentifierFactory, versionSelectorScheme);
 
         ResolvedLocalComponentsResultGraphVisitor localComponentsVisitor = new ResolvedLocalComponentsResultGraphVisitor();
 
         DefaultResolvedArtifactsBuilder artifactsBuilder = new DefaultResolvedArtifactsBuilder(buildProjectDependencies, configuration.getResolutionStrategy().getSortOrder());
         FileDependencyCollectingGraphVisitor fileDependencyVisitor = new FileDependencyCollectingGraphVisitor();
-        ResolutionFailureCollector failureCollector = new ResolutionFailureCollector();
+        ResolutionFailureCollector failureCollector = new ResolutionFailureCollector(componentSelectorConverter);
         DependencyGraphVisitor graphVisitor = new CompositeDependencyGraphVisitor(newModelBuilder, localComponentsVisitor, failureCollector);
         DependencyArtifactsVisitor artifactsVisitor = new CompositeDependencyArtifactsVisitor(oldModelVisitor, fileDependencyVisitor, artifactsBuilder);
 

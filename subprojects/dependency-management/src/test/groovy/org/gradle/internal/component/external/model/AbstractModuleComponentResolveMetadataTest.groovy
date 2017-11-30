@@ -18,12 +18,13 @@ package org.gradle.internal.component.external.model
 
 import com.google.common.collect.ImmutableListMultimap
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.internal.component.external.descriptor.Configuration
 import org.gradle.internal.component.model.DependencyMetadata
 import org.gradle.internal.component.model.ModuleSource
 import spock.lang.Specification
 
-import static org.gradle.api.internal.artifacts.DefaultModuleVersionSelector.newSelector
+import static org.gradle.internal.component.external.model.DefaultModuleComponentSelector.newSelector
 
 abstract class AbstractModuleComponentResolveMetadataTest extends Specification {
 
@@ -67,10 +68,10 @@ abstract class AbstractModuleComponentResolveMetadataTest extends Specification 
         def compile = md.getConfiguration("compile")
 
         then:
-        runtime.dependencies*.requested*.version == ["1.1", "1.2", "1.3", "1.5"]
+        runtime.dependencies*.selector*.versionConstraint.preferredVersion == ["1.1", "1.2", "1.3", "1.5"]
         runtime.dependencies.is(runtime.dependencies)
 
-        compile.dependencies*.requested*.version == ["1.2", "1.3", "1.5"]
+        compile.dependencies*.selector*.versionConstraint.preferredVersion == ["1.2", "1.3", "1.5"]
         compile.dependencies.is(compile.dependencies)
     }
 
@@ -95,10 +96,10 @@ abstract class AbstractModuleComponentResolveMetadataTest extends Specification 
     }
 
     def dependency(String org, String module, String version) {
-        dependencies.add(new IvyDependencyMetadata(newSelector(org, module, version), ImmutableListMultimap.of()))
+        dependencies.add(new IvyDependencyMetadata(newSelector(org, module, new DefaultMutableVersionConstraint(version)), ImmutableListMultimap.of()))
     }
 
     def dependency(String org, String module, String version, String fromConf, String toConf) {
-        dependencies.add(new IvyDependencyMetadata(newSelector(org, module, version), ImmutableListMultimap.of(fromConf, toConf)))
+        dependencies.add(new IvyDependencyMetadata(newSelector(org, module, new DefaultMutableVersionConstraint(version)), ImmutableListMultimap.of(fromConf, toConf)))
     }
 }

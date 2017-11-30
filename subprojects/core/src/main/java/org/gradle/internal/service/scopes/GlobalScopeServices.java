@@ -17,7 +17,6 @@
 package org.gradle.internal.service.scopes;
 
 import com.google.common.collect.Iterables;
-import org.gradle.StartParameter;
 import org.gradle.api.execution.internal.DefaultTaskInputsListener;
 import org.gradle.api.execution.internal.TaskInputsListener;
 import org.gradle.api.internal.AsmBackedClassGenerator;
@@ -28,6 +27,7 @@ import org.gradle.api.internal.DefaultClassPathRegistry;
 import org.gradle.api.internal.DefaultInstantiatorFactory;
 import org.gradle.api.internal.DynamicModulesClassPathProvider;
 import org.gradle.api.internal.InstantiatorFactory;
+import org.gradle.api.internal.StartParameterInternal;
 import org.gradle.api.internal.cache.StringInterner;
 import org.gradle.api.internal.changedetection.state.InMemoryCacheDecoratorFactory;
 import org.gradle.api.internal.classpath.DefaultModuleRegistry;
@@ -66,6 +66,7 @@ import org.gradle.initialization.FlatClassLoaderRegistry;
 import org.gradle.initialization.GradleLauncherFactory;
 import org.gradle.initialization.JdkToolsInitializer;
 import org.gradle.initialization.LegacyTypesSupport;
+import org.gradle.initialization.layout.BuildLayoutFactory;
 import org.gradle.internal.Factory;
 import org.gradle.internal.classloader.DefaultClassLoaderFactory;
 import org.gradle.internal.classpath.ClassPath;
@@ -170,7 +171,7 @@ public class GlobalScopeServices extends BasicGlobalScopeServices {
         return environment;
     }
 
-    CommandLineConverter<StartParameter> createCommandLine2StartParameterConverter() {
+    CommandLineConverter<StartParameterInternal> createCommandLine2StartParameterConverter() {
         return new DefaultCommandLineConverter();
     }
 
@@ -320,11 +321,15 @@ public class GlobalScopeServices extends BasicGlobalScopeServices {
     }
 
     ScriptingLanguages createScriptingLanguages() {
-        return new DefaultScriptingLanguages();
+        return DefaultScriptingLanguages.create();
     }
 
     ScriptFileResolver createScriptFileResolver(ScriptingLanguages scriptingLanguages) {
         return DefaultScriptFileResolver.forScriptingLanguages(scriptingLanguages);
+    }
+
+    BuildLayoutFactory createBuildLayoutFactory(ScriptFileResolver scriptFileResolver) {
+        return new BuildLayoutFactory(scriptFileResolver);
     }
 
     TaskInputsListener createTaskInputsListener() {

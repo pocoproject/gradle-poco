@@ -19,15 +19,15 @@ package org.gradle.internal.component.external.model;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import org.gradle.api.artifacts.ModuleVersionSelector;
+import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.external.descriptor.Artifact;
 import org.gradle.internal.component.external.descriptor.MavenScope;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.ConfigurationNotFoundException;
 import org.gradle.internal.component.model.DefaultDependencyMetadata;
-import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.Exclude;
 
 import java.util.Collection;
@@ -36,16 +36,14 @@ import java.util.Set;
 
 public class MavenDependencyMetadata extends DefaultDependencyMetadata {
     private final MavenScope scope;
-    private final boolean optional;
     private final Set<String> moduleConfigurations;
     private final List<Exclude> excludes;
 
-    public MavenDependencyMetadata(MavenScope scope, boolean optional, ModuleVersionSelector requested, List<Artifact> artifacts, List<Exclude> excludes) {
-        super(requested, artifacts);
+    public MavenDependencyMetadata(MavenScope scope, boolean optional, ModuleComponentSelector selector, List<Artifact> artifacts, List<Exclude> excludes) {
+        super(selector, artifacts, optional);
         this.scope = scope;
-        this.optional = optional;
-        if (optional && scope != MavenScope.Test && scope != MavenScope.System) {
-            moduleConfigurations = ImmutableSet.of("optional");
+        if (isOptional() && scope != MavenScope.Test && scope != MavenScope.System) {
+            moduleConfigurations = ImmutableSet.of("optional", scope.name().toLowerCase());
         } else {
             moduleConfigurations = ImmutableSet.of(scope.name().toLowerCase());
         }
@@ -54,7 +52,7 @@ public class MavenDependencyMetadata extends DefaultDependencyMetadata {
 
     @Override
     public String toString() {
-        return "dependency: " + getRequested() + ", scope: " + scope + ", optional: " + optional;
+        return "dependency: " + getSelector() + ", scope: " + scope + ", optional: " + isOptional();
     }
 
     public MavenScope getScope() {
@@ -64,10 +62,6 @@ public class MavenDependencyMetadata extends DefaultDependencyMetadata {
     @Override
     public Set<String> getModuleConfigurations() {
         return moduleConfigurations;
-    }
-
-    public boolean isOptional() {
-        return optional;
     }
 
     @Override
@@ -86,12 +80,16 @@ public class MavenDependencyMetadata extends DefaultDependencyMetadata {
     }
 
     @Override
-    public String getDynamicConstraintVersion() {
-        return getRequested().getVersion();
-    }
-
-    @Override
-    public Set<ConfigurationMetadata> selectConfigurations(ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
+    public Set<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
+        if (!targetComponent.getVariantsForGraphTraversal().isEmpty()) {
+            // This condition shouldn't be here, and attribute matching should always be applied when the target has variants
+            // however, the schemas and metadata implementations are not yet set up for this, so skip this unless:
+            // - the consumer has asked for something specific (by providing attributes), as the other metadata types are broken for the 'use defaults' case
+            // - or the target is a component from a Maven repo as we can assume this is well behaved
+            if (!consumerAttributes.isEmpty() || targetComponent instanceof MavenModuleResolveMetadata) {
+                return ImmutableSet.of(selectConfigurationUsingAttributeMatching(consumerAttributes, targetComponent, consumerSchema));
+            }
+        }
         Set<ConfigurationMetadata> result = Sets.newLinkedHashSet();
         boolean requiresCompile = fromConfiguration.getName().equals("compile");
         if (!requiresCompile) {
@@ -123,8 +121,8 @@ public class MavenDependencyMetadata extends DefaultDependencyMetadata {
     }
 
     @Override
-    protected DependencyMetadata withRequested(ModuleVersionSelector newRequested) {
-        return new MavenDependencyMetadata(scope, optional, newRequested, getDependencyArtifacts(), getExcludes());
+    protected ModuleDependencyMetadata withRequested(ModuleComponentSelector newRequested) {
+        return new MavenDependencyMetadata(scope, isOptional(), newRequested, getDependencyArtifacts(), getExcludes());
     }
 
     public List<Exclude> getExcludes() {
@@ -135,4 +133,10 @@ public class MavenDependencyMetadata extends DefaultDependencyMetadata {
     public List<Exclude> getExcludes(Collection<String> configurations) {
         return excludes;
     }
+
+    @Override
+    public String getDynamicConstraintVersion() {
+        return getSelector().getVersionConstraint().getPreferredVersion();
+    }
+
 }

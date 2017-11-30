@@ -17,8 +17,10 @@ package org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution
 
 import org.gradle.api.Action
 import org.gradle.api.artifacts.DependencySubstitution
-import org.gradle.api.internal.artifacts.DefaultModuleVersionSelector
+import org.gradle.api.internal.artifacts.DefaultImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.DependencySubstitutionInternal
+import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint
+import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.internal.component.external.model.DefaultModuleComponentSelector
 import org.gradle.internal.component.model.DependencyMetadata
 import org.gradle.internal.resolve.ModuleVersionResolveException
@@ -27,16 +29,15 @@ import org.gradle.internal.resolve.result.BuildableComponentIdResolveResult
 import spock.lang.Specification
 
 class DependencySubstitutionResolverSpec extends Specification {
-    def requested = new DefaultModuleVersionSelector("group", "module", "version")
-    def selector = new DefaultModuleComponentSelector("group", "module", "version")
+    def selector = new DefaultModuleComponentSelector("group", "module", DefaultImmutableVersionConstraint.of("version"))
+    def moduleIdentifierFactory = new DefaultImmutableModuleIdentifierFactory()
     def dependency = Mock(DependencyMetadata) {
-        getRequested() >> requested
         getSelector() >> selector
     }
     def result = Mock(BuildableComponentIdResolveResult)
     def target = Mock(DependencyToComponentIdResolver)
     def rule = Mock(Action)
-    def resolver = new DependencySubstitutionResolver(target, rule)
+    def resolver = new DependencySubstitutionResolver(target, new DefaultDependencySubstitutionApplicator(rule))
 
     def "passes through dependency when it does not match any rule"() {
         given:
@@ -62,7 +63,7 @@ class DependencySubstitutionResolverSpec extends Specification {
         resolver.resolve(dependency, result)
 
         then:
-        1 * dependency.withTarget(DefaultModuleComponentSelector.newSelector("group", "module", "new")) >> substitutedDependency
+        1 * dependency.withTarget(DefaultModuleComponentSelector.newSelector("group", "module", new DefaultMutableVersionConstraint("new"))) >> substitutedDependency
         1 * target.resolve(substitutedDependency, result)
     }
 

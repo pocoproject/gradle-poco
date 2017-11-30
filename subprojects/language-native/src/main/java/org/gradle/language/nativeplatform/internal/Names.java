@@ -21,12 +21,12 @@ import org.apache.commons.lang.StringUtils;
 public abstract class Names {
 
     public static Names of(String name) {
-        // Assume that names that end with 'Exe' represent the 'main' variant of the parent thing
-        if (name.equals("main") || name.equals("mainBundle")) {
+        // Assume that names that end with 'Bundle' represent the 'main' variant of the parent thing
+        if (name.equals("main")) {
             return new Main();
         }
-        if (name.endsWith("Bundle")) {
-            return new Other(name.substring(0, name.length() - 6));
+        if (name.endsWith("Executable")) {
+            return new Other(name.substring(0, name.length() - 10));
         }
         return new Other(name);
     }
@@ -39,6 +39,8 @@ public abstract class Names {
 
     public abstract String getCompileTaskName(String language);
 
+    public abstract String getDependTaskName(String language);
+
     // Includes trailing '/'
     public abstract String getDirName();
 
@@ -46,6 +48,11 @@ public abstract class Names {
         @Override
         public String getCompileTaskName(String language) {
             return "compile" + StringUtils.capitalize(language);
+        }
+
+        @Override
+        public String getDependTaskName(String language) {
+            return "depend" + StringUtils.capitalize(language);
         }
 
         @Override
@@ -114,6 +121,11 @@ public abstract class Names {
         @Override
         public String getCompileTaskName(String language) {
             return "compile" + capitalizedBaseName + StringUtils.capitalize(language);
+        }
+
+        @Override
+        public String getDependTaskName(String language) {
+            return "depend" + capitalizedBaseName + StringUtils.capitalize(language);
         }
 
         // Includes trailing '/'

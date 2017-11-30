@@ -28,6 +28,7 @@ import org.gradle.api.Incubating;
  * @since 4.0
  * @deprecated Use {@link Property} instead.
  */
+
 @Incubating
 @Deprecated
 public interface PropertyState<T> extends Property<T> {

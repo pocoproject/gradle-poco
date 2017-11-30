@@ -19,7 +19,6 @@ package org.gradle.jvm.application.tasks;
 import com.google.common.base.Function;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
-
 import org.gradle.api.Incubating;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.ConventionTask;
@@ -51,7 +50,7 @@ import java.io.File;
  * <p>
  * Note: the Gradle {@code "application"} plugin adds a pre-configured task of this type named {@code "startScripts"}.
  * <p>
- * The task generates separate scripts targeted at Microsoft Windows environments and UNIX-like environments (e.g. Linux, Mac OS X).
+ * The task generates separate scripts targeted at Microsoft Windows environments and UNIX-like environments (e.g. Linux, macOS).
  * The actual generation is implemented by the {@link #getWindowsStartScriptGenerator()} and {@link #getUnixStartScriptGenerator()} properties, of type {@link ScriptGenerator}.
  * <p>
  * Example:
@@ -275,7 +274,7 @@ public class CreateStartScripts extends ConventionTask {
     }
 
     @Input
-    private Iterable<String> getRelativeClasspath() {
+    protected Iterable<String> getRelativeClasspath() {
         //a list instance is needed here, as org.gradle.api.internal.changedetection.state.ValueSnapshotter.processValue() does not support
         //serializing Iterators directly
         return Lists.newArrayList(Iterables.transform(getClasspath().getFiles(), new Function<File, String>() {

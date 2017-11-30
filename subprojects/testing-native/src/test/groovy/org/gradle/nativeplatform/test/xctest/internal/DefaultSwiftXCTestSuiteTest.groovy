@@ -17,39 +17,21 @@
 package org.gradle.nativeplatform.test.xctest.internal
 
 import org.gradle.api.artifacts.ConfigurationContainer
-import org.gradle.api.internal.file.DefaultProjectLayout
-import org.gradle.api.internal.file.TestFiles
-import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.api.file.ProjectLayout
+import org.gradle.api.internal.file.FileOperations
+import org.gradle.language.swift.SwiftComponent
+import org.gradle.nativeplatform.test.xctest.SwiftXCTestSuite
 import org.gradle.util.TestUtil
-import org.junit.Rule
 import spock.lang.Specification
-import spock.lang.Subject
 
-@Subject(DefaultSwiftXCTestSuite)
 class DefaultSwiftXCTestSuiteTest extends Specification {
-    @Rule
-    TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
-    def fileOperations = TestFiles.fileOperations(tmpDir.testDirectory)
-    def projectLayout = new DefaultProjectLayout(tmpDir.testDirectory, TestFiles.resolver(tmpDir.testDirectory))
-    def testSuite = new DefaultSwiftXCTestSuite("test", TestUtil.objectFactory(), fileOperations, Stub(ConfigurationContainer), projectLayout)
-
-    def "has a bundle"() {
+    def "has only a single executables"() {
+        def componentUnderTest = Mock(SwiftComponent)
+        SwiftXCTestSuite testSuite = new DefaultSwiftXCTestSuite("test", Mock(ProjectLayout), Stub(FileOperations), TestUtil.objectFactory(), Stub(ConfigurationContainer))
+        testSuite.testedComponent.set(componentUnderTest)
         expect:
-        testSuite.bundle.name == "testBundle"
-        testSuite.bundle.debuggable
-        testSuite.developmentBinary == testSuite.bundle
-    }
-
-    def "can change location of Info.plist by changing the test suite resource directory location"() {
-        def file = tmpDir.createFile("Tests")
-
-        expect:
-        testSuite.resourceDir.set(file)
-        testSuite.bundle.informationPropertyList.get().asFile == tmpDir.file("Tests/Info.plist")
-    }
-
-    def "uses source layout convention when Info.plist not set"() {
-        expect:
-        testSuite.bundle.informationPropertyList.get().asFile == tmpDir.file("src/test/resources/Info.plist")
+        testSuite.developmentBinary.name == "testExecutable"
+        testSuite.developmentBinary.debuggable
+        testSuite.testedComponent.get() == componentUnderTest
     }
 }

@@ -155,4 +155,5 @@ public interface ModuleDependency extends Dependency {
      * {@inheritDoc}
      */
     ModuleDependency copy();
+
 }

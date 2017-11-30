@@ -16,8 +16,8 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder;
 
+import com.google.common.collect.ImmutableList;
 import org.gradle.api.artifacts.ModuleDependency;
-import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.result.ComponentSelectionReason;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusion;
@@ -25,6 +25,7 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.Modul
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphEdge;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphNode;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.local.model.DslOriginDependencyMetadata;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
@@ -51,12 +52,12 @@ class EdgeState implements DependencyGraphEdge {
     private ComponentState targetModuleRevision;
     private ModuleVersionResolveException targetNodeSelectionFailure;
 
-    EdgeState(NodeState from, DependencyMetadata dependencyMetadata, ModuleExclusion moduleExclusion, ResolveState resolveState) {
+    EdgeState(NodeState from, DependencyState dependencyState, ModuleExclusion moduleExclusion, ResolveState resolveState) {
         this.from = from;
-        this.dependencyMetadata = dependencyMetadata;
+        this.dependencyMetadata = dependencyState.getDependencyMetadata();
         this.moduleExclusion = moduleExclusion;
         this.resolveState = resolveState;
-        this.selector = resolveState.getSelector(dependencyMetadata);
+        this.selector = resolveState.getSelector(dependencyMetadata, dependencyState.getModuleIdentifier());
     }
 
     @Override
@@ -136,9 +137,10 @@ class EdgeState implements DependencyGraphEdge {
             return;
         }
 
+        ImmutableAttributes attributes = resolveState.getRoot().getMetadata().getAttributes();
         Set<ConfigurationMetadata> targetConfigurations;
         try {
-            targetConfigurations = dependencyMetadata.selectConfigurations(from.getComponent().getMetadata(), from.getMetadata(), targetModuleVersion, resolveState.getAttributesSchema());
+            targetConfigurations = dependencyMetadata.selectConfigurations(attributes, from.getComponent().getMetadata(), from.getMetadata(), targetModuleVersion, resolveState.getAttributesSchema());
         } catch (Throwable t) {
 //                 Broken selector
             targetNodeSelectionFailure = new ModuleVersionResolveException(dependencyMetadata.getSelector(), t);
@@ -155,7 +157,7 @@ class EdgeState implements DependencyGraphEdge {
         if (excludes.isEmpty()) {
             return ModuleExclusions.excludeNone();
         }
-        return resolveState.getModuleExclusions().excludeAny(excludes);
+        return resolveState.getModuleExclusions().excludeAny(ImmutableList.copyOf(excludes));
     }
 
     @Override
@@ -167,11 +169,6 @@ class EdgeState implements DependencyGraphEdge {
     @Override
     public ComponentSelector getRequested() {
         return dependencyMetadata.getSelector();
-    }
-
-    @Override
-    public ModuleVersionSelector getRequestedModuleVersion() {
-        return dependencyMetadata.getRequested();
     }
 
     @Override

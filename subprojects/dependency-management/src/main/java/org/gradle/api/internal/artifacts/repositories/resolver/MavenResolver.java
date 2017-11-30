@@ -33,6 +33,7 @@ import org.gradle.internal.component.external.model.DefaultModuleComponentIdenti
 import org.gradle.internal.component.external.model.DefaultMutableMavenModuleResolveMetadata;
 import org.gradle.internal.component.external.model.FixedComponentArtifacts;
 import org.gradle.internal.component.external.model.MavenModuleResolveMetadata;
+import org.gradle.internal.component.external.model.MetadataSourcedComponentArtifacts;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
 import org.gradle.internal.component.external.model.MutableMavenModuleResolveMetadata;
@@ -121,6 +122,10 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
     }
 
     protected void doResolveComponentMetaData(ModuleComponentIdentifier moduleComponentIdentifier, ComponentOverrideMetadata prescribedMetaData, BuildableModuleComponentMetaDataResolveResult result) {
+        if (isIncomplete(moduleComponentIdentifier)) {
+            result.missing();
+            return;
+        }
         if (isNonUniqueSnapshot(moduleComponentIdentifier)) {
             MavenUniqueSnapshotModuleSource uniqueSnapshotVersion = findUniqueSnapshotVersion(moduleComponentIdentifier, result);
             if (uniqueSnapshotVersion != null) {
@@ -138,6 +143,10 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
         }
 
         resolveStaticDependency(moduleComponentIdentifier, prescribedMetaData, result, super.createArtifactResolver());
+    }
+
+    private boolean isIncomplete(ModuleComponentIdentifier moduleComponentIdentifier) {
+        return moduleComponentIdentifier.getGroup().isEmpty() || moduleComponentIdentifier.getModule().isEmpty() || moduleComponentIdentifier.getVersion().isEmpty();
     }
 
     protected boolean isMetaDataArtifact(ArtifactType artifactType) {
@@ -160,7 +169,7 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
     protected MutableMavenModuleResolveMetadata parseMetaDataFromArtifact(ModuleComponentIdentifier moduleComponentIdentifier, ExternalResourceArtifactResolver artifactResolver, ResourceAwareResolveResult result) {
         MutableMavenModuleResolveMetadata metadata = super.parseMetaDataFromArtifact(moduleComponentIdentifier, artifactResolver, result);
         if (preferGradleMetadata) {
-            LocallyAvailableExternalResource resource = artifactResolver.resolveArtifact(new DefaultModuleComponentArtifactMetadata(moduleComponentIdentifier, new DefaultIvyArtifactName(moduleComponentIdentifier.getModule(), "json", "json", "module")), result);
+            LocallyAvailableExternalResource resource = artifactResolver.resolveArtifact(new DefaultModuleComponentArtifactMetadata(moduleComponentIdentifier, new DefaultIvyArtifactName(moduleComponentIdentifier.getModule(), "module", "module")), result);
             if (resource != null) {
                 // Use default empty metadata when the POM isn't present
                 if (metadata == null) {
@@ -276,7 +285,9 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
     private class MavenLocalRepositoryAccess extends LocalRepositoryAccess {
         @Override
         protected void resolveModuleArtifacts(MavenModuleResolveMetadata module, BuildableComponentArtifactsResolveResult result) {
-            if (module.isKnownJarPackaging()) {
+            if (!module.getVariants().isEmpty()) {
+                result.resolved(new MetadataSourcedComponentArtifacts());
+            } else if (module.isKnownJarPackaging()) {
                 ModuleComponentArtifactMetadata artifact = module.artifact("jar", "jar", null);
                 result.resolved(new FixedComponentArtifacts(ImmutableSet.of(artifact)));
             } else if (module.isRelocated()) {

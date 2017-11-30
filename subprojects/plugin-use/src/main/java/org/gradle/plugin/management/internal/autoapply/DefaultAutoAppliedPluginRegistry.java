@@ -16,18 +16,16 @@
 
 package org.gradle.plugin.management.internal.autoapply;
 
-import com.google.common.collect.Lists;
 import org.gradle.StartParameter;
 import org.gradle.api.Project;
+import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.internal.artifacts.DefaultModuleVersionSelector;
 import org.gradle.plugin.management.internal.DefaultPluginRequest;
 import org.gradle.plugin.management.internal.DefaultPluginRequests;
 import org.gradle.plugin.management.internal.PluginRequestInternal;
 import org.gradle.plugin.management.internal.PluginRequests;
-import org.gradle.plugin.use.PluginId;
-import org.gradle.plugin.use.internal.DefaultPluginId;
 
-import java.util.List;
+import java.util.Collections;
 
 import static org.gradle.initialization.StartParameterBuildOptions.BuildScanOption;
 
@@ -36,10 +34,6 @@ import static org.gradle.initialization.StartParameterBuildOptions.BuildScanOpti
  */
 public class DefaultAutoAppliedPluginRegistry implements AutoAppliedPluginRegistry {
 
-    private static final PluginId BUILD_SCAN_PLUGIN_ID = new DefaultPluginId("com.gradle.build-scan");
-    private static final String BUILD_SCAN_PLUGIN_AUTO_APPLY_VERSION = "1.9.1";
-    private static final String BUILD_SCAN_PLUGIN_GROUP = "com.gradle";
-    private static final String BUILD_SCAN_PLUGIN_NAME = "build-scan-plugin";
     private final StartParameter startParameter;
 
     public DefaultAutoAppliedPluginRegistry(StartParameter startParameter) {
@@ -48,11 +42,10 @@ public class DefaultAutoAppliedPluginRegistry implements AutoAppliedPluginRegist
 
     @Override
     public PluginRequests getAutoAppliedPlugins(Project target) {
-        List<PluginRequestInternal> requests = Lists.newArrayList();
         if (shouldApplyScanPlugin(target)) {
-            requests.add(createScanPluginRequest());
+            return new DefaultPluginRequests(Collections.<PluginRequestInternal>singletonList(createScanPluginRequest()));
         }
-        return new DefaultPluginRequests(requests);
+        return DefaultPluginRequests.EMPTY;
     }
 
     private boolean shouldApplyScanPlugin(Project target) {
@@ -60,8 +53,8 @@ public class DefaultAutoAppliedPluginRegistry implements AutoAppliedPluginRegist
     }
 
     private DefaultPluginRequest createScanPluginRequest() {
-        DefaultModuleVersionSelector artifact = new DefaultModuleVersionSelector(BUILD_SCAN_PLUGIN_GROUP, BUILD_SCAN_PLUGIN_NAME, BUILD_SCAN_PLUGIN_AUTO_APPLY_VERSION);
-        return new DefaultPluginRequest(BUILD_SCAN_PLUGIN_ID, BUILD_SCAN_PLUGIN_AUTO_APPLY_VERSION, true, null, getScriptDisplayName(), artifact);
+        ModuleVersionSelector artifact = DefaultModuleVersionSelector.newSelector(AutoAppliedBuildScanPlugin.GROUP, AutoAppliedBuildScanPlugin.NAME, AutoAppliedBuildScanPlugin.VERSION);
+        return new DefaultPluginRequest(AutoAppliedBuildScanPlugin.ID, AutoAppliedBuildScanPlugin.VERSION, true, null, getScriptDisplayName(), artifact);
     }
 
     private static String getScriptDisplayName() {

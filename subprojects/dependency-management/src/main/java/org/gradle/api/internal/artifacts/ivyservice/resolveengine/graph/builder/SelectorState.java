@@ -16,10 +16,12 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder;
 
+import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.result.ComponentSelectionReason;
-import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelector;
+import org.gradle.api.internal.artifacts.ResolvedVersionConstraint;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector;
+import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.resolve.ModuleVersionResolveException;
 import org.gradle.internal.resolve.resolver.DependencyToComponentIdResolver;
@@ -35,18 +37,20 @@ class SelectorState implements DependencyGraphSelector {
     private final DependencyMetadata dependencyMetadata;
     private final DependencyToComponentIdResolver resolver;
     private final ResolveState resolveState;
+    private final ModuleIdentifier targetModuleId;
     private ModuleVersionResolveException failure;
     private ModuleResolveState targetModule;
     private ComponentState selected;
     private BuildableComponentIdResolveResult idResolveResult;
-    private VersionSelector versionSelector;
+    private ResolvedVersionConstraint versionConstraint;
 
-    SelectorState(Long id, DependencyMetadata dependencyMetadata, DependencyToComponentIdResolver resolver, ResolveState resolveState) {
+    SelectorState(Long id, DependencyMetadata dependencyMetadata, DependencyToComponentIdResolver resolver, ResolveState resolveState, ModuleIdentifier targetModuleId) {
         this.id = id;
         this.dependencyMetadata = dependencyMetadata;
         this.resolver = resolver;
         this.resolveState = resolveState;
-        targetModule = resolveState.getModule(resolveState.getModuleIdentifierFactory().module(dependencyMetadata.getRequested().getGroup(), dependencyMetadata.getRequested().getName()));
+        this.targetModule = resolveState.getModule(targetModuleId);
+        this.targetModuleId = targetModuleId;
     }
 
     @Override
@@ -103,7 +107,7 @@ class SelectorState implements DependencyGraphSelector {
         selected.setSelectionReason(idResolveResult.getSelectionReason());
         targetModule = selected.getModule();
         targetModule.addSelector(this);
-        versionSelector = idResolveResult.getVersionSelector();
+        versionConstraint = idResolveResult.getResolvedVersionConstraint();
 
         return selected;
     }
@@ -111,6 +115,10 @@ class SelectorState implements DependencyGraphSelector {
     public void restart(ComponentState moduleRevision) {
         this.selected = moduleRevision;
         this.targetModule = moduleRevision.getModule();
+        ComponentResolveMetadata metaData = moduleRevision.getMetaData();
+        if (metaData != null) {
+            this.idResolveResult.resolved(metaData);
+        }
     }
 
     public void reset() {
@@ -127,7 +135,7 @@ class SelectorState implements DependencyGraphSelector {
         return idResolveResult;
     }
 
-    public VersionSelector getVersionSelector() {
-        return versionSelector;
+    public ResolvedVersionConstraint getVersionConstraint() {
+        return versionConstraint;
     }
 }

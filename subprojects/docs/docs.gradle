@@ -14,25 +14,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import org.apache.tools.ant.filters.ReplaceTokens
+import org.gradle.build.docs.AssembleSamplesDocTask
+import org.gradle.build.docs.CacheableAsciidoctorTask
+import org.gradle.build.docs.Docbook2Xhtml
+import org.gradle.build.docs.ExtractSamplesTask
+import org.gradle.build.docs.ExtractSnippetsTask
+import org.gradle.build.docs.UserGuideSectionVerifier
+import org.gradle.build.docs.UserGuideTransformTask
+import org.gradle.build.docs.Xhtml2Pdf
+import org.gradle.build.docs.dsl.docbook.AssembleDslDocTask
+import org.gradle.build.docs.dsl.source.ExtractDslMetaDataTask
+import org.gradle.build.docs.dsl.source.GenerateDefaultImportsTask
+import org.gradle.build.docs.releasenotes.*
+import org.gradle.build.docs.releasenotes.checks.*
+import org.gradle.plugins.pegdown.PegDown
+
 import javax.xml.transform.TransformerFactory
 import javax.xml.transform.stream.StreamResult
 import javax.xml.transform.stream.StreamSource
-
-import org.gradle.build.docs.CacheableAsciidoctorTask
-import org.gradle.build.docs.UserGuideSectionVerifier
-import org.gradle.build.docs.UserGuideTransformTask
-import org.gradle.build.docs.ExtractSnippetsTask
-import org.gradle.build.docs.ExtractSamplesTask
-import org.gradle.build.docs.AssembleSamplesDocTask
-import org.gradle.build.docs.Docbook2Xhtml
-import org.gradle.build.docs.Xhtml2Pdf
-import org.gradle.build.docs.dsl.source.GenerateDefaultImportsTask
-import org.gradle.build.docs.dsl.docbook.AssembleDslDocTask
-import org.gradle.build.docs.dsl.source.ExtractDslMetaDataTask
-import org.gradle.build.docs.releasenotes.*
-import org.gradle.build.docs.releasenotes.checks.*
-import org.apache.tools.ant.filters.ReplaceTokens
-import org.gradle.plugins.pegdown.PegDown
 
 apply plugin: 'base'
 apply plugin: 'pegdown'
@@ -64,6 +64,8 @@ configurations {
 }
 
 dependencies {
+    asciidoctor 'org.asciidoctor:asciidoctorj:1.5.6'
+
     userGuideTask 'xalan:xalan:2.7.1', libraries.xerces
     userGuideTask module('xhtmlrenderer:xhtmlrenderer:R8rc1') {
         dependency 'itext:itext:2.0.8@jar'
@@ -91,7 +93,7 @@ dependencies {
         exclude group: 'org.apache.httpcomponents'
     }
     testCompile libraries.commons_httpclient
-    testCompile 'org.apache.httpcomponents:httpmime:4.4.1'
+    testCompile 'org.apache.httpcomponents:httpmime:4.5.3'
     testCompile project(":core")
 }
 
@@ -211,28 +213,16 @@ ext.cssFiles = fileTree(css.destinationDir) {
 }
 
 task samples(type: ExtractSnippetsTask) {
-    source samplesSrcDir
-    exclude 'userguideOutput/**'
-    exclude '**/readme.xml'
-    exclude '**/build/**'
-    exclude '**/.gradle/**'
-
-    // Resources that should not be filtered
-    exclude 'userguide/tutorial/antLoadfileResources/**'
-    exclude 'native-binaries/cunit/libs/**'
-    exclude 'native-binaries/google-test/libs/**'
-
+    samples = samplesSrcDir
     destDir = samplesDir
+    excludes = ['userguideOutput/**',
+                '**/readme.xml',
+                '**/build/**',
+                '**/.gradle/**']
+    nonFiltered = [ 'userguide/tutorial/antLoadfileResources/**',
+                    'native-binaries/cunit/libs/**',
+                    'native-binaries/google-test/libs/**' ]
     snippetsDir = new File(buildDir, 'snippets')
-    doLast {
-        copy {
-            from samplesSrcDir
-            into samplesDir
-            include 'userguide/tutorial/antLoadfileResources/**'
-            include 'native-binaries/cunit/libs/**'
-            include 'native-binaries/google-test/libs/**'
-        }
-    }
 }
 
 task userguideStyleSheets(type: Copy) {
@@ -254,6 +244,7 @@ task userguideAsciidoc(type: CacheableAsciidoctorTask) {
     sourceDir = userguideSrcDir
     sources { include '*.adoc' }
     outputDir = asciidocOutputDir
+    inputs.file { defaultImports.importsDestFile } withPropertyName 'defaultImports' withPathSensitivity PathSensitivity.NONE
 
     // we pull the default-imports from here:
     resources {
@@ -333,7 +324,7 @@ task checkSectionIds(type: UserGuideSectionVerifier) {
     )
 }
 
-[configureCss, samples, samplesDocbook, defaultImports]*.mustRunAfter(checkSectionIds)
+[configureCss, samples, samplesDocbook]*.mustRunAfter(checkSectionIds)
 
 task extractSamples(type: ExtractSamplesTask) {
     // We need default imports since it is included by userguide.xml

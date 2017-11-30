@@ -17,7 +17,6 @@
 package org.gradle.language
 
 import groovy.io.FileType
-import groovy.transform.NotYetImplemented
 import org.gradle.integtests.fixtures.CompilationOutputsFixture
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.IncrementalHelloWorldApp
@@ -127,7 +126,7 @@ abstract class AbstractNativeLanguageIncrementalCompileIntegrationTest extends A
         outputs.recompiledFile sourceFile
     }
 
-    def "does not recompile when fallback mechanism is used and there are empty directories"() {
+    def "does not recompile when fallback mechanism is used and empty directory added to include directory"() {
         given:
         file("src/main/headers/empty/directory").mkdirs()
         sourceFile << """
@@ -182,7 +181,6 @@ model {
         skipped compileTask
     }
 
-    @NotYetImplemented
     def "recompiles when included header has the same name as a directory and the directory becomes a file"() {
         given:
         buildFile << """
@@ -225,12 +223,13 @@ model {
 
     }
 
-    def "source is always recompiled if it includes header via macro"() {
+    def "source is always recompiled if it includes header via complex macro"() {
         given:
         def notIncluded = file("src/main/headers/notIncluded.h")
         notIncluded.text = """#pragma message("should not be used")"""
         sourceFile << """
-            #define MY_HEADER "${otherHeaderFile.name}"
+            #define HEADER(X) #X
+            #define MY_HEADER HEADER(${otherHeaderFile.name})
             #include MY_HEADER
 """
 
@@ -250,6 +249,12 @@ model {
         and:
         outputs.recompiledFile sourceFile
 
+        and:
+        succeeds "mainExecutable"
+
+        and:
+        skipped compileTask
+
         when: "Header that is NOT included is changed"
         notIncluded << """
             // Dummy header file
@@ -262,6 +267,12 @@ model {
 
         and:
         outputs.recompiledFile sourceFile
+
+        and:
+        succeeds "mainExecutable"
+
+        and:
+        skipped compileTask
     }
 
     def "source is not recompiled when preprocessor removed header is changed"() {
@@ -408,8 +419,8 @@ model {
         given:
         outputs.snapshot { run "mainExecutable" }
 
-        file("src/replacement-headers/${sharedHeaderFile.name}") << sharedHeaderFile.text
-        file("src/replacement-headers/${commonHeaderFile.name}") << commonHeaderFile.text
+        file("src/replacement-headers/${sharedHeaderFile.name}") << sharedHeaderFile.text << "\n"
+        file("src/replacement-headers/${commonHeaderFile.name}") << commonHeaderFile.text << "\n"
 
         when:
         buildFile << """
@@ -457,8 +468,8 @@ model {
         outputs.snapshot { run "mainExecutable" }
 
         when:
-        file("src/replacement-headers/${sharedHeaderFile.name}") << sharedHeaderFile.text
-        file("src/replacement-headers/${commonHeaderFile.name}") << commonHeaderFile.text
+        file("src/replacement-headers/${sharedHeaderFile.name}") << sharedHeaderFile.text << "\n"
+        file("src/replacement-headers/${commonHeaderFile.name}") << commonHeaderFile.text << "\n"
 
         and:
         run "mainExecutable"

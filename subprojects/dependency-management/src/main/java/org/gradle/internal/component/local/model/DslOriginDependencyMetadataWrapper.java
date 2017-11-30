@@ -17,9 +17,9 @@
 package org.gradle.internal.component.local.model;
 
 import org.gradle.api.artifacts.ModuleDependency;
-import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
@@ -31,7 +31,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
-public class DslOriginDependencyMetadataWrapper implements DslOriginDependencyMetadata {
+public class DslOriginDependencyMetadataWrapper implements DslOriginDependencyMetadata, LocalOriginDependencyMetadata {
     private final LocalOriginDependencyMetadata delegate;
     private final ModuleDependency source;
 
@@ -51,18 +51,13 @@ public class DslOriginDependencyMetadataWrapper implements DslOriginDependencyMe
     }
 
     @Override
-    public ModuleVersionSelector getRequested() {
-        return delegate.getRequested();
-    }
-
-    @Override
     public String getModuleConfiguration() {
         return delegate.getModuleConfiguration();
     }
 
     @Override
-    public Set<ConfigurationMetadata> selectConfigurations(ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
-        return delegate.selectConfigurations(fromComponent, fromConfiguration, targetComponent, consumerSchema);
+    public Set<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
+        return delegate.selectConfigurations(consumerAttributes, fromComponent, fromConfiguration, targetComponent, consumerSchema);
     }
 
     @Override
@@ -86,11 +81,6 @@ public class DslOriginDependencyMetadataWrapper implements DslOriginDependencyMe
     }
 
     @Override
-    public String getDynamicConstraintVersion() {
-        return delegate.getDynamicConstraintVersion();
-    }
-
-    @Override
     public boolean isChanging() {
         return delegate.isChanging();
     }
@@ -106,6 +96,11 @@ public class DslOriginDependencyMetadataWrapper implements DslOriginDependencyMe
     }
 
     @Override
+    public boolean isOptional() {
+        return delegate.isOptional();
+    }
+
+    @Override
     public Set<ComponentArtifactMetadata> getArtifacts(ConfigurationMetadata fromConfiguration, ConfigurationMetadata toConfiguration) {
         return delegate.getArtifacts(fromConfiguration, toConfiguration);
     }
@@ -113,11 +108,6 @@ public class DslOriginDependencyMetadataWrapper implements DslOriginDependencyMe
     @Override
     public Set<IvyArtifactName> getArtifacts() {
         return delegate.getArtifacts();
-    }
-
-    @Override
-    public LocalOriginDependencyMetadata withRequestedVersion(String requestedVersion) {
-        return delegate.withRequestedVersion(requestedVersion);
     }
 
     @Override

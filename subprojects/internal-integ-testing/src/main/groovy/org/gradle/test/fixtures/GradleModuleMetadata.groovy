@@ -18,8 +18,11 @@ package org.gradle.test.fixtures
 
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
+import org.gradle.internal.hash.HashValue
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.util.GradleVersion
+
+import javax.annotation.Nullable
 
 class GradleModuleMetadata {
     private Map<String, Object> values
@@ -30,10 +33,28 @@ class GradleModuleMetadata {
             JsonReader reader = new JsonReader(r)
             values = readObject(reader)
         }
-        assert values.formatVersion == '0.1'
+        assert values.formatVersion == '0.2'
         assert values.createdBy.gradle.version == GradleVersion.current().version
         assert values.createdBy.gradle.buildId
         variants = (values.variants ?: []).collect { new Variant(it.name, it) }
+    }
+
+    @Nullable
+    Coords getComponent() {
+        def comp = values.component
+        if (comp == null || comp.url) {
+            return null
+        }
+        return new Coords(comp.group, comp.module, comp.version)
+    }
+
+    @Nullable
+    ModuleReference getOwner() {
+        def comp = values.component
+        if (comp == null || !comp.url) {
+            return null
+        }
+        return new ModuleReference(comp.group, comp.module, comp.version, comp.url)
     }
 
     List<Variant> getVariants() {
@@ -42,7 +63,7 @@ class GradleModuleMetadata {
 
     Variant variant(String name) {
         def matches = variants.findAll { it.name == name }
-        assert matches.size() == 1
+        assert matches.size() == 1 : "Variant '$name' not found"
         return matches.first()
     }
 
@@ -61,8 +82,17 @@ class GradleModuleMetadata {
     private Object readAny(JsonReader reader) {
         Object value = null
         switch (reader.peek()) {
+            case JsonToken.NULL:
+                reader.nextNull()
+                break
             case JsonToken.STRING:
                 value = reader.nextString()
+                break
+            case JsonToken.BOOLEAN:
+                value = reader.nextBoolean()
+                break
+            case JsonToken.NUMBER:
+                value = reader.nextLong()
                 break
             case JsonToken.BEGIN_OBJECT:
                 value = readObject(reader)
@@ -94,18 +124,67 @@ class GradleModuleMetadata {
             this.values = values
         }
 
-        List<?> getFiles() {
-            return (values.files ?: []).collect { new File(it.name, it.url) }
+        @Nullable
+        ModuleReference getAvailableAt() {
+            def ref = values['available-at']
+            return ref == null ? null : new ModuleReference(ref.group, ref.module, ref.version, ref.url)
+        }
+
+        List<Dependency> getDependencies() {
+            return (values.dependencies ?: []).collect { new Dependency(it.group, it.module, it.version.prefers, it.version.rejects?:[]) }
+        }
+
+        List<File> getFiles() {
+            return (values.files ?: []).collect { new File(it.name, it.url, it.size, new HashValue(it.sha1), new HashValue(it.md5)) }
+        }
+    }
+
+    static class Coords {
+        final String group
+        final String module
+        final String version
+        final List<String> rejectsVersion
+
+        Coords(String group, String module, String version, List<String> rejectsVersion = []) {
+            this.group = group
+            this.module = module
+            this.version = version
+            this.rejectsVersion = rejectsVersion
+        }
+
+        String getCoords() {
+            return "$group:$module:${version ?: ''}"
+        }
+    }
+
+    static class ModuleReference extends Coords {
+        final String url
+
+        ModuleReference(String group, String module, String version, String url) {
+            super(group, module, version)
+            this.url = url
+        }
+    }
+
+    static class Dependency extends Coords {
+        Dependency(String group, String module, String version, List<String> rejectedVersions) {
+            super(group, module, version, rejectedVersions)
         }
     }
 
     static class File {
         final String name
         final String url
+        final long size
+        final HashValue sha1
+        final HashValue md5
 
-        File(String name, String url) {
+        File(String name, String url, long size, HashValue sha1, HashValue md5) {
             this.name = name
             this.url = url
+            this.size = size
+            this.sha1 = sha1
+            this.md5 = md5
         }
     }
 }

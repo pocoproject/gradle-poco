@@ -20,8 +20,8 @@ import org.gradle.performance.AbstractCrossVersionPerformanceTest
 import spock.lang.Ignore
 import spock.lang.Unroll
 
-import static org.gradle.performance.generator.JavaTestProject.LARGE_MONOLITHIC_JAVA_PROJECT
 import static org.gradle.performance.generator.JavaTestProject.LARGE_JAVA_MULTI_PROJECT
+import static org.gradle.performance.generator.JavaTestProject.LARGE_MONOLITHIC_JAVA_PROJECT
 
 class JavaFirstUsePerformanceTest extends AbstractCrossVersionPerformanceTest {
 
@@ -43,7 +43,7 @@ class JavaFirstUsePerformanceTest extends AbstractCrossVersionPerformanceTest {
         runner.tasksToRun = ['tasks']
         runner.args = ['--recompile-scripts'] // This is an approximation of first use: we recompile the scripts
         runner.useDaemon = false
-        runner.targetVersions = ["4.3-20171009150001+0000"]
+        runner.targetVersions = ["4.4-20171016130954+0000"]
 
         when:
         def result = runner.run()
@@ -64,7 +64,7 @@ class JavaFirstUsePerformanceTest extends AbstractCrossVersionPerformanceTest {
         runner.gradleOpts = ["-Xms${testProject.daemonMemory}", "-Xmx${testProject.daemonMemory}"]
         runner.tasksToRun = ['tasks']
         runner.useDaemon = false
-        runner.targetVersions = ["4.3-20171009150001+0000"]
+        runner.targetVersions = ["4.4-20171109115057+0000"]
 
         when:
         def result = runner.run()

@@ -63,4 +63,11 @@ public interface CppBinary extends SoftwareComponent {
      * Returns the runtime libraries required by this binary. Includes the runtime libraries of the component's dependencies.
      */
     FileCollection getRuntimeLibraries();
+
+    /**
+     * Returns the object files created for this binary.
+     *
+     * @since 4.4
+     */
+    FileCollection getObjects();
 }

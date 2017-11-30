@@ -18,6 +18,7 @@ package org.gradle.internal.service.scopes;
 
 import org.gradle.StartParameter;
 import org.gradle.api.Action;
+import org.gradle.api.internal.ExperimentalFeatures;
 import org.gradle.api.internal.attributes.DefaultImmutableAttributesFactory;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.cache.StringInterner;
@@ -174,8 +175,8 @@ public class BuildSessionScopeServices extends DefaultServiceRegistry {
         return new BuildOperationCrossProjectConfigurator(buildOperationExecutor);
     }
 
-    ProjectCacheDir createCacheLayout(StartParameter startParameter) {
-        BuildLayout buildLayout = new BuildLayoutFactory().getLayoutFor(new BuildLayoutConfiguration(startParameter));
+    ProjectCacheDir createCacheLayout(StartParameter startParameter, BuildLayoutFactory buildLayoutFactory) {
+        BuildLayout buildLayout = buildLayoutFactory.getLayoutFor(new BuildLayoutConfiguration(startParameter));
         File cacheDir = startParameter.getProjectCacheDir() != null ? startParameter.getProjectCacheDir() : new File(buildLayout.getRootDirectory(), ".gradle");
         return new ProjectCacheDir(cacheDir);
     }
@@ -248,5 +249,9 @@ public class BuildSessionScopeServices extends DefaultServiceRegistry {
     BuildStartedTime createBuildStartedTime(Clock clock, BuildRequestMetaData buildRequestMetaData) {
         long currentTime = clock.getCurrentTime();
         return BuildStartedTime.startingAt(Math.min(currentTime, buildRequestMetaData.getStartTime()));
+    }
+
+    ExperimentalFeatures createExperimentalFeatures() {
+        return new ExperimentalFeatures();
     }
 }

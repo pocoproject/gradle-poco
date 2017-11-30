@@ -18,9 +18,9 @@ package org.gradle.nativeplatform.tasks;
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Incubating;
+import org.gradle.api.Transformer;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.CopySpec;
-import org.gradle.api.file.Directory;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.RegularFile;
@@ -105,23 +105,24 @@ public class InstallExecutable extends DefaultTask {
         return destinationDir;
     }
 
+    /**
+     * Returns the path to install into.
+     *
+     * @deprecated Use {@link #getInstallDirectory()}.
+     */
+    @Deprecated
     @Internal
     public File getDestinationDir() {
         return destinationDir.getAsFile().getOrNull();
     }
 
-    public void setDestinationDir(File destinationDir) {
-        this.destinationDir.set(destinationDir);
-    }
-
     /**
-     * Sets the destination directory to install the executable via a {@link Provider}
+     * Sets the path to install into.
      *
-     * @param destinationDir the destination directory provider to use
-     * @see #setDestinationDir(File)
-     * @since 4.1
+     * @deprecated Use {@link #getInstallDirectory()}.
      */
-    public void setDestinationDir(Provider<? extends Directory> destinationDir) {
+    @Deprecated
+    public void setDestinationDir(File destinationDir) {
         this.destinationDir.set(destinationDir);
     }
 
@@ -135,23 +136,24 @@ public class InstallExecutable extends DefaultTask {
         return executable;
     }
 
+    /**
+     * Returns the executable to be installed.
+     *
+     * @deprecated Use {@link #getSourceFile()}.
+     */
+    @Deprecated
     @Internal("Covered by inputFileIfExists")
     public File getExecutable() {
         return executable.getAsFile().getOrNull();
     }
 
-    public void setExecutable(File executable) {
-        this.executable.set(executable);
-    }
-
     /**
-     * Sets the executable to install via a {@link Provider}
+     * Sets the executable to be installed.
      *
-     * @param executable the executable provider to use
-     * @see #setExecutable(File)
-     * @since 4.1
+     * @deprecated Use {@link #getSourceFile()}.
      */
-    public void setExecutable(Provider<? extends RegularFile> executable) {
+    @Deprecated
+    public void setExecutable(File executable) {
         this.executable.set(executable);
     }
 
@@ -164,9 +166,9 @@ public class InstallExecutable extends DefaultTask {
     @Optional
     @InputFile
     protected File getInputFileIfExists() {
-        File inputFile = getExecutable();
-        if (inputFile != null && inputFile.exists()) {
-            return inputFile;
+        RegularFileProperty sourceFile = getSourceFile();
+        if (sourceFile.isPresent() && sourceFile.get().getAsFile().exists()) {
+            return sourceFile.get().getAsFile();
         } else {
             return null;
         }
@@ -194,10 +196,25 @@ public class InstallExecutable extends DefaultTask {
     /**
      * Returns the script file that can be used to run the install image.
      */
-    @Internal
+    @Internal("covered by getInstallDirectory")
     public File getRunScript() {
-        OperatingSystem operatingSystem = OperatingSystem.forName(platform.getOperatingSystem().getName());
-        return new File(getDestinationDir(), operatingSystem.getScriptName(getExecutable().getName()));
+        return getRunScriptFile().get().getAsFile();
+    }
+
+    /**
+     * Returns the script file that can be used to run the install image.
+     *
+     * @since 4.4
+     */
+    @Internal("covered by getInstallDirectory")
+    public Provider<RegularFile> getRunScriptFile() {
+        return destinationDir.file(executable.map(new Transformer<CharSequence, RegularFile>() {
+            @Override
+            public CharSequence transform(RegularFile regularFile) {
+                OperatingSystem operatingSystem = OperatingSystem.forName(platform.getOperatingSystem().getName());
+                return operatingSystem.getScriptName(regularFile.getAsFile().getName());
+            }
+        }));
     }
 
     @Inject
@@ -226,8 +243,8 @@ public class InstallExecutable extends DefaultTask {
     }
 
     private void installWindows() {
-        final File destination = getDestinationDir();
-        final File executable = getExecutable();
+        final File destination = getInstallDirectory().get().getAsFile();
+        final File executable = getSourceFile().get().getAsFile();
 
         installToDir(new File(destination, "lib"));
 
@@ -254,8 +271,8 @@ public class InstallExecutable extends DefaultTask {
     }
 
     private void installUnix() {
-        final File destination = getDestinationDir();
-        final File executable = getExecutable();
+        final File destination = getInstallDirectory().get().getAsFile();
+        final File executable = getSourceFile().get().getAsFile();
 
         installToDir(new File(destination, "lib"));
 
@@ -277,7 +294,7 @@ public class InstallExecutable extends DefaultTask {
         getFileOperations().sync(new Action<CopySpec>() {
             public void execute(CopySpec copySpec) {
                 copySpec.into(binaryDir);
-                copySpec.from(getExecutable());
+                copySpec.from(getSourceFile());
                 copySpec.from(getLibs());
             }
 

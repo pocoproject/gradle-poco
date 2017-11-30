@@ -66,7 +66,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             .assertHasProjects("${rootProjectName}.xcodeproj", 'app/app.xcodeproj', 'greeter/greeter.xcodeproj')
 
         def project = xcodeProject("app/app.xcodeproj").projectFile
-        project.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file("greeter/build/obj/main/debug"))
+        project.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file("greeter/build/modules/main/debug"))
 
         when:
         def resultDebugApp = xcodebuild
@@ -76,7 +76,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
 
         then:
         resultDebugApp.assertTasksExecuted(':greeter:compileDebugSwift', ':greeter:linkDebug',
-            ':app:compileDebugSwift', ':app:linkDebug')
+            ':app:compileDebugSwift', ':app:linkDebug', ':app:_xcode___App_Debug')
 
         when:
         def resultReleaseApp = xcodebuild
@@ -87,7 +87,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
 
         then:
         resultReleaseApp.assertTasksExecuted(':greeter:compileReleaseSwift', ':greeter:linkRelease',
-            ':app:compileReleaseSwift', ':app:linkRelease')
+            ':app:compileReleaseSwift', ':app:linkRelease', ':app:_xcode___App_Release')
     }
 
     def "can create xcode project for Swift executable with transitive dependencies"() {
@@ -131,9 +131,9 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         rootXcodeWorkspace.contentFile.assertHasProjects("${rootProjectName}.xcodeproj", 'app/app.xcodeproj', 'log/log.xcodeproj', 'hello/hello.xcodeproj')
 
         def appProject = xcodeProject("app/app.xcodeproj").projectFile
-        appProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file("hello/build/obj/main/debug"), file("log/build/obj/main/debug"))
+        appProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file("hello/build/modules/main/debug"), file("log/build/modules/main/debug"))
         def helloProject = xcodeProject("hello/hello.xcodeproj").projectFile
-        helloProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file("log/build/obj/main/debug"))
+        helloProject.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file("log/build/modules/main/debug"))
 
         when:
         def resultDebugApp = xcodebuild
@@ -144,7 +144,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
         then:
         resultDebugApp.assertTasksExecuted(':log:compileDebugSwift', ':log:linkDebug',
             ':hello:compileDebugSwift', ':hello:linkDebug',
-            ':app:compileDebugSwift', ':app:linkDebug')
+            ':app:compileDebugSwift', ':app:linkDebug', ':app:_xcode___App_Debug')
 
         when:
         def resultReleaseHello = xcodebuild
@@ -155,7 +155,71 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
 
         then:
         resultReleaseHello.assertTasksExecuted(':hello:compileReleaseSwift', ':hello:linkRelease',
-            ':log:compileReleaseSwift', ':log:linkRelease')
+            ':log:compileReleaseSwift', ':log:linkRelease', ':hello:_xcode___Hello_Release')
+    }
+
+    def "can clean xcode project with transitive dependencies"() {
+        def app = new SwiftAppWithLibraries()
+
+        given:
+        settingsFile.text =  """
+            include 'app', 'log', 'hello'
+            rootProject.name = "${rootProjectName}"
+        """
+        buildFile << """
+            project(':app') {
+                apply plugin: 'swift-executable'
+                dependencies {
+                    implementation project(':hello')
+                }
+            }
+            project(':hello') {
+                apply plugin: 'swift-library'
+                dependencies {
+                    api project(':log')
+                }
+            }
+            project(':log') {
+                apply plugin: 'swift-library'
+            }
+        """
+        app.library.writeToProject(file("hello"))
+        app.logLibrary.writeToProject(file("log"))
+        app.executable.writeToProject(file("app"))
+        succeeds("xcode")
+
+        when:
+        xcodebuild
+            .withWorkspace(rootXcodeWorkspace)
+            .withScheme('App Executable')
+            .succeeds()
+
+        then:
+        exe("app/build/exe/main/debug/App").assertExists()
+        sharedLib("hello/build/lib/main/debug/Hello").assertExists()
+        sharedLib("log/build/lib/main/debug/Log").assertExists()
+
+        when:
+        xcodebuild
+            .withWorkspace(rootXcodeWorkspace)
+            .withScheme('App Executable')
+            .succeeds(XcodebuildExecuter.XcodeAction.CLEAN)
+
+        then:
+        exe("app/build/exe/main/debug/App").assertDoesNotExist()
+        sharedLib("hello/build/lib/main/debug/Hello").assertExists()
+        sharedLib("log/build/lib/main/debug/Log").assertExists()
+
+        when:
+        xcodebuild
+            .withWorkspace(rootXcodeWorkspace)
+            .withScheme('Hello SharedLibrary')
+            .succeeds(XcodebuildExecuter.XcodeAction.CLEAN)
+
+        then:
+        exe("app/build/exe/main/debug/App").assertDoesNotExist()
+        sharedLib("hello/build/lib/main/debug/Hello").assertDoesNotExist()
+        sharedLib("log/build/lib/main/debug/Log").assertExists()
     }
 
     def "can create xcode project for Swift executable inside composite build"() {
@@ -196,7 +260,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             .assertHasProjects("${rootProjectName}.xcodeproj", 'greeter/greeter.xcodeproj')
 
         def project = rootXcodeProject.projectFile
-        project.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file("greeter/build/obj/main/debug"))
+        project.indexTarget.getBuildSettings().SWIFT_INCLUDE_PATHS == toSpaceSeparatedList(file("greeter/build/modules/main/debug"))
 
         when:
         def resultDebugApp = xcodebuild
@@ -205,7 +269,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             .succeeds()
 
         then:
-        resultDebugApp.assertTasksExecuted(':greeter:compileDebugSwift', ':greeter:linkDebug', ':compileDebugSwift', ':linkDebug')
+        resultDebugApp.assertTasksExecuted(':greeter:compileDebugSwift', ':greeter:linkDebug', ':compileDebugSwift', ':linkDebug', ':_xcode___App_Debug')
 
         when:
         def resultReleaseGreeter = xcodebuild
@@ -215,7 +279,7 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
             .succeeds()
 
         then:
-        resultReleaseGreeter.assertTasksExecuted(':compileReleaseSwift', ':linkRelease')
+        resultReleaseGreeter.assertTasksExecuted(':compileReleaseSwift', ':linkRelease', ':_xcode___Greeter_Release')
     }
 
     def "can run tests for Swift library within multi-project from xcode"() {
@@ -245,8 +309,10 @@ class XcodeMultipleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationS
 
         then:
         resultTestRunner.assertTasksExecuted(':greeter:compileDebugSwift', ':greeter:compileTestSwift', ':greeter:linkTest',
-            ':greeter:bundleSwiftTest', ':greeter:syncTestBundleToXcodeBuiltProductDir', ':greeter:buildXcodeTestProduct')
-        app.library.assertTestCasesRan(resultTestRunner.output)
+            ':greeter:installTest', ':greeter:syncBundleToXcodeBuiltProductDir', ':greeter:_xcode__build_GreeterTest___GradleTestRunner_Debug')
 
+        resultTestRunner.assertOutputContains("Test Case '-[GreeterTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
+        resultTestRunner.assertOutputContains("Test Case '-[GreeterTest.SumTestSuite testCanAddSumOf42]' passed")
+        resultTestRunner.assertOutputContains("** TEST SUCCEEDED **")
     }
 }

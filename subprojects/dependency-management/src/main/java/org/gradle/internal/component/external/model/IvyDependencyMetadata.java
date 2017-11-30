@@ -23,14 +23,14 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.SetMultimap;
 import com.google.common.collect.Sets;
-import org.gradle.api.artifacts.ModuleVersionSelector;
+import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.external.descriptor.Artifact;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.ConfigurationNotFoundException;
 import org.gradle.internal.component.model.DefaultDependencyMetadata;
-import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.Exclude;
 
 import java.util.Collection;
@@ -46,8 +46,8 @@ public class IvyDependencyMetadata extends DefaultDependencyMetadata {
     private final SetMultimap<String, String> confs;
     private final List<Exclude> excludes;
 
-    public IvyDependencyMetadata(ModuleVersionSelector requested, String dynamicConstraintVersion, boolean force, boolean changing, boolean transitive, Multimap<String, String> confMappings, List<Artifact> artifacts, List<Exclude> excludes) {
-        super(requested, artifacts);
+    public IvyDependencyMetadata(ModuleComponentSelector selector, String dynamicConstraintVersion, boolean force, boolean changing, boolean transitive, boolean optional, Multimap<String, String> confMappings, List<Artifact> artifacts, List<Exclude> excludes) {
+        super(selector, artifacts, optional);
         this.dynamicConstraintVersion = dynamicConstraintVersion;
         this.force = force;
         this.changing = changing;
@@ -56,18 +56,18 @@ public class IvyDependencyMetadata extends DefaultDependencyMetadata {
         this.excludes = ImmutableList.copyOf(excludes);
     }
 
-    public IvyDependencyMetadata(ModuleVersionSelector requested, ListMultimap<String, String> confMappings) {
-        this(requested, requested.getVersion(), false, false, true, confMappings, Collections.<Artifact>emptyList(), Collections.<Exclude>emptyList());
+    public IvyDependencyMetadata(ModuleComponentSelector requested, ListMultimap<String, String> confMappings) {
+        this(requested, requested.getVersionConstraint().getPreferredVersion(), false, false, true, false, confMappings, Collections.<Artifact>emptyList(), Collections.<Exclude>emptyList());
     }
 
     @Override
     public String toString() {
-        return "dependency: " + getRequested() + ", confs: " + confs;
+        return "dependency: " + getSelector() + ", confs: " + confs;
     }
 
     @Override
-    protected DependencyMetadata withRequested(ModuleVersionSelector newRequested) {
-        return new IvyDependencyMetadata(newRequested, dynamicConstraintVersion, force, changing, transitive, confs, getDependencyArtifacts(), excludes);
+    protected ModuleDependencyMetadata withRequested(ModuleComponentSelector newRequested) {
+        return new IvyDependencyMetadata(newRequested, dynamicConstraintVersion, force, changing, transitive, isOptional(), confs, getDependencyArtifacts(), excludes);
     }
 
     @Override
@@ -100,21 +100,23 @@ public class IvyDependencyMetadata extends DefaultDependencyMetadata {
     }
 
     @Override
-    public Set<ConfigurationMetadata> selectConfigurations(ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
+    public Set<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
         // TODO - all this matching stuff is constant for a given DependencyMetadata instance
         Set<ConfigurationMetadata> targets = Sets.newLinkedHashSet();
         boolean matched = false;
         String fromConfigName = fromConfiguration.getName();
         for (String config : fromConfiguration.getHierarchy()) {
-            Set<String> targetPatterns = confs.get(config);
-            if (!targetPatterns.isEmpty()) {
-                matched = true;
-            }
-            for (String targetPattern : targetPatterns) {
-                findMatches(fromComponent, targetComponent, fromConfigName, config, targetPattern, targets);
+            if (confs.containsKey(config)) {
+                Set<String> targetPatterns = confs.get(config);
+                if (!targetPatterns.isEmpty()) {
+                    matched = true;
+                }
+                for (String targetPattern : targetPatterns) {
+                    findMatches(fromComponent, targetComponent, fromConfigName, config, targetPattern, targets);
+                }
             }
         }
-        if (!matched) {
+        if (!matched && confs.containsKey("%")) {
             for (String targetPattern : confs.get("%")) {
                 findMatches(fromComponent, targetComponent, fromConfigName, fromConfigName, targetPattern, targets);
             }
@@ -139,6 +141,7 @@ public class IvyDependencyMetadata extends DefaultDependencyMetadata {
 
         return targets;
     }
+
     private void findMatches(ComponentResolveMetadata fromComponent, ComponentResolveMetadata targetComponent, String fromConfiguration, String patternConfiguration, String targetPattern, Set<ConfigurationMetadata> targetConfigurations) {
         int startFallback = targetPattern.indexOf('(');
         if (startFallback >= 0) {

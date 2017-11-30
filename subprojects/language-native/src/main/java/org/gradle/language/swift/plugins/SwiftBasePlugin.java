@@ -19,29 +19,25 @@ package org.gradle.language.swift.plugins;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
-import org.gradle.api.Task;
-import org.gradle.api.file.Directory;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.tasks.TaskContainerInternal;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.provider.ProviderFactory;
-import org.gradle.api.specs.Spec;
-import org.gradle.api.tasks.util.PatternSet;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
 import org.gradle.language.nativeplatform.internal.Names;
 import org.gradle.language.swift.SwiftBinary;
-import org.gradle.language.swift.SwiftBundle;
 import org.gradle.language.swift.SwiftExecutable;
 import org.gradle.language.swift.SwiftSharedLibrary;
-import org.gradle.language.swift.tasks.CreateSwiftBundle;
+import org.gradle.language.swift.internal.DefaultSwiftBinary;
+import org.gradle.language.swift.internal.DefaultSwiftExecutable;
+import org.gradle.language.swift.internal.DefaultSwiftSharedLibrary;
 import org.gradle.language.swift.tasks.SwiftCompile;
 import org.gradle.model.internal.registry.ModelRegistry;
 import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform;
 import org.gradle.nativeplatform.tasks.InstallExecutable;
 import org.gradle.nativeplatform.tasks.LinkExecutable;
-import org.gradle.nativeplatform.tasks.LinkMachOBundle;
 import org.gradle.nativeplatform.tasks.LinkSharedLibrary;
 import org.gradle.nativeplatform.toolchain.NativeToolChain;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
@@ -49,7 +45,6 @@ import org.gradle.nativeplatform.toolchain.internal.NativeToolChainRegistryInter
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 import org.gradle.nativeplatform.toolchain.plugins.SwiftCompilerPlugin;
 
-import java.util.Arrays;
 import java.util.concurrent.Callable;
 
 /**
@@ -76,15 +71,25 @@ public class SwiftBasePlugin implements Plugin<ProjectInternal> {
             public void execute(final SwiftBinary binary) {
                 final Names names = Names.of(binary.getName());
                 SwiftCompile compile = tasks.create(names.getCompileTaskName("swift"), SwiftCompile.class);
-                compile.includes(binary.getCompileImportPath());
-                compile.source(binary.getSwiftSource());
+                compile.getModules().from(binary.getCompileModules());
+                compile.getSource().from(binary.getSwiftSource());
                 if (binary.isDebuggable()) {
                     compile.setDebuggable(true);
                 } else {
                     compile.setOptimized(true);
                 }
-                compile.setModuleName(binary.getModule());
+                if (binary.isTestable()) {
+                    compile.getCompilerArgs().add("-enable-testing");
+                }
+                compile.getModuleName().set(binary.getModule());
                 compile.getObjectFileDir().set(buildDirectory.dir("obj/" + names.getDirName()));
+                compile.getModuleFile().set(buildDirectory.file(providers.provider(new Callable<String>() {
+                    @Override
+                    public String call() throws Exception {
+                        return "modules/" + names.getDirName() + binary.getModule().get() + ".swiftmodule";
+                    }
+                })));
+                ((DefaultSwiftBinary)binary).getModuleFile().set(compile.getModuleFile());
 
                 DefaultNativePlatform currentPlatform = new DefaultNativePlatform("current");
                 compile.setTargetPlatform(currentPlatform);
@@ -93,10 +98,12 @@ public class SwiftBasePlugin implements Plugin<ProjectInternal> {
                 NativeToolChain toolChain = modelRegistry.realize("toolChains", NativeToolChainRegistryInternal.class).getForPlatform(currentPlatform);
                 compile.setToolChain(toolChain);
 
+                ((DefaultSwiftBinary)binary).getObjectsDir().set(compile.getObjectFileDir());
+
                 if (binary instanceof SwiftExecutable) {
                     // Add a link task
                     LinkExecutable link = tasks.create(names.getTaskName("link"), LinkExecutable.class);
-                    link.source(compile.getObjectFileDir().getAsFileTree().matching(new PatternSet().include("**/*.obj", "**/*.o")));
+                    link.source(binary.getObjects());
                     link.lib(binary.getLinkLibraries());
                     final PlatformToolProvider toolProvider = ((NativeToolChainInternal) toolChain).select(currentPlatform);
                     Provider<RegularFile> exeLocation = buildDirectory.file(providers.provider(new Callable<String>() {
@@ -110,21 +117,25 @@ public class SwiftBasePlugin implements Plugin<ProjectInternal> {
                     link.setToolChain(toolChain);
                     link.setDebuggable(binary.isDebuggable());
 
+                    ((DefaultSwiftExecutable)binary).getExecutableFile().set(link.getBinaryFile());
+
                     // Add an install task
                     // TODO - maybe not for all executables
                     final InstallExecutable install = tasks.create(names.getTaskName("install"), InstallExecutable.class);
                     install.setPlatform(link.getTargetPlatform());
                     install.setToolChain(link.getToolChain());
-                    install.setDestinationDir(buildDirectory.dir("install/" + names.getDirName()));
-                    install.setExecutable(link.getBinaryFile());
+                    install.getInstallDirectory().set(buildDirectory.dir("install/" + names.getDirName()));
+                    install.getSourceFile().set(link.getBinaryFile());
                     install.lib(binary.getRuntimeLibraries());
+                    ((DefaultSwiftExecutable)binary).getInstallDirectory().set(install.getInstallDirectory());
+                    ((DefaultSwiftExecutable)binary).getRunScriptFile().set(install.getRunScriptFile());
                 } else if (binary instanceof SwiftSharedLibrary) {
                     // Specific compiler arguments
-                    compile.getCompilerArgs().set(Arrays.asList("-parse-as-library"));
+                    compile.getCompilerArgs().add("-parse-as-library");
 
                     // Add a link task
                     final LinkSharedLibrary link = tasks.create(names.getTaskName("link"), LinkSharedLibrary.class);
-                    link.source(compile.getObjectFileDir().getAsFileTree().matching(new PatternSet().include("**/*.obj", "**/*.o")));
+                    link.source(binary.getObjects());
                     link.lib(binary.getLinkLibraries());
                     // TODO - need to set soname
                     final PlatformToolProvider toolProvider = ((NativeToolChainInternal) toolChain).select(currentPlatform);
@@ -138,42 +149,8 @@ public class SwiftBasePlugin implements Plugin<ProjectInternal> {
                     link.setTargetPlatform(currentPlatform);
                     link.setToolChain(toolChain);
                     link.setDebuggable(binary.isDebuggable());
-                } else if (binary instanceof SwiftBundle) {
-                    // Specific compiler arguments
-                    compile.getCompilerArgs().set(Arrays.asList("-parse-as-library"));
 
-                    // Add a link task
-                    LinkMachOBundle link = tasks.create(names.getTaskName("link"), LinkMachOBundle.class);
-                    link.source(compile.getObjectFileDir().getAsFileTree().matching(new PatternSet().include("**/*.obj", "**/*.o")));
-                    link.lib(binary.getLinkLibraries());
-                    final PlatformToolProvider toolProvider = ((NativeToolChainInternal) toolChain).select(currentPlatform);
-                    Provider<RegularFile> exeLocation = buildDirectory.file(providers.provider(new Callable<String>() {
-                        @Override
-                        public String call() {
-                            return toolProvider.getExecutableName("exe/" + names.getDirName() + binary.getModule().get());
-                        }
-                    }));
-                    link.setOutputFile(exeLocation);
-                    link.setTargetPlatform(currentPlatform);
-                    link.setToolChain(toolChain);
-                    link.setDebuggable(binary.isDebuggable());
-
-                    final CreateSwiftBundle bundle = tasks.create(names.getTaskName("bundleSwift"), CreateSwiftBundle.class);
-                    bundle.getExecutableFile().set(link.getBinaryFile());
-                    bundle.getInformationFile().set(((SwiftBundle) binary).getInformationPropertyList());
-                    Provider<Directory> bundleLocation = buildDirectory.dir(providers.provider(new Callable<String>() {
-                        @Override
-                        public String call() throws Exception {
-                            return "bundle/" + names.getDirName() + binary.getModule().get() + ".xctest";
-                        }
-                    }));
-                    bundle.getOutputDir().set(bundleLocation);
-                    bundle.onlyIf(new Spec<Task>() {
-                        @Override
-                        public boolean isSatisfiedBy(Task element) {
-                            return bundle.getExecutableFile().getAsFile().get().exists();
-                        }
-                    });
+                    ((DefaultSwiftSharedLibrary)binary).getRuntimeFile().set(link.getBinaryFile());
                 }
             }
         });

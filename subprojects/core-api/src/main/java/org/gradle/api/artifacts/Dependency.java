@@ -44,6 +44,7 @@ public interface Dependency {
      * Returns the version of this dependency. The version is often required to find the artifacts of a dependency in a
      * repository. For example the version name corresponds to a directory name in a Maven like repository. Might return
      * null.
+     *
      */
     @Nullable
     String getVersion();

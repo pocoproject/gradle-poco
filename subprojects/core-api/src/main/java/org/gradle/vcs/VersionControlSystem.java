@@ -24,7 +24,7 @@ import java.util.Set;
  * Allows the user to perform generic version control operations in ways
  * specified by the underlying implementations.
  *
- * @since 4.3
+ * @since 4.4
  */
 @Incubating
 public interface VersionControlSystem {
@@ -36,9 +36,10 @@ public interface VersionControlSystem {
     Set<VersionRef> getAvailableVersions(VersionControlSpec spec);
 
     /**
-     * Populates the {@code workingDir} with the latest state of the
-     * version control repostory from the {@code spec}.
+     * Populates a working directory under {@code versionDir} with the latest
+     * state of the version control repository from the {@code spec} and
+     * returns the working directory.
      */
-    void populate(File workingDir, VersionRef ref, VersionControlSpec spec);
+    File populate(File versionDir, VersionRef ref, VersionControlSpec spec);
 
 }

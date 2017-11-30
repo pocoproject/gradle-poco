@@ -23,6 +23,7 @@ import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.UnknownConfigurationException;
 import org.gradle.api.internal.AbstractValidatingNamedDomainObjectContainer;
 import org.gradle.api.internal.DomainObjectContext;
+import org.gradle.api.internal.artifacts.ComponentSelectorConverter;
 import org.gradle.api.internal.artifacts.ConfigurationResolver;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory;
@@ -35,13 +36,13 @@ import org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultRe
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.tasks.TaskResolver;
-import org.gradle.vcs.internal.VcsMappingsInternal;
 import org.gradle.initialization.ProjectAccessListener;
 import org.gradle.internal.Factory;
 import org.gradle.internal.event.ListenerManager;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.typeconversion.NotationParser;
+import org.gradle.vcs.internal.VcsMappingsInternal;
 
 import java.util.Collection;
 import java.util.Set;
@@ -65,6 +66,7 @@ public class DefaultConfigurationContainer extends AbstractValidatingNamedDomain
     private int detachedConfigurationDefaultNameCounter = 1;
     private final Factory<ResolutionStrategyInternal> resolutionStrategyFactory;
     private final DefaultRootComponentMetadataBuilder rootComponentMetadataBuilder;
+    private ConfigurationUseSite useSite;
 
     public DefaultConfigurationContainer(ConfigurationResolver resolver,
                                          final Instantiator instantiator, DomainObjectContext context, ListenerManager listenerManager,
@@ -77,7 +79,8 @@ public class DefaultConfigurationContainer extends AbstractValidatingNamedDomain
                                          BuildOperationExecutor buildOperationExecutor,
                                          TaskResolver taskResolver,
                                          ImmutableAttributesFactory attributesFactory,
-                                         final ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
+                                         final ImmutableModuleIdentifierFactory moduleIdentifierFactory,
+                                         final ComponentSelectorConverter componentSelectorConverter) {
         super(Configuration.class, instantiator, new Configuration.Namer());
         this.resolver = resolver;
         this.instantiator = instantiator;
@@ -93,15 +96,25 @@ public class DefaultConfigurationContainer extends AbstractValidatingNamedDomain
         resolutionStrategyFactory = new Factory<ResolutionStrategyInternal>() {
             @Override
             public ResolutionStrategyInternal create() {
-                return instantiator.newInstance(DefaultResolutionStrategy.class, globalDependencySubstitutionRules, vcsMappingsInternal, componentIdentifierFactory, moduleIdentifierFactory);
+                return instantiator.newInstance(DefaultResolutionStrategy.class, globalDependencySubstitutionRules, vcsMappingsInternal, componentIdentifierFactory, moduleIdentifierFactory, componentSelectorConverter);
             }
         };
         this.rootComponentMetadataBuilder = new DefaultRootComponentMetadataBuilder(dependencyMetaDataProvider, componentIdentifierFactory, moduleIdentifierFactory, projectFinder, configurationComponentMetaDataBuilder, this);
+
+        if (context.isScript()) {
+            this.useSite = ConfigurationUseSite.script();
+        } else {
+            if (context.getProjectPath() == null) {
+                this.useSite = ConfigurationUseSite.unknown();
+            } else {
+                this.useSite = ConfigurationUseSite.project(context.getProjectPath());
+            }
+        }
     }
 
     @Override
     protected Configuration doCreate(String name) {
-        DefaultConfiguration configuration = instantiator.newInstance(DefaultConfiguration.class, context.identityPath(name), context.projectPath(name), name, this, resolver,
+        DefaultConfiguration configuration = instantiator.newInstance(DefaultConfiguration.class, context, useSite, name, this, resolver,
             listenerManager, dependencyMetaDataProvider, resolutionStrategyFactory, projectAccessListener, projectFinder,
             fileCollectionFactory, buildOperationExecutor, instantiator, artifactNotationParser, attributesFactory, rootComponentMetadataBuilder);
         configuration.addMutationValidator(rootComponentMetadataBuilder.getValidator());
@@ -131,9 +144,10 @@ public class DefaultConfigurationContainer extends AbstractValidatingNamedDomain
         String name = DETACHED_CONFIGURATION_DEFAULT_NAME + detachedConfigurationDefaultNameCounter++;
         DetachedConfigurationsProvider detachedConfigurationsProvider = new DetachedConfigurationsProvider();
         DefaultConfiguration detachedConfiguration = instantiator.newInstance(DefaultConfiguration.class,
-            context.identityPath(name), context.projectPath(name), name, detachedConfigurationsProvider, resolver,
+            context, useSite, name, detachedConfigurationsProvider, resolver,
             listenerManager, dependencyMetaDataProvider, resolutionStrategyFactory, projectAccessListener, projectFinder,
-            fileCollectionFactory, buildOperationExecutor, instantiator, artifactNotationParser, attributesFactory, rootComponentMetadataBuilder.withConfigurationsProvider(detachedConfigurationsProvider));
+            fileCollectionFactory, buildOperationExecutor, instantiator, artifactNotationParser, attributesFactory,
+            rootComponentMetadataBuilder.withConfigurationsProvider(detachedConfigurationsProvider));
         DomainObjectSet<Dependency> detachedDependencies = detachedConfiguration.getDependencies();
         for (Dependency dependency : dependencies) {
             detachedDependencies.add(dependency.copy());
@@ -143,8 +157,7 @@ public class DefaultConfigurationContainer extends AbstractValidatingNamedDomain
     }
 
     /**
-     * Build a formatted representation of all Configurations in this ConfigurationContainer.
-     * Configuration(s) being toStringed are likely derivations of DefaultConfiguration.
+     * Build a formatted representation of all Configurations in this ConfigurationContainer. Configuration(s) being toStringed are likely derivations of DefaultConfiguration.
      */
     public String dump() {
         StringBuilder reply = new StringBuilder();
@@ -157,4 +170,5 @@ public class DefaultConfigurationContainer extends AbstractValidatingNamedDomain
 
         return reply.toString();
     }
+
 }

@@ -27,7 +27,7 @@ class PropertyStateIntegrationTest extends AbstractIntegrationSpec {
 
     private final PropertyStateProjectUnderTest projectUnderTest = new PropertyStateProjectUnderTest(testDirectory)
 
-    @Issue("https://github.com/gradle/gradle/issues/3262")
+    @Issue("https://github.com/gradle/gradle/issues/3474")
     @Unroll
     def "does not receive deprecation warning when using #expr"() {
         given:

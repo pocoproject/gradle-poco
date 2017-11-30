@@ -79,6 +79,7 @@ public class DefaultIvyPublication implements IvyPublicationInternal {
     private final ProjectDependencyPublicationResolver projectDependencyResolver;
     private FileCollection descriptorFile;
     private SoftwareComponentInternal component;
+    private boolean alias;
 
     public DefaultIvyPublication(
             String name, Instantiator instantiator, IvyPublicationIdentity publicationIdentity, NotationParser<Object, IvyArtifact> ivyArtifactNotationParser,
@@ -113,6 +114,16 @@ public class DefaultIvyPublication implements IvyPublicationInternal {
 
     public void descriptor(Action<? super IvyModuleDescriptorSpec> configure) {
         configure.execute(descriptor);
+    }
+
+    @Override
+    public boolean isAlias() {
+        return alias;
+    }
+
+    @Override
+    public void setAlias(boolean alias) {
+        this.alias = alias;
     }
 
     public void from(SoftwareComponent component) {
@@ -254,5 +265,10 @@ public class DefaultIvyPublication implements IvyPublicationInternal {
 
     public ModuleVersionIdentifier getCoordinates() {
         return new DefaultModuleVersionIdentifier(getOrganisation(), getModule(), getRevision());
+    }
+
+    @Override
+    public PublishedFile getPublishedFile(PublishArtifact source) {
+        throw new UnsupportedOperationException("Will be required for publishing module metadata");
     }
 }

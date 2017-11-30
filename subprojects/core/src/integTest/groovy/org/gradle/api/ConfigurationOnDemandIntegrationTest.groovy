@@ -273,6 +273,7 @@ project(':api') {
         fixture.assertProjectsConfigured(":", ":impl", ":api")
 
         when:
+        executer.expectDeprecationWarning()
         run("impl:build", "--no-rebuild") // impl -> api
 
         then:

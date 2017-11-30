@@ -29,7 +29,7 @@ import static org.gradle.integtests.fixtures.BuildScanUserInputFixture.*
 @LeaksFileHandles
 class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
 
-    private static final String BUILD_SCAN_LICENSE_QUESTION = 'Do you accept the Gradle Cloud Services license agreement (https://gradle.com/terms-of-service)? [yes, no]'
+    private static final String BUILD_SCAN_LICENSE_QUESTION = 'Publishing a build scan to scans.gradle.com requires accepting the Terms of Service defined at https://scans.gradle.com/terms-of-service. Do you accept these terms?'
     private static final String BUILD_SCAN_SUCCESSFUL_PUBLISHING = 'Publishing build scan'
     private static final String BUILD_SCAN_PLUGIN_CONFIG_PROBLEM = 'The build scan was not published due to a configuration problem.'
     private static final String BUILD_SCAN_LICENSE_NOTE = 'The Gradle Cloud Services license agreement has not been agreed to.'
@@ -66,8 +66,9 @@ class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
         def gradleHandle = startBuildWithBuildScanCommandLineOption()
 
         then:
-        writeToStdInAndClose(gradleHandle, YES.bytes)
+        writeToStdIn(gradleHandle, YES.bytes)
         def result = gradleHandle.waitForFinish()
+        closeStdIn(gradleHandle)
         result.output.contains(BUILD_SCAN_LICENSE_QUESTION)
         result.output.contains(BUILD_SCAN_LICENSE_ACCEPTANCE)
         result.output.contains(BUILD_SCAN_SUCCESSFUL_PUBLISHING)
@@ -84,8 +85,9 @@ class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
         def gradleHandle = startBuildWithBuildScanCommandLineOption()
 
         then:
-        writeToStdInAndClose(gradleHandle, NO.bytes)
+        writeToStdIn(gradleHandle, NO.bytes)
         def result = gradleHandle.waitForFinish()
+        closeStdIn(gradleHandle)
         result.output.contains(BUILD_SCAN_LICENSE_QUESTION)
         result.output.contains(BUILD_SCAN_LICENSE_DECLINATION)
         result.output.contains(BUILD_SCAN_PLUGIN_CONFIG_PROBLEM)
@@ -105,8 +107,9 @@ class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
         def gradleHandle = startBuildWithBuildScanCommandLineOption()
 
         then:
-        writeToStdInAndClose(gradleHandle, EOF)
+        writeToStdIn(gradleHandle, EOF)
         def result = gradleHandle.waitForFinish()
+        closeStdIn(gradleHandle)
         result.output.contains(BUILD_SCAN_LICENSE_QUESTION)
         !result.output.contains(BUILD_SCAN_LICENSE_ACCEPTANCE)
         !result.output.contains(BUILD_SCAN_LICENSE_DECLINATION)
@@ -130,8 +133,9 @@ class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
         def gradleHandle = startBuildWithBuildScanCommandLineOption()
 
         then:
-        writeToStdInAndClose(gradleHandle, EOF)
+        writeToStdIn(gradleHandle, EOF)
         def result = gradleHandle.waitForFinish()
+        closeStdIn(gradleHandle)
         !result.output.contains(BUILD_SCAN_WARNING)
         result.output.contains(BUILD_SCAN_LICENSE_QUESTION)
         !result.output.contains(BUILD_SCAN_LICENSE_ACCEPTANCE)
@@ -139,6 +143,27 @@ class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
         result.output.contains(BUILD_SCAN_PLUGIN_CONFIG_PROBLEM)
         result.output.contains(BUILD_SCAN_LICENSE_NOTE)
         !result.output.contains(BUILD_SCAN_SUCCESSFUL_PUBLISHING)
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/3516")
+    def "renders build scan hint in build failure output if command line option was requested"() {
+        given:
+        withInteractiveConsole()
+        buildFile << failingBuildFile()
+
+        when:
+        def gradleHandle = startBuildWithBuildScanCommandLineOption()
+
+        then:
+        writeToStdIn(gradleHandle, YES.bytes)
+        def result = gradleHandle.waitForFailure()
+        closeStdIn(gradleHandle)
+        result.output.contains(BUILD_SCAN_LICENSE_QUESTION)
+        result.output.contains(BUILD_SCAN_LICENSE_ACCEPTANCE)
+        result.output.contains(BUILD_SCAN_SUCCESSFUL_PUBLISHING)
+        !result.output.contains(BUILD_SCAN_PLUGIN_CONFIG_PROBLEM)
+        !result.output.contains(BUILD_SCAN_LICENSE_NOTE)
+        result.error.contains(BUILD_SCAN_ERROR_MESSAGE_HINT)
     }
 
     private void withInteractiveConsole() {
@@ -151,5 +176,15 @@ class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
 
     static String dummyBuildFile() {
         "task $DUMMY_TASK_NAME"
+    }
+
+    static String failingBuildFile() {
+        """
+            task $DUMMY_TASK_NAME {
+                doLast {
+                    throw new GradleException('something went wrong')
+                }
+            }
+        """
     }
 }

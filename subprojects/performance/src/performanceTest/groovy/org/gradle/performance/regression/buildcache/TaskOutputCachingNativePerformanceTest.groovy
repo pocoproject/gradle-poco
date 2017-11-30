@@ -22,14 +22,13 @@ import spock.lang.Unroll
 class TaskOutputCachingNativePerformanceTest extends AbstractTaskOutputCachingPerformanceTest {
 
     def setup() {
-        runner.minimumVersion = "4.2"
-        runner.targetVersions = ["4.3-20171004093631+0000"]
-        checkIfCacheUsed = false // TODO: Until the base version supports caching
+        runner.minimumVersion = "4.3"
+        runner.targetVersions = ["4.4-20171108153325+0000"]
         runner.args += ["-Dorg.gradle.caching.native=true", "--parallel", "--${ParallelismBuildOptions.MaxWorkersOption.LONG_OPTION}=6"]
     }
 
     @Unroll
-    def "clean assemble on #testProject (local cache)"() {
+    def "clean #task on #testProject with local cache"() {
         given:
         runner.testProject = testProject
         runner.tasksToRun = [task]
@@ -43,7 +42,8 @@ class TaskOutputCachingNativePerformanceTest extends AbstractTaskOutputCachingPe
 
         where:
         testProject        | task                         | maxMemory
-        'nativeDependents' | 'libA0:buildDependentsLibA0' | '3g'
-        'bigNative'        | 'assemble'                   | '1G'
+        'bigCppApp'        | 'assemble'                   | '256m'
+        'bigCppMulti'      | 'assemble'                   | '1G'
+//        'bigNative'        | 'assemble'                   | '1G'
     }
 }

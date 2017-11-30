@@ -16,6 +16,7 @@
 package org.gradle.api.publish.internal;
 
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.internal.component.SoftwareComponentInternal;
 import org.gradle.api.publish.Publication;
 
@@ -26,4 +27,26 @@ public interface PublicationInternal extends Publication {
     SoftwareComponentInternal getComponent();
 
     ModuleVersionIdentifier getCoordinates();
+
+    /**
+     * Specifies that this publication is just an alias for another one and should not
+     * be considered when converting project dependencies to published metadata.
+     */
+    boolean isAlias();
+
+    void setAlias(boolean alias);
+
+    /**
+     * Provide the file coordinates for the published artifact, if any.
+     *
+     * @param source The original PublishArtifact
+     * @return The name and URI of the published file, or `null` if the source artifact is not published.
+     */
+    PublishedFile getPublishedFile(PublishArtifact source);
+
+    interface PublishedFile {
+        String getName();
+
+        String getUri();
+    }
 }

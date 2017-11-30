@@ -15,6 +15,7 @@ dependencies {
     compile project(":core")
     compile project(":resources")
     compile project(":versionControl")
+    compile project(":resourcesHttp")
 
     compile libraries.asm
     compile libraries.commons_lang
@@ -32,8 +33,6 @@ dependencies {
 
     testCompile libraries.nekohtml
 
-    integTestImplementation project(":resourcesHttp")
-
     integTestRuntime project(":ivy")
     integTestRuntime project(":maven")
     integTestRuntime project(":resourcesS3")
@@ -46,6 +45,7 @@ dependencies {
 useTestFixtures()
 useTestFixtures(project: ":messaging")
 useTestFixtures(project: ":modelCore")
+useTestFixtures(project: ":versionControl")
 
 verifyTestFilesCleanup.errorWhenNotEmpty = false
 

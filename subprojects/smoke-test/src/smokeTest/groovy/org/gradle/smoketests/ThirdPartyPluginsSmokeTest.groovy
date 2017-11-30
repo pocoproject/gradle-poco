@@ -17,9 +17,10 @@
 package org.gradle.smoketests
 
 import org.gradle.util.ports.ReleasingPortAllocator
+import org.gradle.vcs.fixtures.GitRepository
 import org.junit.Rule
-import spock.lang.Ignore
 import spock.lang.Issue
+import spock.lang.Unroll
 
 import static org.gradle.testkit.runner.TaskOutcome.SUCCESS
 
@@ -27,15 +28,16 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
 
     @Rule final ReleasingPortAllocator portAllocator = new ReleasingPortAllocator()
 
+    @Unroll
     @Issue('https://plugins.gradle.org/plugin/com.github.johnrengelman.shadow')
-    def 'shadow plugin'() {
+    def 'shadow plugin #version'() {
         given:
         buildFile << """
             import com.github.jengelman.gradle.plugins.shadow.transformers.ServiceFileTransformer
 
             plugins {
                 id 'java' // or 'groovy' Must be explicitly applied
-                id 'com.github.johnrengelman.shadow' version '2.0.1'
+                id 'com.github.johnrengelman.shadow' version '$version'
             }
 
             ${jcenterRepository()}
@@ -58,6 +60,9 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
 
         then:
         result.task(':shadowJar').outcome == SUCCESS
+
+        where:
+        version << ["1.2.4", "2.0.1"]
     }
 
     @Issue('https://github.com/asciidoctor/asciidoctor-gradle-plugin/releases')
@@ -67,7 +72,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
             buildscript {
                 ${jcenterRepository()}
                 dependencies {
-                    classpath "org.asciidoctor:asciidoctor-gradle-plugin:1.5.6"                
+                    classpath "org.asciidoctor:asciidoctor-gradle-plugin:1.5.6"
                 }
             }
 
@@ -154,7 +159,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
             buildscript {
                 ${mavenCentralRepository()}
                 dependencies {
-                    classpath('org.springframework.boot:spring-boot-gradle-plugin:1.5.7.RELEASE')
+                    classpath('org.springframework.boot:spring-boot-gradle-plugin:1.5.8.RELEASE')
                 }
             }
 
@@ -224,7 +229,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
         def stopPort = portAllocator.assignPort()
         buildFile << """
             plugins {
-                id "com.bmuschko.tomcat" version "2.3"
+                id "com.bmuschko.tomcat" version "2.4.1"
             }
 
             ${mavenCentralRepository()}
@@ -272,15 +277,12 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
         runner('integrationTest').build()
     }
 
-    @Ignore("Initialization of CompileOptions fails due to API change")
     def 'gosu plugin'() { // Requires JDK 8 or later
         given:
         buildFile << """
             plugins {
-                id "org.gosu-lang.gosu" version "0.3.0"
+                id 'org.gosu-lang.gosu' version '0.3.5'
             }
-
-            apply plugin: "org.gosu-lang.gosu"
 
             ${mavenCentralRepository()}
 
@@ -316,7 +318,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
                 id "org.xtext.xtend" version "1.0.19"
             }
 
-            ${jcenterRepository()}
+            ${mavenCentralRepository()}
 
             dependencies {
                 compile 'org.eclipse.xtend:org.eclipse.xtend.lib:2.11.0'
@@ -336,5 +338,66 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
 
         then:
         result.task(':generateXtext').outcome == SUCCESS
+    }
+
+    def 'org.ajoberstar.grgit plugin'() {
+        given:
+        GitRepository.init(testProjectDir.root)
+        buildFile << """
+            plugins {
+                id "org.ajoberstar.grgit" version "2.1.0"
+            }
+
+            def sourceFile = file("sourceFile")
+
+            task commit {
+                doLast {
+                    sourceFile.text = "hello world"
+                    grgit.add(patterns: [ 'sourceFile' ])
+                    grgit.commit {
+                        message = "first commit"
+                    }
+                }
+            }
+
+            task tag {
+                dependsOn commit
+                doLast {
+                    grgit.tag.add {
+                        name = 'previous'
+                        message = 'previous commit'
+                    }
+
+                    sourceFile.text = "goodbye world"
+                    grgit.add(patterns: [ 'sourceFile' ])
+                    grgit.commit {
+                        message = "second commit"
+                    }
+                }
+            }
+
+            task checkout {
+                dependsOn tag
+                doLast {
+                    assert sourceFile.text == 'goodbye world'
+                    grgit.checkout {
+                        branch = 'previous'
+                    }
+                    assert sourceFile.text == 'hello world'
+                }
+            }
+
+            task release {
+                dependsOn checkout
+            }
+        """.stripIndent()
+
+        when:
+        def result = runner('release').build()
+
+        then:
+        result.task(':commit').outcome == SUCCESS
+        result.task(':tag').outcome == SUCCESS
+        result.task(':checkout').outcome == SUCCESS
     }
 }

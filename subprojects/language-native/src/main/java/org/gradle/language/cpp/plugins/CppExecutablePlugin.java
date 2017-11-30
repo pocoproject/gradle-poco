@@ -22,21 +22,21 @@ import org.gradle.api.Plugin;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.attributes.Usage;
+import org.gradle.api.component.SoftwareComponent;
 import org.gradle.api.internal.file.FileOperations;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.plugins.AppliedPlugin;
 import org.gradle.api.publish.PublishingExtension;
 import org.gradle.api.publish.maven.MavenPublication;
+import org.gradle.api.publish.maven.internal.publication.MavenPublicationInternal;
 import org.gradle.api.tasks.TaskContainer;
 import org.gradle.language.base.plugins.LifecycleBasePlugin;
 import org.gradle.language.cpp.CppApplication;
 import org.gradle.language.cpp.CppComponent;
 import org.gradle.language.cpp.internal.DefaultCppApplication;
 import org.gradle.language.cpp.internal.MainExecutableVariant;
-import org.gradle.language.cpp.internal.NativeRuntimeVariant;
-import org.gradle.nativeplatform.tasks.InstallExecutable;
-import org.gradle.nativeplatform.tasks.LinkExecutable;
+import org.gradle.language.cpp.internal.NativeVariant;
 
 import javax.inject.Inject;
 
@@ -74,7 +74,7 @@ public class CppExecutablePlugin implements Plugin<ProjectInternal> {
         ObjectFactory objectFactory = project.getObjects();
 
         // Add the application extension
-        final CppApplication application = project.getExtensions().create(CppApplication.class, "executable", DefaultCppApplication.class,  "main", objectFactory, fileOperations, configurations);
+        final CppApplication application = project.getExtensions().create(CppApplication.class, "executable", DefaultCppApplication.class,  "main", project.getLayout(), objectFactory, fileOperations, configurations);
         project.getComponents().add(application);
         project.getComponents().add(application.getDebugExecutable());
         project.getComponents().add(application.getReleaseExecutable());
@@ -83,13 +83,9 @@ public class CppExecutablePlugin implements Plugin<ProjectInternal> {
         application.getBaseName().set(project.getName());
 
         // Install the debug variant by default
-        InstallExecutable install = (InstallExecutable) tasks.getByName("installDebug");
-        tasks.getByName(LifecycleBasePlugin.ASSEMBLE_TASK_NAME).dependsOn(install);
+        tasks.getByName(LifecycleBasePlugin.ASSEMBLE_TASK_NAME).dependsOn(application.getDevelopmentBinary().getInstallDirectory());
 
         // TODO - add lifecycle tasks to assemble each variant
-
-        LinkExecutable linkDebug = (LinkExecutable) tasks.getByName("linkDebug");
-        LinkExecutable linkRelease = (LinkExecutable) tasks.getByName("linkRelease");
 
         final Usage runtimeUsage = objectFactory.named(Usage.class, Usage.NATIVE_RUNTIME);
 
@@ -98,19 +94,24 @@ public class CppExecutablePlugin implements Plugin<ProjectInternal> {
         debugRuntimeElements.setCanBeResolved(false);
         debugRuntimeElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, runtimeUsage);
         debugRuntimeElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, true);
-        debugRuntimeElements.getOutgoing().artifact(linkDebug.getBinaryFile());
+        debugRuntimeElements.getOutgoing().artifact(application.getDebugExecutable().getExecutableFile());
 
         final Configuration releaseRuntimeElements = configurations.maybeCreate("releaseRuntimeElements");
         releaseRuntimeElements.extendsFrom(application.getImplementationDependencies());
         releaseRuntimeElements.setCanBeResolved(false);
         releaseRuntimeElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, runtimeUsage);
         releaseRuntimeElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, false);
-        releaseRuntimeElements.getOutgoing().artifact(linkRelease.getBinaryFile());
+        releaseRuntimeElements.getOutgoing().artifact(application.getReleaseExecutable().getExecutableFile());
+
+        final MainExecutableVariant mainVariant = new MainExecutableVariant();
+        NativeVariant debugVariant = new NativeVariant("debug", runtimeUsage, debugRuntimeElements.getAllArtifacts(), debugRuntimeElements);
+        mainVariant.addVariant(debugVariant);
+        NativeVariant releaseVariant = new NativeVariant("release", runtimeUsage, releaseRuntimeElements.getAllArtifacts(), releaseRuntimeElements);
+        mainVariant.addVariant(releaseVariant);
 
         project.getPluginManager().withPlugin("maven-publish", new Action<AppliedPlugin>() {
             @Override
             public void execute(AppliedPlugin appliedPlugin) {
-                final MainExecutableVariant mainVariant = new MainExecutableVariant();
                 project.getExtensions().configure(PublishingExtension.class, new Action<PublishingExtension>() {
                     @Override
                     public void execute(PublishingExtension extension) {
@@ -122,32 +123,22 @@ public class CppExecutablePlugin implements Plugin<ProjectInternal> {
                                 publication.setArtifactId(application.getBaseName().get());
                                 publication.setVersion(project.getVersion().toString());
                                 publication.from(mainVariant);
+                                ((MavenPublicationInternal) publication).publishWithOriginalFileName();
                             }
                         });
-                        extension.getPublications().create("debug", MavenPublication.class, new Action<MavenPublication>() {
-                            @Override
-                            public void execute(MavenPublication publication) {
-                                // TODO - should track changes to these properties
-                                publication.setGroupId(project.getGroup().toString());
-                                publication.setArtifactId(application.getBaseName().get() + "_debug");
-                                publication.setVersion(project.getVersion().toString());
-                                NativeRuntimeVariant debugVariant = new NativeRuntimeVariant("debug", mainVariant, runtimeUsage, debugRuntimeElements.getAllArtifacts(), debugRuntimeElements);
-                                mainVariant.addVariant(debugVariant);
-                                publication.from(debugVariant);
-                            }
-                        });
-                        extension.getPublications().create("release", MavenPublication.class, new Action<MavenPublication>() {
-                            @Override
-                            public void execute(MavenPublication publication) {
-                                // TODO - should track changes to these properties
-                                publication.setGroupId(project.getGroup().toString());
-                                publication.setArtifactId(application.getBaseName().get() + "_release");
-                                publication.setVersion(project.getVersion().toString());
-                                NativeRuntimeVariant releaseVariant = new NativeRuntimeVariant("release", mainVariant, runtimeUsage, releaseRuntimeElements.getAllArtifacts(), releaseRuntimeElements);
-                                mainVariant.addVariant(releaseVariant);
-                                publication.from(releaseVariant);
-                            }
-                        });
+                        for (final SoftwareComponent child : mainVariant.getVariants()) {
+                            extension.getPublications().create(child.getName(), MavenPublication.class, new Action<MavenPublication>() {
+                                @Override
+                                public void execute(MavenPublication publication) {
+                                    // TODO - should track changes to these properties
+                                    publication.setGroupId(project.getGroup().toString());
+                                    publication.setArtifactId(application.getBaseName().get() + "_" + child.getName());
+                                    publication.setVersion(project.getVersion().toString());
+                                    publication.from(child);
+                                    ((MavenPublicationInternal) publication).publishWithOriginalFileName();
+                                }
+                            });
+                        }
                     }
                 });
             }

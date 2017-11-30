@@ -17,6 +17,7 @@ package org.gradle.api.internal.artifacts.configurations
 
 import org.gradle.api.artifacts.UnknownConfigurationException
 import org.gradle.api.internal.DomainObjectContext
+import org.gradle.api.internal.artifacts.ComponentSelectorConverter
 import org.gradle.api.internal.artifacts.ConfigurationResolver
 import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
@@ -58,10 +59,12 @@ class DefaultConfigurationContainerSpec extends Specification {
             DefaultModuleIdentifier.newId(*args)
         }
     }
+    private ComponentSelectorConverter componentSelectorConverter = Mock()
     def immutableAttributesFactory = TestUtil.attributesFactory()
 
     private DefaultConfigurationContainer configurationContainer = new DefaultConfigurationContainer(resolver, instantiator, domainObjectContext, listenerManager, metaDataProvider,
-        projectAccessListener, projectFinder, metaDataBuilder, fileCollectionFactory, globalSubstitutionRules, vcsMappingsInternal, componentIdentifierFactory, buildOperationExecutor, taskResolver, immutableAttributesFactory, moduleIdentifierFactory);
+        projectAccessListener, projectFinder, metaDataBuilder, fileCollectionFactory, globalSubstitutionRules, vcsMappingsInternal, componentIdentifierFactory, buildOperationExecutor, taskResolver,
+        immutableAttributesFactory, moduleIdentifierFactory, componentSelectorConverter);
 
     def "adds and gets"() {
         1 * domainObjectContext.identityPath("compile") >> Path.path(":build:compile")
@@ -105,10 +108,12 @@ class DefaultConfigurationContainerSpec extends Specification {
         then:
         configurationContainer.getByName("compile") == compile
         compile.description == "I compile!"
+        compile.path == ":compile"
     }
 
     def "creates detached"() {
         given:
+        1 * domainObjectContext.projectPath("detachedConfiguration1") >> Path.path(":detachedConfiguration1")
         def dependency1 = new DefaultExternalModuleDependency("group", "name", "version")
         def dependency2 = new DefaultExternalModuleDependency("group", "name2", "version")
 
@@ -121,5 +126,6 @@ class DefaultConfigurationContainerSpec extends Specification {
         detached.getHierarchy() == [detached] as Set
         [dependency1, dependency2].each { detached.getDependencies().contains(it) }
         detached.getDependencies().size() == 2
+        detached.path == ":detachedConfiguration1"
     }
 }

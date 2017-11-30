@@ -434,4 +434,93 @@ task useDirProvider {
         result.assertTasksNotSkipped(":createDir1", ":merge")
         file("output/merged.txt").text == 'new-dir1,dir2'
     }
+
+    def "can wire the output of a task as a dependency of another task"() {
+        buildFile << """
+            class DirOutputTask extends DefaultTask {
+                @InputFile
+                final RegularFileProperty inputFile = newInputFile()
+                @OutputDirectory
+                final DirectoryProperty outputDir = newOutputDirectory()
+                
+                @TaskAction
+                void go() {
+                    def dir = outputDir.asFile.get()
+                    new File(dir, "file.txt").text = inputFile.asFile.get().text
+                }
+            }
+            
+            class FileOutputTask extends DefaultTask {
+                @InputFile
+                final RegularFileProperty inputFile = newInputFile()
+                @OutputFile
+                final RegularFileProperty outputFile = newOutputFile()
+                
+                @TaskAction
+                void go() {
+                    def file = outputFile.asFile.get()
+                    file.text = inputFile.asFile.get().text
+                }
+            }
+            
+            task createDir(type: DirOutputTask)
+            task createFile1(type: FileOutputTask)
+            task otherTask {
+                dependsOn(createFile1.outputFile)
+                dependsOn(createDir.outputDir.asFileTree)
+            }
+            
+            // Set values lazily
+            createDir.inputFile = layout.projectDirectory.file("dir1-source.txt")
+            createDir.outputDir = layout.buildDirectory.dir("dir1")
+            createFile1.inputFile = layout.projectDirectory.file("file1-source.txt")
+            createFile1.outputFile = layout.buildDirectory.file("file1.txt")
+            
+            buildDir = "output"
+"""
+        file("dir1-source.txt").text = "dir1"
+        file("file1-source.txt").text = "file1"
+
+        when:
+        run("otherTask")
+
+        then:
+        result.assertTasksExecuted(":createDir", ":createFile1", ":otherTask")
+    }
+
+    def "can use @Optional on properties with type Property"() {
+        given:
+        buildFile << """
+class SomeTask extends DefaultTask {
+    @Optional @InputFile
+    Property<RegularFile> inFile = newInputFile()
+    
+    @Optional @InputDirectory
+    Property<Directory> inDir = newInputDirectory()
+    
+    @Optional @OutputFile
+    Property<RegularFile> outFile = newOutputFile()
+    
+    @Optional @OutputDirectory
+    Property<Directory> outDir = newOutputDirectory()
+    
+    @TaskAction
+    def go() { }
+}
+
+    task doNothing(type: SomeTask)
+"""
+
+        when:
+        run("doNothing")
+
+        then:
+        result.assertTasksNotSkipped(":doNothing")
+
+        when:
+        run("doNothing")
+
+        then:
+        result.assertTasksSkipped(":doNothing")
+    }
 }

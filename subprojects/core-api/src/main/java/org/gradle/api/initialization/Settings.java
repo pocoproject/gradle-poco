@@ -20,11 +20,13 @@ import org.gradle.StartParameter;
 import org.gradle.api.Action;
 import org.gradle.api.Incubating;
 import org.gradle.api.UnknownProjectException;
+import org.gradle.api.initialization.dsl.ScriptHandler;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.api.plugins.PluginAware;
 import org.gradle.caching.configuration.BuildCacheConfiguration;
 import org.gradle.internal.HasInternalProtocol;
 import org.gradle.plugin.management.PluginManagementSpec;
+import org.gradle.vcs.SourceControl;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -40,7 +42,7 @@ import java.io.File;
  * <h3>Assembling a Multi-Project Build</h3>
  *
  * <p>One of the purposes of the <code>Settings</code> object is to allow you to declare the projects which are to be
- * included in the build. You add projects to the build using the {@link #include(String[])} method.  There is always a
+ * included in the build. You add projects to the build using the {@link #include(String...)} method.  There is always a
  * root project included in a build.  It is added automatically when the <code>Settings</code> object is created.  The
  * root project's name defaults to the name of the directory containing the settings file. The root project's project
  * directory defaults to the directory containing the settings file.</p>
@@ -107,7 +109,7 @@ public interface Settings extends PluginAware {
      *
      * @param projectPaths the projects to add.
      */
-    void include(String[] projectPaths);
+    void include(String... projectPaths);
 
     /**
      * <p>Adds the given projects to the build. Each name in the supplied list is treated as the name of a project to
@@ -121,7 +123,7 @@ public interface Settings extends PluginAware {
      *
      * @param projectNames the projects to add.
      */
-    void includeFlat(String[] projectNames);
+    void includeFlat(String... projectNames);
 
     /**
      * <p>Returns this settings object.</p>
@@ -129,6 +131,17 @@ public interface Settings extends PluginAware {
      * @return This settings object. Never returns null.
      */
     Settings getSettings();
+
+    /**
+     * Returns the build script handler for settings. You can use this handler to query details about the build
+     * script for settings, and manage the classpath used to compile and execute the settings script.
+     *
+     * @return the classpath handler. Never returns null.
+     *
+     * @since 4.4
+     */
+    @Incubating
+    ScriptHandler getBuildscript();
 
     /**
      * <p>Returns the settings directory of the build. The settings directory is the directory containing the settings
@@ -252,4 +265,20 @@ public interface Settings extends PluginAware {
      */
     @Incubating
     PluginManagementSpec getPluginManagement();
+
+    /**
+     * Configures source control.
+     *
+     * @since 4.4
+     */
+    @Incubating
+    void sourceControl(Action<? super SourceControl> configuration);
+
+    /**
+     * Returns the source control configuration.
+     *
+     * @since 4.4
+     */
+    @Incubating
+    SourceControl getSourceControl();
 }

@@ -20,6 +20,7 @@ import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraries
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibrariesWithApiDependencies
 import org.gradle.nativeplatform.fixtures.app.CppGreeterWithOptionalFeature
 import org.gradle.nativeplatform.fixtures.app.CppLib
+import org.hamcrest.Matchers
 
 import static org.gradle.util.Matchers.containsText
 
@@ -101,6 +102,55 @@ class CppLibraryIntegrationTest extends AbstractCppInstalledToolChainIntegration
         result.assertTasksExecuted(compileAndLinkTasks(debug))
         sharedLibrary("build/lib/main/debug/hello").assertExists()
         !output.contains('compiling with feature enabled')
+    }
+
+    def "can use link file as task dependency"() {
+        given:
+        settingsFile << "rootProject.name = 'hello'"
+        def lib = new CppLib()
+        lib.writeToProject(testDirectory)
+
+        and:
+        buildFile << """
+            apply plugin: 'cpp-library'
+            
+            task assembleDebug {
+                dependsOn library.debugSharedLibrary.linkFile
+            }
+            task assembleRuntimeDebug {
+                dependsOn library.debugSharedLibrary.runtimeFile
+            }
+         """
+
+        expect:
+        succeeds "assembleDebug"
+        result.assertTasksExecuted(compileAndLinkTasks(debug), ":assembleDebug")
+        sharedLibrary("build/lib/main/debug/hello").assertExists()
+
+        succeeds "assembleRuntimeDebug"
+        result.assertTasksExecuted(compileAndLinkTasks(debug), ":assembleRuntimeDebug")
+
+    }
+
+    def "can use objects as task dependency"() {
+        given:
+        settingsFile << "rootProject.name = 'hello'"
+        def lib = new CppLib()
+        lib.writeToProject(testDirectory)
+
+        and:
+        buildFile << """
+            apply plugin: 'cpp-library'
+            
+            task compileDebug {
+                dependsOn library.debugSharedLibrary.objects
+            }
+         """
+
+        expect:
+        succeeds "compileDebug"
+        result.assertTasksExecuted(compileTasks(debug), ":compileDebug")
+        objectFiles(lib.sources)*.assertExists()
     }
 
     def "build logic can change source layout convention"() {
@@ -191,7 +241,10 @@ class CppLibraryIntegrationTest extends AbstractCppInstalledToolChainIntegration
         buildFile << """
             apply plugin: 'cpp-library'
             compileDebugCpp.objectFileDir = layout.buildDirectory.dir("object-files")
-            linkDebug.binaryFile = layout.buildDirectory.file("some-lib/main.bin")
+            linkDebug.binaryFile = layout.buildDirectory.file("shared/main.bin")
+            if (linkDebug.importLibrary.present) {
+                linkDebug.importLibrary = layout.buildDirectory.file("import/main.lib")
+            }
          """
 
         expect:
@@ -199,7 +252,10 @@ class CppLibraryIntegrationTest extends AbstractCppInstalledToolChainIntegration
         result.assertTasksExecuted(compileAndLinkTasks(debug), ":assemble")
 
         file("build/object-files").assertIsDir()
-        file("build/some-lib/main.bin").assertIsFile()
+        file("build/shared/main.bin").assertIsFile()
+        if (toolChain.visualCpp) {
+            file("build/import/main.lib").assertIsFile()
+        }
     }
 
     def "library can define public and implementation headers"() {
@@ -260,6 +316,81 @@ class CppLibraryIntegrationTest extends AbstractCppInstalledToolChainIntegration
         sharedLibrary("lib1/build/lib/main/release/lib1").assertExists()
         sharedLibrary("lib2/build/lib/main/release/lib2").assertExists()
         sharedLibrary("lib3/build/lib/main/release/lib3").assertExists()
+    }
+
+    def "private headers are not visible to consumer"() {
+        def lib = new CppLib()
+
+        given:
+        settingsFile << "include 'greeter', 'consumer'"
+        buildFile << """
+            subprojects {
+                apply plugin: 'cpp-library'
+            }
+            project(':consumer') {
+                dependencies { implementation project(':greeter') }
+            }
+"""
+        lib.sources.writeToProject(file('greeter'))
+        lib.publicHeaders.writeToSourceDir(file('greeter/src/main/headers'))
+        lib.privateHeaders.writeToSourceDir(file('greeter/src/main/headers'))
+        file("consumer/src/main/cpp/main.cpp") << """
+#include "greeter_consts.h"
+"""
+
+        when:
+        fails(":consumer:compileDebugCpp")
+
+        then:
+        failure.assertHasDescription("Execution failed for task ':consumer:compileDebugCpp'.")
+        failure.assertThatCause(Matchers.containsString("C++ compiler failed while compiling main.cpp."))
+
+        when:
+        buildFile << """
+project(':greeter') {
+    library.privateHeaders.from = []
+    library.publicHeaders.from = ['src/main/headers']
+}
+"""
+
+        then:
+        succeeds(":consumer:compileDebugCpp")
+    }
+
+    def "implementation dependencies are not visible to consumer"() {
+        def app = new CppAppWithLibraries()
+
+        given:
+        settingsFile << "include 'greeter', 'logger', 'consumer'"
+        buildFile << """
+            subprojects {
+                apply plugin: 'cpp-library'
+            }
+            project(':greeter') {
+                dependencies { implementation project(':logger') }
+            }
+            project(':consumer') {
+                dependencies { implementation project(':greeter') }
+            }
+"""
+        app.greeterLib.writeToProject(file('greeter'))
+        app.loggerLib.writeToProject(file('logger'))
+        file("consumer/src/main/cpp/main.cpp") << """
+#include "logger.h"
+"""
+
+        when:
+        fails(":consumer:compileDebugCpp")
+
+        then:
+        failure.assertHasDescription("Execution failed for task ':consumer:compileDebugCpp'.")
+        failure.assertThatCause(Matchers.containsString("C++ compiler failed while compiling main.cpp."))
+
+        when:
+        buildFile.text = buildFile.text.replace("dependencies { implementation project(':logger')", "dependencies { api project(':logger')")
+
+        then:
+        succeeds(":consumer:compileDebugCpp")
     }
 
     def "can change default base name and successfully link against library"() {

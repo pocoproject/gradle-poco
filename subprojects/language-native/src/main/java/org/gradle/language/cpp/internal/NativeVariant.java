@@ -18,15 +18,16 @@ package org.gradle.language.cpp.internal;
 
 import com.google.common.collect.ImmutableSet;
 import org.gradle.api.artifacts.Configuration;
-import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.attributes.Usage;
+import org.gradle.api.component.ComponentWithVariants;
+import org.gradle.api.component.SoftwareComponent;
 import org.gradle.api.internal.component.SoftwareComponentInternal;
 import org.gradle.api.internal.component.UsageContext;
 
 import java.util.Set;
 
-public class NativeVariant implements SoftwareComponentInternal {
+public class NativeVariant implements SoftwareComponentInternal, ComponentWithVariants {
     private final String name;
     private final Usage linkUsage;
     private final Configuration linkElements;
@@ -58,38 +59,16 @@ public class NativeVariant implements SoftwareComponentInternal {
     }
 
     @Override
-    public Set<? extends UsageContext> getUsages() {
-        if (linkElements == null) {
-            return ImmutableSet.of(new SimpleUsage(runtimeUsage, runtimeArtifacts, runtimeElementsConfiguration));
-        } else {
-            return ImmutableSet.of(new SimpleUsage(linkUsage, linkElements.getAllArtifacts(), linkElements), new SimpleUsage(runtimeUsage, runtimeArtifacts, runtimeElementsConfiguration));
-        }
+    public Set<SoftwareComponent> getVariants() {
+        return ImmutableSet.of();
     }
 
-    private static class SimpleUsage implements UsageContext {
-        private final Usage usage;
-        private final Set<? extends PublishArtifact> artifacts;
-        private final Set<ModuleDependency> dependencies;
-
-        SimpleUsage(Usage usage, Set<? extends PublishArtifact> artifacts, Configuration configuration) {
-            this.usage = usage;
-            this.artifacts = artifacts;
-            this.dependencies = configuration.getAllDependencies().withType(ModuleDependency.class);
-        }
-
-        @Override
-        public Usage getUsage() {
-            return usage;
-        }
-
-        @Override
-        public Set<? extends PublishArtifact> getArtifacts() {
-            return artifacts;
-        }
-
-        @Override
-        public Set<ModuleDependency> getDependencies() {
-            return dependencies;
+    @Override
+    public Set<? extends UsageContext> getUsages() {
+        if (linkElements == null) {
+            return ImmutableSet.of(new DefaultUsageContext(name + "-runtime", runtimeUsage, runtimeArtifacts, runtimeElementsConfiguration));
+        } else {
+            return ImmutableSet.of(new DefaultUsageContext(name + "-link", linkUsage, linkElements.getAllArtifacts(), linkElements), new DefaultUsageContext(name + "-runtime", runtimeUsage, runtimeArtifacts, runtimeElementsConfiguration));
         }
     }
 }

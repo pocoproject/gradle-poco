@@ -21,7 +21,6 @@ import org.apache.ivy.util.XMLHelper;
 import org.gradle.api.resources.MissingResourceException;
 import org.gradle.api.resources.ResourceException;
 import org.gradle.internal.ErroringAction;
-import org.gradle.internal.hash.Hashing;
 import org.gradle.internal.resource.ExternalResource;
 import org.gradle.internal.resource.ExternalResourceName;
 import org.gradle.internal.resource.local.FileStore;
@@ -59,10 +58,10 @@ class MavenMetadataLoader {
     }
 
     private void parseMavenMetadataInfo(final ExternalResourceName metadataLocation, final MavenMetadata metadata) throws IOException {
-        ExternalResource resource = cacheAwareExternalResourceAccessor.getResource(metadataLocation, new CacheAwareExternalResourceAccessor.ResourceFileStore() {
+        ExternalResource resource = cacheAwareExternalResourceAccessor.getResource(metadataLocation, null, new CacheAwareExternalResourceAccessor.ResourceFileStore() {
             @Override
             public LocallyAvailableResource moveIntoCache(File downloadedResource) {
-                String key = Hashing.sha1().hashString(metadataLocation.toString()).toString();
+                String key = metadataLocation.toString();
                 return resourcesFileStore.move(key, downloadedResource);
             }
         }, null);

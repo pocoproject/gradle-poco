@@ -40,19 +40,17 @@ class DefaultMutableIvyModuleResolveMetadataTest extends AbstractMutableModuleCo
         return new DefaultMutableIvyModuleResolveMetadata(Mock(ModuleVersionIdentifier), id)
     }
 
-    List<Artifact> artifacts = []
-
     def "initialises values from descriptor state and defaults"() {
         def id = DefaultModuleComponentIdentifier.newId("group", "module", "version")
         configuration("runtime", [])
         configuration("default", ["runtime"])
-        artifact("runtime.jar", "runtime")
-        artifact("api.jar", "default")
+        def a1 = artifact("runtime.jar", "runtime")
+        def a2 = artifact("api.jar", "default")
 
         def vid = Mock(ModuleVersionIdentifier)
 
         expect:
-        def metadata = new DefaultMutableIvyModuleResolveMetadata(vid, id, configurations, [], artifacts)
+        def metadata = new DefaultMutableIvyModuleResolveMetadata(vid, id, configurations, [], [a1, a2])
         metadata.componentId == id
         metadata.id == vid
         metadata.branch == null
@@ -73,13 +71,15 @@ class DefaultMutableIvyModuleResolveMetadataTest extends AbstractMutableModuleCo
         immutable.branch == null
         immutable.excludes.empty
         immutable.configurationNames == ["runtime", "default"] as Set
-        immutable.getConfiguration("runtime")
-        immutable.getConfiguration("runtime").artifacts.size() == 1
-        immutable.getConfiguration("default")
-        immutable.getConfiguration("default").hierarchy == ["default", "runtime"]
-        immutable.getConfiguration("default").transitive
-        immutable.getConfiguration("default").visible
-        immutable.getConfiguration("default").artifacts.size() == 2
+        def runtime = immutable.getConfiguration("runtime")
+        runtime.artifacts.name.name == ["runtime.jar"]
+        runtime.excludes.empty
+        def defaultConfig = immutable.getConfiguration("default")
+        defaultConfig.hierarchy == ["default", "runtime"]
+        defaultConfig.transitive
+        defaultConfig.visible
+        defaultConfig.artifacts.name.name == ["api.jar", "runtime.jar"]
+        defaultConfig.excludes.empty
 
         and:
         def copy = immutable.asMutable()
@@ -91,6 +91,25 @@ class DefaultMutableIvyModuleResolveMetadataTest extends AbstractMutableModuleCo
         copy.branch == null
         copy.artifactDefinitions.size() == 2
         copy.excludes.empty
+    }
+
+    def "artifacts include union of those inherited from other configurations"() {
+        given:
+        configuration("compile")
+        configuration("runtime", ["compile"])
+        def a1 = artifact("one", "runtime")
+        def a2 = artifact("two", "runtime", "compile")
+        def a3 = artifact("three", "compile")
+
+        def metadata = new DefaultMutableIvyModuleResolveMetadata(null, id, configurations, [], [a1, a2, a3])
+
+        expect:
+        metadata.configurations["compile"].artifacts.name.name == ["two", "three"]
+        metadata.configurations["runtime"].artifacts.name.name == ["one", "two", "three"]
+
+        def immutable = metadata.asImmutable()
+        immutable.configurations["compile"].artifacts.name.name == ["two", "three"]
+        immutable.configurations["runtime"].artifacts.name.name == ["one", "two", "three"]
     }
 
     def "can override values from descriptor"() {
@@ -212,7 +231,52 @@ class DefaultMutableIvyModuleResolveMetadataTest extends AbstractMutableModuleCo
         immutableCopy.statusScheme == ["1", "2"]
     }
 
+    def "can replace the exclude rules for the component"() {
+        when:
+        configuration("compile")
+        configuration("runtime", ["compile"])
+
+        def metadata = getMetadata()
+        metadata.configurations
+
+        def exclude1 = exclude("foo", "bar", "runtime")
+        def exclude2 = exclude("foo", "baz", "compile")
+        metadata.excludes = [exclude1, exclude2]
+
+        then:
+        metadata.excludes == [exclude1, exclude2]
+
+        def immutable = metadata.asImmutable()
+        immutable.getConfiguration("compile").excludes == [exclude2]
+        immutable.getConfiguration("runtime").excludes == [exclude1, exclude2]
+
+        when:
+        def copy = immutable.asMutable()
+        copy.excludes = [exclude1]
+
+        then:
+        def immutable2 = copy.asImmutable()
+        immutable2.getConfiguration("compile").excludes == []
+        immutable2.getConfiguration("runtime").excludes == [exclude1]
+    }
+
+    def "treats ivy configurations as variants when checking if a variant exists"() {
+        when:
+        configuration("compile")
+        def metadata = getMetadata()
+
+        then:
+        metadata.definesVariant("compile")
+        !metadata.definesVariant("runtime")
+    }
+
+    def exclude(String group, String module, String... confs) {
+        def exclude = new DefaultExclude(DefaultModuleIdentifier.newId(group, module), confs, "whatever")
+        return exclude
+    }
+
     def artifact(String name, String... confs) {
-        artifacts.add(new Artifact(new DefaultIvyArtifactName(name, "type", "ext", "classifier"), confs as Set<String>))
+        def artifact = new Artifact(new DefaultIvyArtifactName(name, "type", "ext", "classifier"), confs as Set<String>)
+        return artifact
     }
 }
