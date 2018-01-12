@@ -68,10 +68,12 @@ public class WindowsMessageCompile extends DefaultTask {
     private ConfigurableFileCollection source;
     private Map<String, String> macros = new LinkedHashMap<String, String>();
     private List<String> compilerArgs = new ArrayList<String>();
+    private final IncrementalCompilerBuilder.IncrementalCompiler incrementalCompiler;
 
     public WindowsMessageCompile() {
         includes = getProject().files();
         source = getProject().files();
+        incrementalCompiler = getIncrementalCompilerBuilder().newCompiler(this, source, includes);
         getInputs().property("outputType", new Callable<String>() {
             @Override
             public String call() throws Exception {
@@ -102,7 +104,6 @@ public class WindowsMessageCompile extends DefaultTask {
         spec.setMacros(getMacros());
         spec.args(getCompilerArgs());
         spec.setIncrementalCompile(inputs.isIncremental());
-        spec.setDiscoveredInputRecorder((DiscoveredInputRecorder) inputs);
         spec.setOperationLogger(operationLogger);
 
         PlatformToolProvider platformToolProvider = toolChain.select(targetPlatform);
@@ -113,7 +114,7 @@ public class WindowsMessageCompile extends DefaultTask {
     private <T extends NativeCompileSpec> WorkResult doCompile(T spec, PlatformToolProvider platformToolProvider) {
         Class<T> specType = Cast.uncheckedCast(spec.getClass());
         Compiler<T> baseCompiler = platformToolProvider.newCompiler(specType);
-        Compiler<T> incrementalCompiler = getIncrementalCompilerBuilder().createIncrementalCompiler(this, baseCompiler, toolChain, createDependenciesCollector());
+        Compiler<T> incrementalCompiler = this.incrementalCompiler.createCompiler(baseCompiler);
         Compiler<T> loggingCompiler = BuildOperationLoggingCompilerDecorator.wrap(incrementalCompiler);
         return CompilerUtil.castCompiler(loggingCompiler).execute(spec);
     }
