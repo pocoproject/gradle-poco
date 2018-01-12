@@ -54,6 +54,7 @@ class CppLibraryPublishingIntegrationTest extends AbstractCppInstalledToolChainI
         result.assertTasksExecuted(
             compileAndLinkTasks(debug),
             compileAndLinkTasks(release),
+            stripSymbolsTasksRelease(toolChain),
             ":generatePomFileForDebugPublication",
             ":generateMetadataFileForDebugPublication",
             ":publishDebugPublicationToMavenRepository",
@@ -115,8 +116,8 @@ class CppLibraryPublishingIntegrationTest extends AbstractCppInstalledToolChainI
         def release = repo.module('some.group', 'test_release', '1.2')
         release.assertPublished()
         release.assertArtifactsPublished(withSharedLibrarySuffix("test_release-1.2"), withLinkLibrarySuffix("test_release-1.2"), "test_release-1.2.pom", "test_release-1.2.module")
-        release.artifactFile(type: sharedLibraryExtension).assertIsCopyOf(sharedLibrary("build/lib/main/release/test").file)
-        release.artifactFile(type: linkLibrarySuffix).assertIsCopyOf(sharedLibrary("build/lib/main/release/test").linkFile)
+        release.artifactFile(type: sharedLibraryExtension).assertIsCopyOf(sharedLibrary("build/lib/main/release/test").strippedRuntimeFile)
+        release.artifactFile(type: linkLibrarySuffix).assertIsCopyOf(sharedLibrary("build/lib/main/release/test").strippedLinkFile)
 
         release.parsedPom.scopes.isEmpty()
 
@@ -236,7 +237,7 @@ class CppLibraryPublishingIntegrationTest extends AbstractCppInstalledToolChainI
         def consumer = file("consumer").createDir()
         consumer.file('settings.gradle') << ''
         consumer.file("build.gradle") << """
-            apply plugin: 'cpp-executable'
+            apply plugin: 'cpp-application'
             repositories { maven { url '${repoDir.toURI()}' } }
             dependencies { implementation 'some.group:deck:1.2' }
 """
@@ -349,7 +350,7 @@ class CppLibraryPublishingIntegrationTest extends AbstractCppInstalledToolChainI
         def consumer = file("consumer").createDir()
         consumer.file('settings.gradle') << ''
         consumer.file("build.gradle") << """
-            apply plugin: 'cpp-executable'
+            apply plugin: 'cpp-application'
             repositories { maven { url '${repoDir.toURI()}' } }
             dependencies { implementation 'some.group:deck:1.2' }
 """
@@ -461,7 +462,7 @@ class CppLibraryPublishingIntegrationTest extends AbstractCppInstalledToolChainI
         def consumer = file("consumer").createDir()
         consumer.file('settings.gradle') << ''
         consumer.file("build.gradle") << """
-            apply plugin: 'cpp-executable'
+            apply plugin: 'cpp-application'
             repositories { maven { url '${repoDir.toURI()}' } }
             dependencies { implementation 'some.group:card_deck:1.2' }
 """
@@ -595,7 +596,10 @@ dependencies { implementation 'some.group:greeter:1.2' }
             publishing {
                 repositories { maven { url '${repoDir.toURI()}' } }
             }
-            compileReleaseCpp.macros(WITH_FEATURE: "true")
+            
+            library.binaries.get { it.optimized }.configure {
+                compileTask.get().macros(WITH_FEATURE: "true")
+            }
             
         """
         app.greeterLib.writeToProject(file(producer))
@@ -605,11 +609,13 @@ dependencies { implementation 'some.group:greeter:1.2' }
 
         def consumer = file("consumer").createDir()
         consumer.file("build.gradle") << """
-            apply plugin: 'cpp-executable'
+            apply plugin: 'cpp-application'
             repositories { maven { url '${repoDir.toURI()}' } }
             dependencies { implementation 'some.group:greeting:1.2' }
-            compileReleaseCpp.macros(WITH_FEATURE: "true")
-"""
+            application.binaries.get { it.optimized }.configure {
+                compileTask.get().macros(WITH_FEATURE: "true")
+            }
+        """
         app.main.writeToProject(consumer)
 
         when:
@@ -617,7 +623,11 @@ dependencies { implementation 'some.group:greeter:1.2' }
         run("installDebug")
 
         then:
-        installation(consumer.file("build/install/main/debug")).exec().out == app.withFeatureDisabled().expectedOutput
+        def debugInstall = installation(consumer.file("build/install/main/debug"))
+        debugInstall.exec().out == app.withFeatureDisabled().expectedOutput
+        debugInstall.assertIncludesLibraries("greeting")
+        def debugLib = sharedLibrary(producer.file("build/lib/main/debug/greeting"))
+        sharedLibrary(consumer.file("build/install/main/debug/lib/greeting")).file.assertIsCopyOf(debugLib.file)
 
         when:
         executer.inDirectory(consumer)
@@ -625,6 +635,11 @@ dependencies { implementation 'some.group:greeter:1.2' }
 
         then:
         installation(consumer.file("build/install/main/release")).exec().out == app.withFeatureEnabled().expectedOutput
+        def releaseInstall = installation(consumer.file("build/install/main/release"))
+        releaseInstall.exec().out == app.withFeatureEnabled().expectedOutput
+        releaseInstall.assertIncludesLibraries("greeting")
+        def releaseLib = sharedLibrary(producer.file("build/lib/main/release/greeting"))
+        sharedLibrary(consumer.file("build/install/main/release/lib/greeting")).file.assertIsCopyOf(releaseLib.strippedRuntimeFile)
     }
 
 }

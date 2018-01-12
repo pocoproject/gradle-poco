@@ -15,11 +15,11 @@
  */
 package org.gradle.language.nativeplatform.internal.incremental;
 
+import org.gradle.api.internal.changedetection.state.FileSnapshot;
 import org.gradle.language.nativeplatform.internal.Include;
-import org.gradle.language.nativeplatform.internal.IncludeDirectives;
 
 import java.io.File;
-import java.util.List;
+import java.util.Collection;
 
 public interface SourceIncludesResolver {
     interface IncludeResolutionResult {
@@ -30,18 +30,16 @@ public interface SourceIncludesResolver {
          */
         boolean isComplete();
 
-        String getInclude();
+        Collection<IncludeFile> getFiles();
+    }
 
-        List<File> getFiles();
-
-        /**
-         * Every file path searched as part of resolution.
-         */
-        List<File> getCheckedLocations();
+    interface IncludeFile {
+        File getFile();
+        FileSnapshot getSnapshot();
     }
 
     /**
      * Resolves the given include directive to zero or more include files.
      */
-    IncludeResolutionResult resolveInclude(File sourceFile, Include include, List<IncludeDirectives> visibleIncludeDirectives);
+    IncludeResolutionResult resolveInclude(File sourceFile, Include include, MacroLookup visibleMacros);
 }

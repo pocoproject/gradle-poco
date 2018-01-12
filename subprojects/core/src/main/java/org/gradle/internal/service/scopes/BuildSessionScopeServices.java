@@ -20,7 +20,6 @@ import org.gradle.StartParameter;
 import org.gradle.api.Action;
 import org.gradle.api.internal.ExperimentalFeatures;
 import org.gradle.api.internal.attributes.DefaultImmutableAttributesFactory;
-import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.internal.cache.StringInterner;
 import org.gradle.api.internal.changedetection.state.BuildScopeFileTimeStampInspector;
 import org.gradle.api.internal.changedetection.state.CachingFileHasher;
@@ -46,6 +45,7 @@ import org.gradle.cache.CacheRepository;
 import org.gradle.cache.PersistentIndexedCache;
 import org.gradle.cache.internal.CacheRepositoryServices;
 import org.gradle.cache.internal.CacheScopeMapping;
+import org.gradle.cache.internal.CleanupActionFactory;
 import org.gradle.cache.internal.DefaultGeneratedGradleJarCache;
 import org.gradle.cache.internal.GeneratedGradleJarCache;
 import org.gradle.cache.internal.VersionStrategy;
@@ -222,7 +222,7 @@ public class BuildSessionScopeServices extends DefaultServiceRegistry {
         return new DefaultClasspathSnapshotter(resourceSnapshotterCacheService, directoryFileTreeFactory, fileSystemSnapshotter, stringInterner);
     }
 
-    ImmutableAttributesFactory createImmutableAttributesFactory(IsolatableFactory isolatableFactory) {
+    DefaultImmutableAttributesFactory createImmutableAttributesFactory(IsolatableFactory isolatableFactory) {
         return new DefaultImmutableAttributesFactory(isolatableFactory);
     }
 
@@ -253,5 +253,9 @@ public class BuildSessionScopeServices extends DefaultServiceRegistry {
 
     ExperimentalFeatures createExperimentalFeatures() {
         return new ExperimentalFeatures();
+    }
+
+    CleanupActionFactory createCleanupActionFactory(BuildOperationExecutor buildOperationExecutor) {
+        return new CleanupActionFactory(buildOperationExecutor);
     }
 }

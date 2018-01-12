@@ -87,7 +87,11 @@ class SwiftDependenciesIntegrationTest extends AbstractInstalledToolChainIntegra
     }
 
     private void assertTasksExecutedFor(String buildType) {
-        assert result.assertTasksExecuted(":hello:compile${buildType}Swift", ":hello:link${buildType}", ":log:compile${buildType}Swift", ":log:link${buildType}", ":app:compile${buildType}Swift", ":app:link${buildType}", ":app:install${buildType}")
+        def tasks = [":hello:compile${buildType}Swift", ":hello:link${buildType}", ":log:compile${buildType}Swift", ":log:link${buildType}", ":app:compile${buildType}Swift", ":app:link${buildType}", ":app:install${buildType}"]
+        if (buildType == "Release") {
+            tasks << [ ":log:stripSymbols${buildType}", ":hello:stripSymbols${buildType}", ":app:stripSymbols${buildType}"]
+        }
+        assert result.assertTasksExecuted(tasks)
     }
 
     private void assertAppHasOutputFor(String buildType) {
@@ -95,9 +99,9 @@ class SwiftDependenciesIntegrationTest extends AbstractInstalledToolChainIntegra
     }
 
     private writeApp() {
-        app.executable.writeToProject(file("app"))
+        app.application.writeToProject(file("app"))
         file("app/build.gradle") << """
-            apply plugin: 'swift-executable'
+            apply plugin: 'swift-application'
             group = 'org.gradle.swift'
             version = '1.0'
 
@@ -121,7 +125,7 @@ class SwiftDependenciesIntegrationTest extends AbstractInstalledToolChainIntegra
             }
         """
         libraryPath.file("settings.gradle").touch()
-        libraryRepo.commit("initial commit", libraryRepo.listFiles())
+        libraryRepo.commit("initial commit")
         libraryRepo.close()
     }
 
@@ -135,7 +139,7 @@ class SwiftDependenciesIntegrationTest extends AbstractInstalledToolChainIntegra
             version = '1.0'
         """
         logPath.file("settings.gradle").touch()
-        logRepo.commit("initial commit", logRepo.listFiles())
+        logRepo.commit("initial commit")
         logRepo.close()
     }
 }

@@ -16,52 +16,131 @@
 
 package org.gradle.internal.component.external.model;
 
+import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.attributes.Attribute;
 import org.gradle.api.attributes.Usage;
+import org.gradle.api.internal.ExperimentalFeatures;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
-import org.gradle.api.internal.attributes.DisambiguationRule;
-import org.gradle.api.internal.attributes.EmptySchema;
-import org.gradle.api.internal.attributes.MultipleCandidatesResult;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
+import org.gradle.api.internal.changedetection.state.CoercingStringValueSnapshot;
 import org.gradle.api.internal.model.NamedObjectInstantiator;
-import org.gradle.internal.Cast;
+import org.gradle.internal.component.external.descriptor.MavenScope;
 import org.gradle.internal.component.model.ConfigurationMetadata;
+import org.gradle.internal.component.model.DefaultIvyArtifactName;
+import org.gradle.internal.component.model.ExcludeMetadata;
 import org.gradle.internal.component.model.ModuleSource;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Set;
 
 public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentResolveMetadata implements MavenModuleResolveMetadata {
 
     public static final String POM_PACKAGING = "pom";
     public static final Collection<String> JAR_PACKAGINGS = Arrays.asList("jar", "ejb", "bundle", "maven-plugin", "eclipse-plugin");
-    private static final PreferJavaRuntimeVariant SCHEMA_DEFAULT_JAVA_VARIANTS = new PreferJavaRuntimeVariant();
+    private static final PreferJavaRuntimeVariant SCHEMA_DEFAULT_JAVA_VARIANTS = PreferJavaRuntimeVariant.schema();
+    // We need to work with the 'String' version of the usage attribute, since this is expected for all providers by the `PreferJavaRuntimeVariant` schema
+    private static final Attribute<String> USAGE_ATTRIBUTE = Attribute.of(Usage.USAGE_ATTRIBUTE.getName(), String.class);
 
+    private final ImmutableAttributesFactory attributesFactory;
+    private final NamedObjectInstantiator objectInstantiator;
+    private final ExperimentalFeatures experimentalFeatures;
+
+    private final ImmutableList<MavenDependencyDescriptor> dependencies;
     private final String packaging;
     private final boolean relocated;
     private final String snapshotTimestamp;
-    private final ImmutableList<? extends ComponentVariant> variants;
-    private final ImmutableList<? extends ConfigurationMetadata> graphVariants;
 
-    DefaultMavenModuleResolveMetadata(MutableMavenModuleResolveMetadata metadata) {
+    private ImmutableList<? extends ConfigurationMetadata> derivedVariants;
+
+    DefaultMavenModuleResolveMetadata(DefaultMutableMavenModuleResolveMetadata metadata, ImmutableAttributesFactory attributesFactory, NamedObjectInstantiator objectInstantiator, ExperimentalFeatures experimentalFeatures) {
         super(metadata);
+        this.experimentalFeatures = experimentalFeatures;
+        this.attributesFactory = attributesFactory;
+        this.objectInstantiator = objectInstantiator;
         packaging = metadata.getPackaging();
         relocated = metadata.isRelocated();
         snapshotTimestamp = metadata.getSnapshotTimestamp();
-        variants = metadata.getVariants();
-        graphVariants = metadata.getVariantsForGraphTraversal();
+        dependencies = metadata.getDependencies();
     }
 
     private DefaultMavenModuleResolveMetadata(DefaultMavenModuleResolveMetadata metadata, ModuleSource source) {
         super(metadata, source);
+        this.experimentalFeatures = metadata.experimentalFeatures;
+        this.attributesFactory = metadata.attributesFactory;
+        this.objectInstantiator = metadata.objectInstantiator;
         packaging = metadata.packaging;
         relocated = metadata.relocated;
         snapshotTimestamp = metadata.snapshotTimestamp;
-        variants = metadata.variants;
-        graphVariants = metadata.graphVariants;
+        dependencies = metadata.dependencies;
+
+        copyCachedState(metadata);
+    }
+
+    @Override
+    protected DefaultConfigurationMetadata createConfiguration(ModuleComponentIdentifier componentId, String name, boolean transitive, boolean visible, ImmutableList<String> parents, VariantMetadataRules componentMetadataRules) {
+        ImmutableList<? extends ModuleComponentArtifactMetadata> artifacts = getArtifactsForConfiguration(name);
+        DefaultConfigurationMetadata configuration = new DefaultConfigurationMetadata(componentId, name, transitive, visible, parents, artifacts, componentMetadataRules, ImmutableList.<ExcludeMetadata>of());
+        configuration.setDependencies(filterDependencies(configuration));
+        return configuration;
+    }
+
+    @Override
+    protected ImmutableList<? extends ConfigurationMetadata> maybeDeriveVariants() {
+        return isJavaLibrary() ? getDerivedVariants() : ImmutableList.<ConfigurationMetadata>of();
+    }
+
+    private ImmutableList<? extends ConfigurationMetadata> getDerivedVariants() {
+        if (derivedVariants == null) {
+            derivedVariants = ImmutableList.of(
+                withUsageAttribute((DefaultConfigurationMetadata) getConfiguration("compile"), Usage.JAVA_API, attributesFactory),
+                withUsageAttribute((DefaultConfigurationMetadata) getConfiguration("runtime"), Usage.JAVA_RUNTIME, attributesFactory));
+        }
+        return derivedVariants;
+    }
+
+    private ConfigurationMetadata withUsageAttribute(DefaultConfigurationMetadata conf, String usage, ImmutableAttributesFactory attributesFactory) {
+        return conf.withAttributes(attributesFactory.concat(ImmutableAttributes.EMPTY, USAGE_ATTRIBUTE, new CoercingStringValueSnapshot(usage, objectInstantiator)));
+    }
+
+    private ImmutableList<? extends ModuleComponentArtifactMetadata> getArtifactsForConfiguration(String name) {
+        ImmutableList<? extends ModuleComponentArtifactMetadata> artifacts;
+        if (name.equals("compile") || name.equals("runtime") || name.equals("default") || name.equals("test")) {
+            artifacts = ImmutableList.of(new DefaultModuleComponentArtifactMetadata(getComponentId(), new DefaultIvyArtifactName(getComponentId().getModule(), "jar", "jar")));
+        } else {
+            artifacts = ImmutableList.of();
+        }
+        return artifacts;
+    }
+
+    private ImmutableList<ModuleDependencyMetadata> filterDependencies(DefaultConfigurationMetadata config) {
+        ImmutableList.Builder<ModuleDependencyMetadata> filteredDependencies = ImmutableList.builder();
+        for (MavenDependencyDescriptor dependency : dependencies) {
+            if (include(dependency, config.getName(), config.getHierarchy())) {
+                filteredDependencies.add(contextualize(config, getComponentId(), dependency));
+            }
+        }
+        return filteredDependencies.build();
+    }
+
+    private ModuleDependencyMetadata contextualize(ConfigurationMetadata config, ModuleComponentIdentifier componentId, MavenDependencyDescriptor incoming) {
+        return new ConfigurationDependencyMetadataWrapper(config, componentId, incoming);
+    }
+
+    private boolean include(MavenDependencyDescriptor dependency, String configName, Collection<String> hierarchy) {
+        MavenScope dependencyScope = dependency.getScope();
+
+        if ("optional".equals(configName)) {
+            // Include all 'optional' dependencies in "optional" configuration
+            return dependency.isOptional()
+                && dependencyScope != MavenScope.Test
+                && dependencyScope != MavenScope.System;
+        }
+
+        return hierarchy.contains(dependencyScope.name().toLowerCase());
     }
 
     @Override
@@ -71,7 +150,7 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
 
     @Override
     public MutableMavenModuleResolveMetadata asMutable() {
-        return new DefaultMutableMavenModuleResolveMetadata(this);
+        return new DefaultMutableMavenModuleResolveMetadata(this, attributesFactory, objectInstantiator, experimentalFeatures);
     }
 
     public String getPackaging() {
@@ -90,19 +169,13 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
         return JAR_PACKAGINGS.contains(packaging);
     }
 
+    private boolean isJavaLibrary() {
+        return experimentalFeatures.isEnabled() && (isKnownJarPackaging() || isPomPackaging());
+    }
+
     @Nullable
     public String getSnapshotTimestamp() {
         return snapshotTimestamp;
-    }
-
-    @Override
-    public ImmutableList<? extends ConfigurationMetadata> getVariantsForGraphTraversal() {
-        return graphVariants;
-    }
-
-    @Override
-    public ImmutableList<? extends ComponentVariant> getVariants() {
-        return variants;
     }
 
     @Nullable
@@ -111,36 +184,36 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
         return SCHEMA_DEFAULT_JAVA_VARIANTS;
     }
 
-    /**
-     * When no consumer attributes are provided, prefer the Java runtime variant over the API variant.
-     *
-     * Gradle has long assumed that, by default, consumers of a maven repository require the _runtime_ variant
-     * of the published library.
-     * The following disambiguation rule encodes this assumption for the case where a java library is published
-     * with variants using Gradle module metadata. This will allow us to migrate to consuming the new module
-     * metadata format by default without breaking a bunch of consumers that depend on this assumption,
-     * declaring no preference for a particular variant.
-     */
-    private static class PreferJavaRuntimeVariant extends EmptySchema {
-        private static final NamedObjectInstantiator INSTANTIATOR = NamedObjectInstantiator.INSTANCE;
-        private static final Usage JAVA_API = INSTANTIATOR.named(Usage.class, Usage.JAVA_API);
-        private static final Usage JAVA_RUNTIME = INSTANTIATOR.named(Usage.class, Usage.JAVA_RUNTIME);
-        private static final Set<Usage> DEFAULT_JAVA_USAGES = ImmutableSet.of(JAVA_API, JAVA_RUNTIME);
+    @Override
+    public ImmutableList<MavenDependencyDescriptor> getDependencies() {
+        return dependencies;
+    }
 
-        @Override
-        public DisambiguationRule<Object> disambiguationRules(Attribute<?> attribute) {
-            if (attribute.getType().equals(Usage.class)) {
-                return Cast.uncheckedCast(new DisambiguationRule<Usage>() {
-                    public void execute(MultipleCandidatesResult<Usage> details) {
-                        if (details.getConsumerValue() == null) {
-                            if (details.getCandidateValues().equals(DEFAULT_JAVA_USAGES)) {
-                                details.closestMatch(JAVA_RUNTIME);
-                            }
-                        }
-                    }
-                });
-            }
-            return super.disambiguationRules(attribute);
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
         }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
+
+        DefaultMavenModuleResolveMetadata that = (DefaultMavenModuleResolveMetadata) o;
+        return relocated == that.relocated
+            && Objects.equal(dependencies, that.dependencies)
+            && Objects.equal(packaging, that.packaging)
+            && Objects.equal(snapshotTimestamp, that.snapshotTimestamp);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(super.hashCode(),
+            dependencies,
+            packaging,
+            relocated,
+            snapshotTimestamp);
     }
 }

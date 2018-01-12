@@ -37,6 +37,7 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflict
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.PotentialConflict;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.VersionSelectionReasons;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
+import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.specs.Spec;
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier;
 import org.gradle.internal.component.model.DependencyMetadata;
@@ -57,7 +58,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class DependencyGraphBuilder {
     private static final Logger LOGGER = LoggerFactory.getLogger(DependencyGraphBuilder.class);
@@ -74,6 +74,7 @@ public class DependencyGraphBuilder {
     private final ComponentSelectorConverter componentSelectorConverter;
     private final DependencySubstitutionApplicator dependencySubstitutionApplicator;
     private final ExperimentalFeatures experimentalFeatures;
+    private final ImmutableAttributesFactory attributesFactory;
 
     public DependencyGraphBuilder(DependencyToComponentIdResolver componentIdResolver, ComponentMetaDataResolver componentMetaDataResolver,
                                   ResolveContextToComponentResolver resolveContextToComponentResolver,
@@ -82,7 +83,8 @@ public class DependencyGraphBuilder {
                                   ModuleExclusions moduleExclusions,
                                   BuildOperationExecutor buildOperationExecutor, ModuleReplacementsData moduleReplacementsData,
                                   DependencySubstitutionApplicator dependencySubstitutionApplicator, ComponentSelectorConverter componentSelectorConverter,
-                                  ExperimentalFeatures experimentalFeatures) {
+                                  ExperimentalFeatures experimentalFeatures,
+                                  ImmutableAttributesFactory attributesFactory) {
         this.idResolver = componentIdResolver;
         this.metaDataResolver = componentMetaDataResolver;
         this.moduleResolver = resolveContextToComponentResolver;
@@ -95,6 +97,7 @@ public class DependencyGraphBuilder {
         this.dependencySubstitutionApplicator = dependencySubstitutionApplicator;
         this.componentSelectorConverter = componentSelectorConverter;
         this.experimentalFeatures = experimentalFeatures;
+        this.attributesFactory = attributesFactory;
     }
 
     public void resolve(final ResolveContext resolveContext, final DependencyGraphVisitor modelVisitor) {
@@ -103,7 +106,7 @@ public class DependencyGraphBuilder {
         DefaultBuildableComponentResolveResult rootModule = new DefaultBuildableComponentResolveResult();
         moduleResolver.resolve(resolveContext, rootModule);
 
-        final ResolveState resolveState = new ResolveState(idGenerator, rootModule, resolveContext.getName(), idResolver, metaDataResolver, edgeFilter, attributesSchema, moduleExclusions, moduleReplacementsData, componentSelectorConverter);
+        final ResolveState resolveState = new ResolveState(idGenerator, rootModule, resolveContext.getName(), idResolver, metaDataResolver, edgeFilter, attributesSchema, moduleExclusions, moduleReplacementsData, componentSelectorConverter, attributesFactory);
         conflictHandler.registerResolver(new DirectDependencyForcingResolver(resolveState.getRoot().getComponent()));
 
         traverseGraph(resolveState);
@@ -123,11 +126,11 @@ public class DependencyGraphBuilder {
         final List<EdgeState> dependenciesMissingLocalMetadata = Lists.newArrayList();
         final Map<ModuleVersionIdentifier, ComponentIdentifier> componentIdentifierCache = Maps.newHashMap();
 
-        final OptionalDependenciesHandler optionalDependenciesHandler;
+        final PendingDependenciesHandler pendingDependenciesHandler;
         if (experimentalFeatures.isEnabled()) {
-            optionalDependenciesHandler = new DefaultOptionalDependenciesHandler(componentSelectorConverter, dependencySubstitutionApplicator);
+            pendingDependenciesHandler = new DefaultPendingDependenciesHandler(componentSelectorConverter, dependencySubstitutionApplicator);
         } else {
-            optionalDependenciesHandler = OptionalDependenciesHandler.IGNORE;
+            pendingDependenciesHandler = PendingDependenciesHandler.IGNORE;
         }
 
         while (resolveState.peek() != null || conflictHandler.hasConflicts()) {
@@ -138,7 +141,7 @@ public class DependencyGraphBuilder {
                 // Calculate the outgoing edges of this configuration
                 dependencies.clear();
                 dependenciesMissingLocalMetadata.clear();
-                node.visitOutgoingDependencies(dependencies, optionalDependenciesHandler);
+                node.visitOutgoingDependencies(dependencies, pendingDependenciesHandler);
 
                 resolveEdges(node, dependencies, dependenciesMissingLocalMetadata, resolveState, componentIdentifierCache);
             } else {
@@ -185,7 +188,7 @@ public class DependencyGraphBuilder {
                                                   String version,
                                                   final ModuleResolveState module) {
         final ComponentState selected = module.getSelected();
-        Set<SelectorState> moduleSelectors = module.getSelectors();
+        List<SelectorState> moduleSelectors = module.getSelectors();
         if (selected == null && !resolveState.getModuleReplacementsData().participatesInReplacements(moduleId)) {
             if (allSelectorsAgreeWith(moduleSelectors, version, ALL_SELECTORS)) {
                 module.select(moduleRevision);
@@ -193,7 +196,7 @@ public class DependencyGraphBuilder {
             }
         }
 
-        final Set<SelectorState> selectedBy = moduleRevision.allResolvers;
+        final Collection<SelectorState> selectedBy = moduleRevision.allResolvers;
         if (selected != null && selected != moduleRevision) {
             if (allSelectorsAgreeWith(moduleRevision.allResolvers, selected.getVersion(), ALL_SELECTORS)) {
                 // if this selector agrees with the already selected version, don't bother and pick it

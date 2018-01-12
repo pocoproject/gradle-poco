@@ -16,6 +16,8 @@
 
 package org.gradle.vcs.internal
 
+import org.gradle.vcs.internal.spec.DirectoryRepositorySpec
+
 class VcsMappingsIntegrationTest extends AbstractVcsIntegrationTest {
     def setup() {
         settingsFile << """
@@ -38,24 +40,6 @@ class VcsMappingsIntegrationTest extends AbstractVcsIntegrationTest {
         expect:
         succeeds("assemble")
         assertRepoCheckedOut()
-    }
-
-    def "only use source repositories when version matches latest.integration"() {
-        settingsFile << """
-            sourceControl {
-                vcsMappings {
-                    withModule("org.test:dep") {
-                        from vcs(DirectoryRepositorySpec) {
-                            sourceDir = file("dep")
-                        }
-                    }
-                }
-            }
-        """
-        buildFile.text = buildFile.text.replace("latest.integration", "1.0")
-        expect:
-        fails("assemble")
-        assertRepoNotCheckedOut("dep")
     }
 
     def 'emits sensible error when bad code is in vcsMappings block'() {
@@ -185,6 +169,44 @@ class VcsMappingsIntegrationTest extends AbstractVcsIntegrationTest {
         assertRepoCheckedOut()
         failureCauseContains("Included build from '")
         failureCauseContains("' must contain a settings file.")
+    }
+
+    def 'can build from sub-directory of repository'() {
+        file('repoRoot').mkdir()
+        file('dep').renameTo(file('repoRoot/dep'))
+        settingsFile << """
+            sourceControl {
+                vcsMappings {
+                    withModule('org.test:dep') {
+                        from vcs(DirectoryRepositorySpec) {
+                            sourceDir = file('repoRoot')
+                            rootDir = 'dep'
+                        }
+                    }
+                }
+            }
+        """
+        expect:
+        succeeds('assemble')
+        assertRepoCheckedOut('repoRoot')
+    }
+
+    def 'fails with a reasonable message if rootDir is invalid'() {
+        settingsFile << """
+            sourceControl {
+                vcsMappings {
+                    withModule('org.test:dep') {
+                        from vcs(DirectoryRepositorySpec) {
+                            sourceDir = file('dep')
+                            rootDir = null
+                        }
+                    }
+                }
+            }
+        """
+        expect:
+        fails('assemble')
+        result.error.contains("rootDir should be non-null")
     }
 
     void assertRepoCheckedOut(String repoName="dep") {

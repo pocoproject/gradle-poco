@@ -31,6 +31,8 @@ import org.gradle.api.internal.initialization.DefaultClassLoaderScope;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.logging.configuration.ConsoleOutput;
+import org.gradle.api.logging.configuration.WarningMode;
+import org.gradle.initialization.BuildLayoutParameters;
 import org.gradle.integtests.fixtures.daemon.DaemonLogsAnalyzer;
 import org.gradle.internal.ImmutableActionSet;
 import org.gradle.internal.MutableActionSet;
@@ -152,6 +154,7 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
     private boolean requiresGradleDistribution;
     private boolean useOwnUserHomeServices;
     private ConsoleOutput consoleType;
+    protected WarningMode warningMode = WarningMode.All;
     private boolean showStacktrace = true;
 
     private int expectedDeprecationWarnings;
@@ -232,6 +235,7 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
         checkDeprecations = true;
         durationMeasurement = null;
         consoleType = null;
+        warningMode = WarningMode.All;
         return this;
     }
 
@@ -381,6 +385,8 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
         if (consoleType != null) {
             executer.withConsole(consoleType);
         }
+
+        executer.withWarningMode(warningMode);
 
         if (!showStacktrace) {
             executer.withStacktraceDisabled();
@@ -735,6 +741,12 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
     }
 
     @Override
+    public GradleExecuter withWarningMode(WarningMode warningMode) {
+        this.warningMode = warningMode;
+        return this;
+    }
+
+    @Override
     public GradleExecuter withConsole(ConsoleOutput consoleType) {
         this.consoleType = consoleType;
         return this;
@@ -839,17 +851,8 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
         }
 
         if (!searchUpwards) {
-            boolean settingsFoundAboveInTestDir = false;
-            TestFile dir = new TestFile(getWorkingDir());
-            while (dir != null && getTestDirectoryProvider().getTestDirectory().isSelfOrDescendent(dir)) {
-                if (dir.file("settings.gradle").isFile()) {
-                    settingsFoundAboveInTestDir = true;
-                    break;
-                }
-                dir = dir.getParentFile();
-            }
-
-            if (!settingsFoundAboveInTestDir) {
+            // needed for cross-version tests with older versions
+            if (!isSettingsFileAvailable() && distribution.getVersion().getBaseVersion().compareTo(GradleVersion.version("4.5")) < 0) {
                 allArgs.add("--no-search-upward");
             }
         }
@@ -868,9 +871,26 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
             allArgs.add("--console=" + consoleType.toString().toLowerCase());
         }
 
+        if (warningMode != null) {
+            allArgs.add("--warning-mode=" + warningMode.toString().toLowerCase(Locale.ENGLISH));
+        }
+
         allArgs.addAll(args);
         allArgs.addAll(tasks);
         return allArgs;
+    }
+
+    private boolean isSettingsFileAvailable() {
+        boolean settingsFoundAboveInTestDir = false;
+        TestFile dir = new TestFile(getWorkingDir());
+        while (dir != null && getTestDirectoryProvider().getTestDirectory().isSelfOrDescendent(dir)) {
+            if (dir.file("settings.gradle").isFile()) {
+                settingsFoundAboveInTestDir = true;
+                break;
+            }
+            dir = dir.getParentFile();
+        }
+        return settingsFoundAboveInTestDir;
     }
 
     /**
@@ -917,6 +937,12 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
 
         if (interactive) {
             properties.put(ConsoleStateUtil.INTERACTIVE_TOGGLE, "true");
+        }
+
+        if (!searchUpwards) {
+            if (!isSettingsFileAvailable()) {
+                properties.put(BuildLayoutParameters.NO_SEARCH_UPWARDS_PROPERTY_KEY, "true");
+            }
         }
 
         return properties;
@@ -989,9 +1015,9 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
         return null;
     }
 
-    private boolean isJava7Home(String path){
-        for(String jdk7Path: JDK7_PATHS){
-            if(path.contains(jdk7Path)){
+    private boolean isJava7Home(String path) {
+        for (String jdk7Path : JDK7_PATHS) {
+            if (path.contains(jdk7Path)) {
                 return true;
             }
         }

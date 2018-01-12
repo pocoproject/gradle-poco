@@ -43,15 +43,16 @@ public interface MutableIvyModuleResolveMetadata extends MutableModuleComponentR
      */
     ImmutableList<Artifact> getArtifactDefinitions();
 
+
+    /**
+     * Returns the dependency declarations of this component.
+     */
+    ImmutableList<IvyDependencyDescriptor> getDependencies();
+
     /**
      * Returns the Ivy excludes of this component.
      */
     ImmutableList<Exclude> getExcludes();
-
-    /**
-     * Replaces the excludes of this component.
-     */
-    void setExcludes(Iterable<? extends Exclude> excludes);
 
     ImmutableMap<NamespaceId, String> getExtraAttributes();
 

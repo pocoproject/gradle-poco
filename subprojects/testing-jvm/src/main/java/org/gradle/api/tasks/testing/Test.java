@@ -16,6 +16,7 @@
 
 package org.gradle.api.tasks.testing;
 
+import com.google.common.collect.Lists;
 import groovy.lang.Closure;
 import org.gradle.StartParameter;
 import org.gradle.api.Action;
@@ -29,7 +30,6 @@ import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.initialization.loadercache.ClassLoaderCache;
 import org.gradle.api.internal.tasks.options.Option;
 import org.gradle.api.internal.tasks.testing.JvmTestExecutionSpec;
-import org.gradle.api.internal.tasks.testing.NoMatchingTestsReporter;
 import org.gradle.api.internal.tasks.testing.TestExecuter;
 import org.gradle.api.internal.tasks.testing.TestFramework;
 import org.gradle.api.internal.tasks.testing.detection.DefaultTestExecuter;
@@ -54,7 +54,6 @@ import org.gradle.internal.actor.ActorFactory;
 import org.gradle.internal.jvm.UnsupportedJavaRuntimeException;
 import org.gradle.internal.jvm.inspection.JvmVersionDetector;
 import org.gradle.internal.operations.BuildOperationExecutor;
-import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.time.Clock;
 import org.gradle.internal.work.WorkerLeaseRegistry;
 import org.gradle.process.JavaForkOptions;
@@ -123,7 +122,6 @@ import static org.gradle.util.ConfigureUtil.configureUsing;
 public class Test extends AbstractTestTask implements JavaForkOptions, PatternFilterable {
 
     private final DefaultJavaForkOptions forkOptions;
-    private final DefaultTestFilter filter;
 
     private FileCollection testClassesDirs;
     private PatternFilterable patternSet;
@@ -138,9 +136,6 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
         patternSet = getFileResolver().getPatternSetFactory().create();
         forkOptions = new DefaultJavaForkOptions(getFileResolver());
         forkOptions.setEnableAssertions(true);
-        Instantiator instantiator = getInstantiator();
-
-        filter = instantiator.newInstance(DefaultTestFilter.class);
     }
 
     @Inject
@@ -516,14 +511,9 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
 
     @TaskAction
     public void executeTests() {
-
         JavaVersion javaVersion = getJavaVersion();
         if (!javaVersion.isJava6Compatible()) {
             throw new UnsupportedJavaRuntimeException("Support for test execution using Java 5 or earlier was removed in Gradle 3.0.");
-        }
-
-        if (getFilter().isFailOnNoMatchingTests() && (!getFilter().getIncludePatterns().isEmpty() || !filter.getCommandLineIncludePatterns().isEmpty())) {
-            addTestListener(new NoMatchingTestsReporter(createNoMatchingTestErrorMessage()));
         }
 
         try {
@@ -546,21 +536,17 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
         }
     }
 
-    private String createNoMatchingTestErrorMessage() {
-        String msg = "No tests found for given includes: ";
+    @Override
+    protected List<String> getNoMatchingTestErrorReasons() {
+        List<String> reasons = Lists.newArrayList();
         if (!getIncludes().isEmpty()) {
-            msg += getIncludes() + "(include rules) ";
+            reasons.add(getIncludes() + "(include rules)");
         }
         if (!getExcludes().isEmpty()) {
-            msg += getExcludes() + "(exclude rules) ";
+            reasons.add(getExcludes() + "(exclude rules)");
         }
-        if (!filter.getIncludePatterns().isEmpty()) {
-            msg += filter.getIncludePatterns() + "(filter.includeTestsMatching) ";
-        }
-        if (!filter.getCommandLineIncludePatterns().isEmpty()) {
-            msg += filter.getCommandLineIncludePatterns() + "(--tests filter) ";
-        }
-        return msg;
+        reasons.addAll(super.getNoMatchingTestErrorReasons());
+        return reasons;
     }
 
     /**
@@ -644,16 +630,11 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
     }
 
     /**
-     * Sets the test name patterns to be included in execution.
-     * Classes or method names are supported, wildcard '*' is supported.
-     * For more information see the user guide chapter on testing.
-     *
-     * For more information on supported patterns see {@link TestFilter}
+     * {@inheritDoc}
      */
-    @Option(option = "tests", description = "Sets test class or method name to be included, '*' is supported.")
-    @Incubating
+    @Override
     public Test setTestNameIncludePatterns(List<String> testNamePattern) {
-        filter.setCommandLineIncludePatterns(testNamePattern);
+        super.setTestNameIncludePatterns(testNamePattern);
         return this;
     }
 
@@ -789,7 +770,8 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
      * @return The test framework options.
      */
     @Nested
-    // TODO:LPTR This doesn't resolve any of the nested options for the concrete subtypes
+    // TestFrameworkOptions currently don't have any annotated properties. We use this nested input to distinguish between testing frameworks.
+    // This works since the actual option class changes when we change the testing framework.
     public TestFrameworkOptions getOptions() {
         return getTestFramework().getOptions();
     }
@@ -858,7 +840,7 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
      * @since 3.5
      */
     public void useJUnit(Action<? super JUnitOptions> testFrameworkConfigure) {
-        useTestFramework(new JUnitTestFramework(this, filter), testFrameworkConfigure);
+        useTestFramework(new JUnitTestFramework(this, (DefaultTestFilter) getFilter()), testFrameworkConfigure);
     }
 
     /**
@@ -886,7 +868,7 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
      * @since 3.5
      */
     public void useTestNG(Action<? super TestFrameworkOptions> testFrameworkConfigure) {
-        useTestFramework(new TestNGTestFramework(this, this.filter, getInstantiator(), getClassLoaderCache()), testFrameworkConfigure);
+        useTestFramework(new TestNGTestFramework(this, (DefaultTestFilter) getFilter(), getInstantiator(), getClassLoaderCache()), testFrameworkConfigure);
     }
 
     /**
@@ -971,18 +953,6 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
     }
 
     /**
-     * Allows filtering tests for execution.
-     *
-     * @return filter object
-     * @since 1.10
-     */
-    @Incubating
-    @Nested
-    public TestFilter getFilter() {
-        return filter;
-    }
-
-    /**
      * Executes the action against the {@link #getFilter()}.
      *
      * @param action configuration of the test filter
@@ -990,7 +960,7 @@ public class Test extends AbstractTestTask implements JavaForkOptions, PatternFi
      */
     @Incubating
     public void filter(Action<TestFilter> action) {
-        action.execute(filter);
+        action.execute(getFilter());
     }
 
     /**

@@ -18,8 +18,8 @@ package org.gradle.execution.taskgraph;
 
 import com.google.common.base.Function;
 import com.google.common.base.Predicate;
-import com.google.common.base.StandardSystemProperty;
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
@@ -36,8 +36,6 @@ import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.tasks.CachingTaskDependencyResolveContext;
 import org.gradle.api.internal.tasks.TaskContainerInternal;
-import org.gradle.api.internal.tasks.TaskDestroyablesInternal;
-import org.gradle.api.internal.tasks.TaskLocalStateInternal;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.execution.MultipleBuildFailures;
@@ -58,7 +56,6 @@ import org.gradle.internal.work.WorkerLeaseRegistry.WorkerLease;
 import org.gradle.internal.work.WorkerLeaseService;
 import org.gradle.util.CollectionUtils;
 import org.gradle.util.Path;
-import org.gradle.util.TextUtil;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -665,12 +662,16 @@ public class DefaultTaskExecutionPlan implements TaskExecutionPlan {
     private boolean canRunWithCurrentlyExecutedTasks(TaskInfo taskInfo) {
         Set<String> candidateTaskDestroyables = getDestroyablePaths(taskInfo);
 
-        if (!candidateTaskDestroyables.isEmpty() && !taskInfo.getTask().getOutputs().getFileProperties().isEmpty()) {
-            throw new IllegalStateException("Task " + taskInfo.getTask().getIdentityPath() + " has both outputs and destroyables defined.  A task can define either outputs or destroyables, but not both.");
-        }
-
-        if (!candidateTaskDestroyables.isEmpty() && !taskInfo.getTask().getInputs().getFileProperties().isEmpty()) {
-            throw new IllegalStateException("Task " + taskInfo.getTask().getIdentityPath() + " has both inputs and destroyables defined.  A task can define either inputs or destroyables, but not both.");
+        if (!candidateTaskDestroyables.isEmpty()) {
+            if (taskInfo.hasOutputs()) {
+                throw new IllegalStateException("Task " + taskInfo.getTask().getIdentityPath() + " has both outputs and destroyables defined.  A task can define either outputs or destroyables, but not both.");
+            }
+            if (taskInfo.hasFileInputs()) {
+                throw new IllegalStateException("Task " + taskInfo.getTask().getIdentityPath() + " has both inputs and destroyables defined.  A task can define either inputs or destroyables, but not both.");
+            }
+            if (!taskInfo.getLocalState().isEmpty()) {
+                throw new IllegalStateException("Task " + taskInfo.getTask().getIdentityPath() + " has both local state and destroyables defined.  A task can define either local state or destroyables, but not both.");
+            }
         }
 
         if (!runningTasks.isEmpty()) {
@@ -690,24 +691,22 @@ public class DefaultTaskExecutionPlan implements TaskExecutionPlan {
         return true;
     }
 
-    private Set<String> canonicalizedPaths(final Map<File, String> cache, Iterable<File> files) {
-        Function<File, String> canonicalize = new Function<File, String>() {
-            @Override
-            public String apply(File file) {
-                String path;
-                try {
-                    path = cache.get(file);
-                    if (path == null) {
-                        path = file.getCanonicalPath();
-                        cache.put(file, path);
-                    }
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
+    private static ImmutableSet<String> canonicalizedPaths(final Map<File, String> cache, Iterable<File> files) {
+        ImmutableSet.Builder<String> builder = ImmutableSet.builder();
+        for (File file : files) {
+            String path;
+            try {
+                path = cache.get(file);
+                if (path == null) {
+                    path = file.getCanonicalPath();
+                    cache.put(file, path);
                 }
-                return path;
+                builder.add(path);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             }
-        };
-        return Sets.newHashSet(Iterables.transform(files, canonicalize));
+        }
+        return builder.build();
     }
 
     @Nullable
@@ -769,11 +768,12 @@ public class DefaultTaskExecutionPlan implements TaskExecutionPlan {
         return reachable;
     }
 
-    private String findFirstOverlap(Iterable<String> paths1, Iterable<String> paths2) {
+    private static String findFirstOverlap(Iterable<String> paths1, Iterable<String> paths2) {
         for (String path1 : paths1) {
             for (String path2 : paths2) {
-                if (pathsOverlap(path1, path2)) {
-                    return TextUtil.shorterOf(path1, path2);
+                String overLappedPath = getOverLappedPath(path1, path2);
+                if (overLappedPath != null) {
+                    return overLappedPath;
                 }
             }
         }
@@ -783,22 +783,30 @@ public class DefaultTaskExecutionPlan implements TaskExecutionPlan {
 
     private Set<String> getOutputPaths(TaskInfo task) {
         try {
-            return canonicalizedPaths(canonicalizedFileCache, Iterables.concat(
-                task.getTask().getOutputs().getFiles(),
-                ((TaskLocalStateInternal) task.getTask().getLocalState()).getFiles()
-            ));
+            return canonicalizedPaths(canonicalizedFileCache, Iterables.concat(task.getOutputs(), task.getLocalState()));
         } catch (ResourceDeadlockException e) {
-            throw new IllegalStateException("A deadlock was detected while resolving the task outputs for " + task.getTask().getIdentityPath() + ".  This can be caused, for instance, by a task output causing dependency resolution.", e);
+            throw new IllegalStateException(deadlockMessage(task, "an output or local state", "outputs"), e);
         }
     }
 
     private Set<String> getDestroyablePaths(TaskInfo task) {
-        return canonicalizedPaths(canonicalizedFileCache, ((TaskDestroyablesInternal) task.getTask().getDestroyables()).getFiles());
+        try {
+            return canonicalizedPaths(canonicalizedFileCache, task.getDestroyables());
+        } catch (ResourceDeadlockException e) {
+            throw new IllegalStateException(deadlockMessage(task, "a destroyable", "destroyables"), e);
+        }
     }
 
-    private boolean pathsOverlap(String firstPath, String secondPath) {
+    private static String deadlockMessage(TaskInfo task, String singular, String plural) {
+        return String.format("A deadlock was detected while resolving the %s for task '%s'. This can be caused, for instance, by %s property causing dependency resolution.", plural, task, singular);
+    }
+
+    private static String getOverLappedPath(String firstPath, String secondPath) {
         if (firstPath.equals(secondPath)) {
-            return true;
+            return firstPath;
+        }
+        if (firstPath.length() == secondPath.length()) {
+            return null;
         }
 
         String shorter;
@@ -810,7 +818,13 @@ public class DefaultTaskExecutionPlan implements TaskExecutionPlan {
             shorter = firstPath;
             longer = secondPath;
         }
-        return longer.startsWith(shorter + StandardSystemProperty.FILE_SEPARATOR.value());
+
+        boolean isOverlapping = longer.startsWith(shorter) && longer.charAt(shorter.length()) == File.separatorChar;
+        if (isOverlapping) {
+            return shorter;
+        } else {
+            return null;
+        }
     }
 
     private void recordTaskStarted(TaskInfo taskInfo) {

@@ -21,8 +21,11 @@ import org.gradle.internal.text.TreeFormatter;
 import org.gradle.language.base.internal.compile.CompileSpec;
 import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.nativeplatform.platform.internal.OperatingSystemInternal;
+import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetadata;
 import org.gradle.platform.base.internal.toolchain.ToolSearchResult;
 import org.gradle.util.TreeVisitor;
+
+import static org.gradle.internal.FileUtils.withExtension;
 
 public class UnavailablePlatformToolProvider implements PlatformToolProvider {
     private final ToolSearchResult failure;
@@ -50,6 +53,12 @@ public class UnavailablePlatformToolProvider implements PlatformToolProvider {
     }
 
     @Override
+    public boolean requiresDebugBinaryStripping() {
+        // Doesn't really make sense
+        return true;
+    }
+
+    @Override
     public String getObjectFileExtension() {
         throw failure();
     }
@@ -66,7 +75,8 @@ public class UnavailablePlatformToolProvider implements PlatformToolProvider {
 
     @Override
     public boolean producesImportLibrary() {
-        return targetOperatingSystem.getInternalOs().isWindows();
+        // Doesn't really make sense
+        return targetOperatingSystem.isWindows();
     }
 
     @Override
@@ -85,6 +95,16 @@ public class UnavailablePlatformToolProvider implements PlatformToolProvider {
     }
 
     @Override
+    public String getLibrarySymbolFileName(String libraryPath) {
+        return withExtension(getSharedLibraryName(libraryPath), SymbolExtractorOsConfig.current().getExtension());
+    }
+
+    @Override
+    public String getExecutableSymbolFileName(String executablePath) {
+        return withExtension(getExecutableName(executablePath), SymbolExtractorOsConfig.current().getExtension());
+    }
+
+    @Override
     public <T> T get(Class<T> toolType) {
         throw new IllegalArgumentException(String.format("Don't know how to provide tool of type %s.", toolType.getSimpleName()));
     }
@@ -94,4 +114,8 @@ public class UnavailablePlatformToolProvider implements PlatformToolProvider {
         throw failure();
     }
 
+    @Override
+    public CompilerMetadata getCompilerMetadata() {
+        throw failure();
+    }
 }

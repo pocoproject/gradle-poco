@@ -17,6 +17,7 @@
 package org.gradle.api.publish.internal
 
 import org.gradle.api.Named
+import org.gradle.api.artifacts.DependencyConstraint
 import org.gradle.api.artifacts.ExternalDependency
 import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.artifacts.ModuleVersionIdentifier
@@ -24,7 +25,10 @@ import org.gradle.api.artifacts.PublishArtifact
 import org.gradle.api.artifacts.VersionConstraint
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.component.ComponentWithVariants
+import org.gradle.api.internal.artifacts.DefaultExcludeRule
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier
+import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.ModuleMetadataParser
 import org.gradle.api.internal.attributes.ImmutableAttributes
 import org.gradle.api.internal.component.SoftwareComponentInternal
 import org.gradle.api.internal.component.UsageContext
@@ -39,17 +43,11 @@ import spock.lang.Specification
 class ModuleMetadataFileGeneratorTest extends Specification {
 
     VersionConstraint prefers(String version) {
-        Mock(VersionConstraint) {
-            getPreferredVersion() >> version
-            getRejectedVersions() >> []
-        }
+        DefaultImmutableVersionConstraint.of(version)
     }
 
     VersionConstraint prefersAndRejects(String version, List<String> rejects) {
-        Mock(VersionConstraint) {
-            getPreferredVersion() >> version
-            getRejectedVersions() >> rejects
-        }
+        DefaultImmutableVersionConstraint.of(version, rejects)
     }
 
     @Rule
@@ -68,11 +66,43 @@ class ModuleMetadataFileGeneratorTest extends Specification {
 
         then:
         writer.toString() == """{
-  "formatVersion": "0.2",
+  "formatVersion": "${ModuleMetadataParser.FORMAT_VERSION}",
   "component": {
     "group": "group",
     "module": "module",
-    "version": "1.2"
+    "version": "1.2",
+    "attributes": {}
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "${GradleVersion.current().version}",
+      "buildId": "${buildId}"
+    }
+  }
+}
+"""
+    }
+
+    def "writes file for component with attributes"() {
+        def writer = new StringWriter()
+        def component = Stub(TestComponent)
+        def publication = publication(component, id)
+
+        when:
+        publication.attributes >> attributes(status: 'release', 'test': 'value')
+        generator.generateTo(publication, [publication], writer)
+
+        then:
+        writer.toString() == """{
+  "formatVersion": "${ModuleMetadataParser.FORMAT_VERSION}",
+  "component": {
+    "group": "group",
+    "module": "module",
+    "version": "1.2",
+    "attributes": {
+      "status": "release",
+      "test": "value"
+    }
   },
   "createdBy": {
     "gradle": {
@@ -122,11 +152,12 @@ class ModuleMetadataFileGeneratorTest extends Specification {
 
         then:
         writer.toString() == """{
-  "formatVersion": "0.2",
+  "formatVersion": "${ModuleMetadataParser.FORMAT_VERSION}",
   "component": {
     "group": "group",
     "module": "module",
-    "version": "1.2"
+    "version": "1.2",
+    "attributes": {}
   },
   "createdBy": {
     "gradle": {
@@ -179,20 +210,42 @@ class ModuleMetadataFileGeneratorTest extends Specification {
         d1.group >> "g1"
         d1.name >> "m1"
         d1.version >> "v1"
+        d1.transitive >> true
 
         def d2 = Stub(ExternalDependency)
         d2.group >> "g2"
         d2.name >> "m2"
         d2.versionConstraint >> prefersAndRejects("v2", ["v3", "v4"])
+        d2.transitive >> false
+
+        def d3 = Stub(ExternalDependency)
+        d3.group >> "g3"
+        d3.name >> "m3"
+        d3.versionConstraint >> prefers("v3")
+        d3.transitive >> true
+        d3.excludeRules >> [new DefaultExcludeRule("g4", "m4"), new DefaultExcludeRule(null, "m5"), new DefaultExcludeRule("g5", null)]
+
+        def d4 = Stub(ExternalDependency)
+        d4.group >> "g4"
+        d4.name >> "m4"
+        d4.versionConstraint >> prefers('')
+        d4.transitive >> true
+
+        def d5 = Stub(ExternalDependency)
+        d5.group >> "g5"
+        d5.name >> "m5"
+        d5.versionConstraint >> prefersAndRejects('', ['1.0'])
+        d5.transitive >> true
 
         def v1 = Stub(UsageContext)
         v1.name >> "v1"
         v1.attributes >> attributes(usage: "compile")
         v1.dependencies >> [d1]
+
         def v2 = Stub(UsageContext)
         v2.name >> "v2"
         v2.attributes >> attributes(usage: "runtime")
-        v2.dependencies >> [d2]
+        v2.dependencies >> [d2, d3, d4, d5]
 
         component.usages >> [v1, v2]
 
@@ -201,11 +254,12 @@ class ModuleMetadataFileGeneratorTest extends Specification {
 
         then:
         writer.toString() == """{
-  "formatVersion": "0.2",
+  "formatVersion": "${ModuleMetadataParser.FORMAT_VERSION}",
   "component": {
     "group": "group",
     "module": "module",
-    "version": "1.2"
+    "version": "1.2",
+    "attributes": {}
   },
   "createdBy": {
     "gradle": {
@@ -224,8 +278,7 @@ class ModuleMetadataFileGeneratorTest extends Specification {
           "group": "g1",
           "module": "m1",
           "version": {
-            "prefers": "v1",
-            "rejects": []
+            "prefers": "v1"
           }
         }
       ]
@@ -245,6 +298,46 @@ class ModuleMetadataFileGeneratorTest extends Specification {
               "v3",
               "v4"
             ]
+          },
+          "excludes": [
+            {
+              "group": "*",
+              "module": "*"
+            }
+          ]
+        },
+        {
+          "group": "g3",
+          "module": "m3",
+          "version": {
+            "prefers": "v3"
+          },
+          "excludes": [
+            {
+              "group": "g4",
+              "module": "m4"
+            },
+            {
+              "group": "*",
+              "module": "m5"
+            },
+            {
+              "group": "g5",
+              "module": "*"
+            }
+          ]
+        },
+        {
+          "group": "g4",
+          "module": "m4"
+        },
+        {
+          "group": "g5",
+          "module": "m5",
+          "version": {
+            "rejects": [
+              "1.0"
+            ]
           }
         }
       ]
@@ -252,6 +345,106 @@ class ModuleMetadataFileGeneratorTest extends Specification {
   ]
 }
 """
+    }
+
+    def "writes file for component with variants with dependency constraints"() {
+        def writer = new StringWriter()
+        def component = Stub(TestComponent)
+        def publication = publication(component, id)
+
+        def dc1 = Stub(DependencyConstraint)
+        dc1.group >> "g1"
+        dc1.name >> "m1"
+        dc1.versionConstraint >> prefers("v1")
+
+        def dc2 = Stub(DependencyConstraint)
+        dc2.group >> "g2"
+        dc2.name >> "m2"
+        dc2.versionConstraint >> prefersAndRejects("v2", ["v3", "v4"])
+
+        def dc3 = Stub(DependencyConstraint)
+        dc3.group >> "g3"
+        dc3.name >> "m3"
+        dc3.versionConstraint >> prefers("v3")
+
+        def v1 = Stub(UsageContext)
+        v1.name >> "v1"
+        v1.attributes >> attributes(usage: "compile")
+        v1.dependencyConstraints >> [dc1]
+        def v2 = Stub(UsageContext)
+        v2.name >> "v2"
+        v2.attributes >> attributes(usage: "runtime")
+        v2.dependencyConstraints >> [dc2, dc3]
+
+        component.usages >> [v1, v2]
+
+        when:
+        generator.generateTo(publication, [publication], writer)
+
+        then:
+        writer.toString() == """{
+  "formatVersion": "${ModuleMetadataParser.FORMAT_VERSION}",
+  "component": {
+    "group": "group",
+    "module": "module",
+    "version": "1.2",
+    "attributes": {}
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "${GradleVersion.current().version}",
+      "buildId": "${buildId}"
+    }
+  },
+  "variants": [
+    {
+      "name": "v1",
+      "attributes": {
+        "usage": "compile"
+      },
+      "dependencyConstraints": [
+        {
+          "group": "g1",
+          "module": "m1",
+          "version": {
+            "prefers": "v1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "v2",
+      "attributes": {
+        "usage": "runtime"
+      },
+      "dependencyConstraints": [
+        {
+          "group": "g2",
+          "module": "m2",
+          "version": {
+            "prefers": "v2",
+            "rejects": [
+              "v3",
+              "v4"
+            ]
+          }
+        },
+        {
+          "group": "g3",
+          "module": "m3",
+          "version": {
+            "prefers": "v3"
+          }
+        }
+      ]
+    }
+  ]
+}
+"""
+    }
+
+    enum SomeEnum {
+        VALUE_1, VALUE_2
     }
 
     def "writes file for component with variants with attributes"() {
@@ -263,7 +456,7 @@ class ModuleMetadataFileGeneratorTest extends Specification {
 
         def v1 = Stub(UsageContext)
         v1.name >> "v1"
-        v1.attributes >> attributes(usage: "compile", debuggable: true, platform: platform)
+        v1.attributes >> attributes(usage: "compile", debuggable: true, platform: platform, linkage: SomeEnum.VALUE_1)
         def v2 = Stub(UsageContext)
         v2.name >> "v2"
         v2.attributes >> attributes()
@@ -275,11 +468,12 @@ class ModuleMetadataFileGeneratorTest extends Specification {
 
         then:
         writer.toString() == """{
-  "formatVersion": "0.2",
+  "formatVersion": "${ModuleMetadataParser.FORMAT_VERSION}",
   "component": {
     "group": "group",
     "module": "module",
-    "version": "1.2"
+    "version": "1.2",
+    "attributes": {}
   },
   "createdBy": {
     "gradle": {
@@ -292,6 +486,7 @@ class ModuleMetadataFileGeneratorTest extends Specification {
       "name": "v1",
       "attributes": {
         "debuggable": true,
+        "linkage": "VALUE_1",
         "platform": "windows",
         "usage": "compile"
       }
@@ -333,11 +528,12 @@ class ModuleMetadataFileGeneratorTest extends Specification {
 
         then:
         writer.toString() == """{
-  "formatVersion": "0.2",
+  "formatVersion": "${ModuleMetadataParser.FORMAT_VERSION}",
   "component": {
     "group": "group",
     "module": "module",
-    "version": "1.2"
+    "version": "1.2",
+    "attributes": {}
   },
   "createdBy": {
     "gradle": {
@@ -397,12 +593,13 @@ class ModuleMetadataFileGeneratorTest extends Specification {
 
         then:
         writer.toString() == """{
-  "formatVersion": "0.2",
+  "formatVersion": "${ModuleMetadataParser.FORMAT_VERSION}",
   "component": {
     "url": "../../module/1.2/module-1.2.module",
     "group": "group",
     "module": "module",
-    "version": "1.2"
+    "version": "1.2",
+    "attributes": {}
   },
   "createdBy": {
     "gradle": {

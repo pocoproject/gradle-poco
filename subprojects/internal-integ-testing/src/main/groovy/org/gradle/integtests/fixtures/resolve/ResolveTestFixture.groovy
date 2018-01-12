@@ -24,6 +24,7 @@ import org.gradle.api.artifacts.ResolvedDependency
 import org.gradle.api.artifacts.result.ComponentSelectionReason
 import org.gradle.api.artifacts.result.ResolvedComponentResult
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.VersionSelectionReasons
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.TaskAction
 import org.gradle.internal.classloader.ClasspathUtil
@@ -36,6 +37,7 @@ import org.junit.Assert
 class ResolveTestFixture {
     private final TestFile buildFile
     private final String config
+    private String defaultConfig = "default"
     private boolean buildArtifacts = true
 
     ResolveTestFixture(TestFile buildFile, String config = "compile") {
@@ -44,8 +46,13 @@ class ResolveTestFixture {
     }
 
     ResolveTestFixture withoutBuildingArtifacts() {
-        buildArtifacts = false;
-        return this;
+        buildArtifacts = false
+        return this
+    }
+
+    ResolveTestFixture expectDefaultConfiguration(String config) {
+        defaultConfig = config
+        return this
     }
 
     /**
@@ -77,7 +84,7 @@ allprojects {
      * Verifies the result of executing the task injected by {@link #prepare()}. The closure delegates to a {@link GraphBuilder} instance.
      */
     void expectGraph(@DelegatesTo(GraphBuilder) Closure closure) {
-        def graph = new GraphBuilder()
+        def graph = new GraphBuilder(defaultConfig)
         closure.resolveStrategy = Closure.DELEGATE_ONLY
         closure.delegate = graph
         closure.call()
@@ -187,6 +194,11 @@ allprojects {
     static class GraphBuilder {
         private final Map<String, NodeBuilder> nodes = new LinkedHashMap<>()
         private NodeBuilder root
+        private String defaultConfig
+
+        GraphBuilder(String defaultConfig) {
+            this.defaultConfig = defaultConfig
+        }
 
         Collection<NodeBuilder> getNodes() {
             return nodes.values()
@@ -306,6 +318,9 @@ allprojects {
         def node(String id, String moduleVersion, Map attrs) {
             def node = nodes[moduleVersion]
             if (!node) {
+                if (!attrs.configuration) {
+                    attrs.configuration = defaultConfig
+                }
                 node = new NodeBuilder(id, moduleVersion, attrs, this)
                 nodes[moduleVersion] = node
             }
@@ -378,7 +393,7 @@ allprojects {
             this.group = attrs.group
             this.module = attrs.module
             this.version = attrs.version
-            this.configuration = attrs.configuration ? attrs.configuration : "default"
+            this.configuration = attrs.configuration
             this.moduleVersionId = moduleVersionId
             this.id = id
         }
@@ -512,7 +527,7 @@ allprojects {
          * Marks that this node was substituted in a composite.
          */
         NodeBuilder compositeSubstitute() {
-            reasons << 'composite build substitution'
+            reasons << 'compositeSubstitution'
             this
         }
 
@@ -628,14 +643,26 @@ class GenerateGraphTask extends DefaultTask {
 
     def formatReason(ComponentSelectionReason reason) {
         def reasons = []
-        if (reason.conflictResolution) {
-            reasons << "conflict"
-        }
-        if (reason.forced) {
-            reasons << "forced"
-        }
-        if (reason.selectedByRule) {
-            reasons << "selectedByRule"
+        if (reason in [VersionSelectionReasons.COMPOSITE_BUILD,
+                       VersionSelectionReasons.CONFLICT_RESOLUTION,
+                       VersionSelectionReasons.FORCED,
+                       VersionSelectionReasons.REQUESTED,
+                       VersionSelectionReasons.ROOT,
+                       VersionSelectionReasons.CONFLICT_RESOLUTION_BY_RULE,
+                       VersionSelectionReasons.SELECTED_BY_RULE
+        ]) {
+            if (reason.conflictResolution) {
+                reasons << "conflict"
+            }
+            if (reason.forced) {
+                reasons << "forced"
+            }
+            if (reason.selectedByRule) {
+                reasons << "selectedByRule"
+            }
+            if (reason.compositeSubstitution) {
+                reasons << "compositeSubstitution"
+            }
         }
         return reasons.empty ? reason.description : reasons.join(',')
     }

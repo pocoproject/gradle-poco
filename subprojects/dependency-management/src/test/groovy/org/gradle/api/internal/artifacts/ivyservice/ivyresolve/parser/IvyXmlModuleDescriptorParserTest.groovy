@@ -22,16 +22,18 @@ import org.apache.ivy.plugins.matcher.PatternMatcher
 import org.gradle.api.internal.artifacts.DefaultImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.api.internal.artifacts.ivyservice.NamespaceId
+import org.gradle.api.internal.artifacts.repositories.metadata.IvyMutableModuleMetadataFactory
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.internal.component.external.descriptor.Artifact
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
-import org.gradle.internal.component.external.model.IvyDependencyMetadata
+import org.gradle.internal.component.external.model.IvyDependencyDescriptor
 import org.gradle.internal.component.external.model.MutableIvyModuleResolveMetadata
 import org.gradle.internal.hash.HashUtil
 import org.gradle.internal.resource.local.FileResourceRepository
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.Resources
+import org.gradle.util.TestUtil
 import org.junit.Rule
 import spock.lang.Issue
 import spock.lang.Specification
@@ -46,7 +48,9 @@ class IvyXmlModuleDescriptorParserTest extends Specification {
 
     DefaultImmutableModuleIdentifierFactory moduleIdentifierFactory = new DefaultImmutableModuleIdentifierFactory()
     FileResourceRepository fileRepository = TestFiles.fileRepository()
-    IvyXmlModuleDescriptorParser parser = new IvyXmlModuleDescriptorParser(new IvyModuleDescriptorConverter(moduleIdentifierFactory), moduleIdentifierFactory, fileRepository)
+    IvyMutableModuleMetadataFactory metadataFactory = new IvyMutableModuleMetadataFactory(moduleIdentifierFactory, TestUtil.attributesFactory())
+
+    IvyXmlModuleDescriptorParser parser = new IvyXmlModuleDescriptorParser(new IvyModuleDescriptorConverter(moduleIdentifierFactory), moduleIdentifierFactory, fileRepository, metadataFactory)
 
     DescriptorParseContext parseContext = Mock()
     MutableIvyModuleResolveMetadata metadata
@@ -710,7 +714,7 @@ class IvyXmlModuleDescriptorParserTest extends Specification {
         assert artifactName.classifier == classifier
     }
 
-    def verifyFullDependencies(Collection<IvyDependencyMetadata> dependencies) {
+    def verifyFullDependencies(Collection<IvyDependencyDescriptor> dependencies) {
         // no conf def => equivalent to *->*
         def dd = getDependency(dependencies, "mymodule2")
         assert dd.selector == newSelector("myorg", "mymodule2", new DefaultMutableVersionConstraint("2.0"))
@@ -791,9 +795,9 @@ class IvyXmlModuleDescriptorParserTest extends Specification {
         dd = getDependency(dependencies, "yourmodule10")
         assert dd.selector == newSelector("yourorg", "yourmodule10", new DefaultMutableVersionConstraint("10.1"))
         assert dd.dependencyArtifacts.empty
-        assert dd.excludes.size() == 1
-        assert dd.excludes[0].artifact.name == "toexclude"
-        assert dd.excludes[0].configurations as Set == ["myconf1", "myconf2", "myconf3", "myconf4", "myoldconf"] as Set
+        assert dd.allExcludes.size() == 1
+        assert dd.allExcludes[0].artifact.name == "toexclude"
+        assert dd.allExcludes[0].configurations as Set == ["myconf1", "myconf2", "myconf3", "myconf4", "myoldconf"] as Set
         true
     }
 
@@ -818,13 +822,13 @@ class IvyXmlModuleDescriptorParserTest extends Specification {
         assert conf.extendsFrom as Set == exts as Set
     }
 
-    protected static IvyDependencyMetadata getDependency(Collection<IvyDependencyMetadata> dependencies, String name) {
+    protected static IvyDependencyDescriptor getDependency(Collection<IvyDependencyDescriptor> dependencies, String name) {
         def found = dependencies.find { it.selector.module == name }
         assert found != null
         return found
     }
 
-    protected static void assertDependencyArtifact(IvyDependencyMetadata dd, String name, List<String> confs) {
+    protected static void assertDependencyArtifact(IvyDependencyDescriptor dd, String name, List<String> confs) {
         def artifact = dd.dependencyArtifacts.find { it.artifactName.name == name }
         assert artifact != null
         assert artifact.configurations == confs as Set

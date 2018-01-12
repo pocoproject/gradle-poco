@@ -17,13 +17,12 @@
 package org.gradle.internal.component.external.model;
 
 import com.google.common.collect.ImmutableList;
-import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.ModuleSource;
 
 /**
  * Meta-data for a component resolved from a Maven repository.
  */
-public interface MavenModuleResolveMetadata extends ModuleComponentResolveMetadata, ComponentVariantResolveMetadata {
+public interface MavenModuleResolveMetadata extends ModuleComponentResolveMetadata {
     /**
      * {@inheritDoc}
      */
@@ -42,6 +41,5 @@ public interface MavenModuleResolveMetadata extends ModuleComponentResolveMetada
     boolean isKnownJarPackaging();
     String getSnapshotTimestamp();
 
-    @Override
-    ImmutableList<? extends ConfigurationMetadata> getVariantsForGraphTraversal();
+    ImmutableList<MavenDependencyDescriptor> getDependencies();
 }

@@ -16,6 +16,7 @@
 package org.gradle.api.internal.artifacts.ivyservice.moduleconverter.dependencies;
 
 import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.DependencyConstraint;
 import org.gradle.api.artifacts.ExcludeRule;
 import org.gradle.api.artifacts.FileCollectionDependency;
 import org.gradle.api.artifacts.ModuleDependency;
@@ -50,10 +51,13 @@ public class DefaultDependenciesToModuleDescriptorConverter implements Dependenc
         for (Dependency dependency : configuration.getDependencies()) {
             if (dependency instanceof ModuleDependency) {
                 ModuleDependency moduleDependency = (ModuleDependency) dependency;
-                metaData.addDependency(dependencyDescriptorFactory.createDependencyDescriptor(configuration.getName(), attributes, moduleDependency));
+                metaData.addDependency(dependencyDescriptorFactory.createDependencyDescriptor(metaData.getComponentId(), configuration.getName(), attributes, moduleDependency));
             } else if (dependency instanceof FileCollectionDependency) {
                 final FileCollectionDependency fileDependency = (FileCollectionDependency) dependency;
                 metaData.addFiles(configuration.getName(), new DefaultLocalFileDependencyMetadata(fileDependency));
+            } else if (dependency instanceof DependencyConstraint) {
+                DependencyConstraint dependencyConstraint = (DependencyConstraint) dependency;
+                metaData.addDependency(dependencyDescriptorFactory.createDependencyConstraintDescriptor(metaData.getComponentId(), configuration.getName(), attributes, dependencyConstraint));
             } else {
                 throw new IllegalArgumentException("Cannot convert dependency " + dependency + " to local component dependency metadata.");
             }
@@ -62,7 +66,7 @@ public class DefaultDependenciesToModuleDescriptorConverter implements Dependenc
 
     private void addExcludeRules(BuildableLocalComponentMetadata metaData, ConfigurationInternal configuration) {
         for (ExcludeRule excludeRule : configuration.getExcludeRules()) {
-            metaData.addExclude(excludeRuleConverter.convertExcludeRule(configuration.getName(), excludeRule));
+            metaData.addExclude(configuration.getName(), excludeRuleConverter.convertExcludeRule(excludeRule));
         }
     }
 

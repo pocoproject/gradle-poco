@@ -16,15 +16,17 @@
 
 package org.gradle.api.internal.attributes;
 
-import com.google.common.collect.Sets;
+import com.google.common.collect.AbstractIterator;
 import org.gradle.api.attributes.Attribute;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.changedetection.state.isolation.Isolatable;
 import org.gradle.internal.Cast;
 
 import javax.annotation.Nullable;
+import java.util.AbstractSet;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
@@ -63,7 +65,7 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
         hashCode = 31 * hashCode + attribute.hashCode();
         hashCode = 31 * hashCode + value.hashCode();
         this.hashCode = hashCode;
-        this.size = parent.size + 1;
+        this.size = parent.contains(attribute) ? parent.size : parent.size + 1;
     }
 
     @Override
@@ -99,13 +101,45 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
 
     @Override
     public Set<Attribute<?>> keySet() {
-        if (parent == null) {
+        if (attribute == null) {
             return Collections.emptySet();
         }
         if (keySet == null) {
-            keySet = Sets.union(Collections.singleton(attribute), parent.keySet());
+            keySet = new KeySet();
         }
         return keySet;
+    }
+
+    private class KeySet extends AbstractSet<Attribute<?>> {
+        @Override
+        public Iterator<Attribute<?>> iterator() {
+            return new AbstractIterator<Attribute<?>>() {
+                private DefaultImmutableAttributes current = DefaultImmutableAttributes.this;
+
+                @Override
+                protected Attribute<?> computeNext() {
+                    Attribute<?> attribute;
+                    while (current != null && (attribute = current.attribute) != null) {
+                        DefaultImmutableAttributes parent = current.parent;
+                        current = parent;
+                        if (parent == null || !parent.contains(attribute)) {
+                            return attribute;
+                        }
+                    }
+                    return endOfData();
+                }
+            };
+        }
+
+        @Override
+        public boolean contains(Object o) {
+            return o instanceof Attribute && DefaultImmutableAttributes.this.contains((Attribute<?>) o);
+        }
+
+        @Override
+        public int size() {
+            return size;
+        }
     }
 
     @Override
@@ -156,8 +190,7 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
     }
 
     @Nullable
-    @Override
-    public <S> S coerce(Class<S> type) {
+    private <S> S coerce(Class<S> type) {
         if (value != null) {
             Isolatable<S> converted = value.coerce(type);
             if (converted != null) {
@@ -165,6 +198,24 @@ final class DefaultImmutableAttributes implements ImmutableAttributes, Attribute
             }
         }
         return null;
+    }
+
+    @Override
+    public <S> S coerce(Attribute<S> otherAttribute) {
+        Class<S> attributeType = otherAttribute.getType();
+        if (attributeType.isAssignableFrom(attribute.getType())) {
+            return (S) get();
+        }
+
+        S converted = coerce(attributeType);
+        if (converted != null) {
+            return converted;
+        }
+        String foundType = get().getClass().getName();
+        if (foundType.equals(attributeType.getName())) {
+            foundType += " with a different ClassLoader";
+        }
+        throw new IllegalArgumentException(String.format("Unexpected type for attribute '%s' provided. Expected a value of type %s but found a value of type %s.", attribute.getName(), attributeType.getName(), foundType));
     }
 
     @Override

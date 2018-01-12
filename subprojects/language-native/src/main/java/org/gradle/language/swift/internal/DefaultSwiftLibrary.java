@@ -16,31 +16,57 @@
 
 package org.gradle.language.swift.internal;
 
+import org.apache.commons.lang.StringUtils;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
-import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.internal.file.FileOperations;
+import org.gradle.api.internal.provider.LockableSetProperty;
 import org.gradle.api.model.ObjectFactory;
+import org.gradle.api.provider.Property;
+import org.gradle.language.swift.SwiftBinary;
 import org.gradle.language.swift.SwiftLibrary;
+import org.gradle.language.swift.SwiftPlatform;
 import org.gradle.language.swift.SwiftSharedLibrary;
+import org.gradle.language.swift.SwiftStaticLibrary;
+import org.gradle.nativeplatform.Linkage;
+import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
+import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 
 import javax.inject.Inject;
 
 public class DefaultSwiftLibrary extends DefaultSwiftComponent implements SwiftLibrary {
-    private final DefaultSwiftSharedLibrary debug;
-    private final DefaultSwiftSharedLibrary release;
     private final Configuration api;
+    private final ObjectFactory objectFactory;
+    private final LockableSetProperty<Linkage> linkage;
+    private final ConfigurationContainer configurations;
+    private final Property<SwiftBinary> developmentBinary;
 
     @Inject
-    public DefaultSwiftLibrary(String name, ProjectLayout projectLayout, ObjectFactory objectFactory, FileOperations fileOperations, ConfigurationContainer configurations) {
+    public DefaultSwiftLibrary(String name, ObjectFactory objectFactory, FileOperations fileOperations, ConfigurationContainer configurations) {
         super(name, fileOperations, objectFactory, configurations);
-        debug = objectFactory.newInstance(DefaultSwiftSharedLibrary.class, name + "Debug", projectLayout, objectFactory, getModule(), true, true, getSwiftSource(), configurations, getImplementationDependencies());
-        release = objectFactory.newInstance(DefaultSwiftSharedLibrary.class, name + "Release", projectLayout, objectFactory, getModule(), false, false, getSwiftSource(), configurations, getImplementationDependencies());
+        this.objectFactory = objectFactory;
+        this.configurations = configurations;
+        this.developmentBinary = objectFactory.property(SwiftBinary.class);
 
-        api = configurations.maybeCreate(getNames().withSuffix("api"));
+        linkage = new LockableSetProperty<Linkage>(objectFactory.setProperty(Linkage.class));
+        linkage.add(Linkage.SHARED);
+
+        api = configurations.create(getNames().withSuffix("api"));
         api.setCanBeConsumed(false);
         api.setCanBeResolved(false);
         getImplementationDependencies().extendsFrom(api);
+    }
+
+    public SwiftStaticLibrary addStaticLibrary(String nameSuffix, boolean debuggable, boolean optimized, boolean testable, SwiftPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
+        SwiftStaticLibrary result = objectFactory.newInstance(DefaultSwiftStaticLibrary.class, getName() + StringUtils.capitalize(nameSuffix), getModule(), debuggable, optimized, testable, getSwiftSource(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider);
+        getBinaries().add(result);
+        return result;
+    }
+
+    public SwiftSharedLibrary addSharedLibrary(String nameSuffix, boolean debuggable, boolean optimized, boolean testable, SwiftPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
+        SwiftSharedLibrary result = objectFactory.newInstance(DefaultSwiftSharedLibrary.class, getName() + StringUtils.capitalize(nameSuffix), getModule(), debuggable, optimized, testable, getSwiftSource(), configurations, getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider);
+        getBinaries().add(result);
+        return result;
     }
 
     @Override
@@ -49,17 +75,12 @@ public class DefaultSwiftLibrary extends DefaultSwiftComponent implements SwiftL
     }
 
     @Override
-    public SwiftSharedLibrary getDevelopmentBinary() {
-        return debug;
+    public Property<SwiftBinary> getDevelopmentBinary() {
+        return developmentBinary;
     }
 
     @Override
-    public SwiftSharedLibrary getDebugSharedLibrary() {
-        return debug;
-    }
-
-    @Override
-    public SwiftSharedLibrary getReleaseSharedLibrary() {
-        return release;
+    public LockableSetProperty<Linkage> getLinkage() {
+        return linkage;
     }
 }

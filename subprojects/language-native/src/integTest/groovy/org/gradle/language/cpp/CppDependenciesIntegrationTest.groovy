@@ -17,7 +17,7 @@
 package org.gradle.language.cpp
 
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraries
-import org.gradle.vcs.internal.DirectoryRepositorySpec
+import org.gradle.vcs.internal.spec.DirectoryRepositorySpec
 
 class CppDependenciesIntegrationTest extends AbstractCppInstalledToolChainIntegrationTest {
     def app = new CppAppWithLibraries()
@@ -87,7 +87,11 @@ class CppDependenciesIntegrationTest extends AbstractCppInstalledToolChainIntegr
     }
 
     private void assertTasksExecutedFor(String buildType) {
-        assert result.assertTasksExecuted(":app:depend${buildType}Cpp", ":hello:depend${buildType}Cpp", ":log:depend${buildType}Cpp", ":hello:compile${buildType}Cpp", ":hello:link${buildType}", ":log:compile${buildType}Cpp", ":log:link${buildType}", ":app:compile${buildType}Cpp", ":app:link${buildType}", ":app:install${buildType}")
+        def tasks = [":hello:compile${buildType}Cpp", ":hello:link${buildType}", ":log:compile${buildType}Cpp", ":log:link${buildType}", ":app:compile${buildType}Cpp", ":app:link${buildType}", ":app:install${buildType}"]
+        if (buildType == "Release" && !toolChain.visualCpp) {
+            tasks << [ ":log:stripSymbols${buildType}", ":hello:stripSymbols${buildType}", ":app:stripSymbols${buildType}"]
+        }
+        assert result.assertTasksExecuted(tasks)
     }
 
     private void assertAppHasOutputFor(String buildType) {
@@ -97,7 +101,7 @@ class CppDependenciesIntegrationTest extends AbstractCppInstalledToolChainIntegr
     private writeApp() {
         app.main.writeToProject(file("app"))
         file("app/build.gradle") << """
-            apply plugin: 'cpp-executable'
+            apply plugin: 'cpp-application'
             group = 'org.gradle.cpp'
             version = '1.0'
 

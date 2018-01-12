@@ -13,7 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-apply plugin: 'java-library'
+plugins {
+    id 'java-library'
+}
 apply from: "$rootDir/gradle/taskProperties.gradle"
 
 sourceCompatibility = javaVersion.java9Compatible ? 1.6 : 1.5
@@ -49,6 +51,7 @@ dependencies {
 
     implementation project(":modelGroovy")
     implementation libraries.asm
+    implementation libraries.asm_commons
     implementation libraries.slf4j_api
     implementation libraries.commons_collections
     implementation libraries.commons_io

@@ -17,15 +17,10 @@
 package org.gradle.internal.component.external.model;
 
 import com.google.common.collect.ImmutableList;
-import org.gradle.internal.component.model.ComponentResolveMetadata;
-import org.gradle.internal.component.model.ConfigurationMetadata;
 
 import javax.annotation.Nullable;
 
-public interface MutableMavenModuleResolveMetadata extends MutableModuleComponentResolveMetadata, MutableComponentVariantResolveMetadata {
-    /**
-     * {@inheritDoc}
-     */
+public interface MutableMavenModuleResolveMetadata extends MutableModuleComponentResolveMetadata {
     @Override
     MavenModuleResolveMetadata asImmutable();
 
@@ -44,12 +39,7 @@ public interface MutableMavenModuleResolveMetadata extends MutableModuleComponen
     void setRelocated(boolean relocated);
 
     /**
-     * Returns the set of variants defined for this component.
+     * Returns the dependency declarations of this component.
      */
-    ImmutableList<? extends ComponentVariant> getVariants();
-
-    /**
-     * Returns a {@link ConfigurationMetadata} view over the variants of this component. See {@link ComponentResolveMetadata#getVariantsForGraphTraversal()}.
-     */
-    ImmutableList<? extends ConfigurationMetadata> getVariantsForGraphTraversal();
+    ImmutableList<MavenDependencyDescriptor> getDependencies();
 }

@@ -21,7 +21,6 @@ import org.gradle.api.artifacts.ConfigurationContainer
 import org.gradle.api.internal.file.FileOperations
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.api.model.ObjectFactory
-import org.gradle.language.swift.SwiftBinary
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
 import org.gradle.util.TestUtil
 import org.junit.Rule
@@ -37,7 +36,7 @@ class DefaultSwiftComponentTest extends Specification {
     DefaultSwiftComponent component
 
     def setup() {
-        _ * configurations.maybeCreate("implementation") >> implementation
+        _ * configurations.create("implementation") >> implementation
         component = new TestComponent("main", fileOperations, objectFactory, configurations)
     }
 
@@ -102,11 +101,6 @@ class DefaultSwiftComponentTest extends Specification {
     class TestComponent extends DefaultSwiftComponent {
         TestComponent(String name, FileOperations fileOperations, ObjectFactory objectFactory, ConfigurationContainer configurations) {
             super(name, fileOperations, objectFactory, configurations)
-        }
-
-        @Override
-        SwiftBinary getDevelopmentBinary() {
-            throw new UnsupportedOperationException()
         }
     }
 }

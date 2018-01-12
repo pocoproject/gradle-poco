@@ -28,22 +28,21 @@ import org.gradle.api.Transformer;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
+import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.artifacts.configurations.OutgoingVariant;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusion;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.Describables;
 import org.gradle.internal.DisplayName;
+import org.gradle.internal.component.model.VariantResolveMetadata;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.DefaultVariantMetadata;
-import org.gradle.internal.component.model.Exclude;
+import org.gradle.internal.component.model.ExcludeMetadata;
 import org.gradle.internal.component.model.IvyArtifactName;
 import org.gradle.internal.component.model.LocalOriginDependencyMetadata;
 import org.gradle.internal.component.model.ModuleSource;
-import org.gradle.internal.component.model.VariantMetadata;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -58,12 +57,12 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
     private final Multimap<String, LocalFileDependencyMetadata> allFiles = ArrayListMultimap.create();
     private final SetMultimap<String, DefaultVariantMetadata> allVariants = LinkedHashMultimap.create();
     private final List<LocalOriginDependencyMetadata> allDependencies = Lists.newArrayList();
-    private final List<Exclude> allExcludes = Lists.newArrayList();
+    private final Multimap<String, ExcludeMetadata> allExcludes = ArrayListMultimap.create();
     private final ModuleVersionIdentifier id;
     private final ComponentIdentifier componentIdentifier;
     private final String status;
     private final AttributesSchemaInternal attributesSchema;
-    private List<ConfigurationMetadata> consumableConfigurations;
+    private ImmutableList<ConfigurationMetadata> consumableConfigurations;
 
     public DefaultLocalComponentMetadata(ModuleVersionIdentifier id, ComponentIdentifier componentIdentifier, String status, AttributesSchemaInternal attributesSchema) {
         this.id = id;
@@ -113,7 +112,7 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
         }
 
         // Exclude rules
-        copy.allExcludes.addAll(allExcludes);
+        copy.allExcludes.putAll(allExcludes);
 
         return copy;
     }
@@ -172,8 +171,8 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
     }
 
     @Override
-    public void addExclude(Exclude exclude) {
-        allExcludes.add(exclude);
+    public void addExclude(String config, ExcludeMetadata exclude) {
+        allExcludes.put(config, exclude);
     }
 
     @Override
@@ -216,13 +215,8 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
         return componentIdentifier;
     }
 
-    @Override
     public List<LocalOriginDependencyMetadata> getDependencies() {
         return allDependencies;
-    }
-
-    public List<Exclude> getExcludeRules() {
-        return allExcludes;
     }
 
     @Override
@@ -231,14 +225,15 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
     }
 
     @Override
-    public synchronized List<? extends ConfigurationMetadata> getVariantsForGraphTraversal() {
+    public synchronized ImmutableList<? extends ConfigurationMetadata> getVariantsForGraphTraversal() {
         if (consumableConfigurations == null) {
-            consumableConfigurations = Lists.newArrayListWithExpectedSize(allConfigurations.size());
+            ImmutableList.Builder<ConfigurationMetadata> builder = new ImmutableList.Builder<ConfigurationMetadata>();
             for (DefaultLocalConfigurationMetadata metadata : allConfigurations.values()) {
                 if (metadata.isCanBeConsumed() && !metadata.getAttributes().isEmpty()) {
-                    consumableConfigurations.add(metadata);
+                    builder.add(metadata);
                 }
             }
+            consumableConfigurations = builder.build();
         }
         return consumableConfigurations;
     }
@@ -251,6 +246,13 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
     @Override
     public AttributesSchemaInternal getAttributesSchema() {
         return attributesSchema;
+    }
+
+    @Override
+    public AttributeContainer getAttributes() {
+        // a local component cannot have attributes (for now). However, variants of the component
+        // itself may.
+        return ImmutableAttributes.EMPTY;
     }
 
     private class DefaultLocalConfigurationMetadata implements LocalConfigurationMetadata {
@@ -267,7 +269,7 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
         private List<LocalOriginDependencyMetadata> configurationDependencies;
         private List<LocalComponentArtifactMetadata> configurationArtifacts;
         private Set<LocalFileDependencyMetadata> configurationFileDependencies;
-        private ModuleExclusion configurationExclude;
+        private ImmutableList<ExcludeMetadata> configurationExclude;
 
         private DefaultLocalConfigurationMetadata(String name,
                                                   String description,
@@ -339,7 +341,7 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
         }
 
         @Override
-        public Set<? extends VariantMetadata> getVariants() {
+        public Set<? extends VariantResolveMetadata> getVariants() {
             return allVariants.get(name);
         }
 
@@ -394,21 +396,18 @@ public class DefaultLocalComponentMetadata implements LocalComponentMetadata, Bu
         }
 
         @Override
-        public ModuleExclusion getExclusions(ModuleExclusions moduleExclusions) {
+        public ImmutableList<ExcludeMetadata> getExcludes() {
             if (configurationExclude == null) {
                 if (allExcludes.isEmpty()) {
-                    configurationExclude = ModuleExclusions.excludeNone();
+                    configurationExclude = ImmutableList.of();
                 } else {
-                    ImmutableList.Builder<Exclude> filtered = ImmutableList.builder();
-                    for (Exclude exclude : allExcludes) {
-                        for (String config : exclude.getConfigurations()) {
-                            if (hierarchy.contains(config)) {
-                                filtered.add(exclude);
-                                break;
-                            }
+                    ImmutableList.Builder<ExcludeMetadata> filtered = ImmutableList.builder();
+                    for (String conf : hierarchy) {
+                        for (ExcludeMetadata exclude : allExcludes.get(conf)) {
+                            filtered.add(exclude);
                         }
                     }
-                    configurationExclude = moduleExclusions.excludeAny(filtered.build());
+                    configurationExclude = filtered.build();
                 }
             }
             return configurationExclude;

@@ -15,23 +15,20 @@
  */
 package org.gradle.integtests.resolve
 
-import org.gradle.integtests.fixtures.AbstractHttpDependencyResolutionTest
-import org.gradle.test.fixtures.HttpRepository
+import org.gradle.integtests.fixtures.GradleMetadataResolveRunner
+import org.gradle.integtests.fixtures.RequiredFeature
+import org.gradle.integtests.fixtures.RequiredFeatures
 
-abstract class ComponentMetadataRulesIntegrationTest extends AbstractHttpDependencyResolutionTest {
-    abstract HttpRepository getRepo()
-    abstract String getRepoDeclaration()
-    abstract String getDefaultStatus()
+class ComponentMetadataRulesIntegrationTest extends AbstractModuleDependencyResolveTest implements ComponentMetadataRulesSupport {
+    String getDefaultStatus() {
+        GradleMetadataResolveRunner.useIvy()?'integration':'release'
+    }
 
     def setup() {
         buildFile <<
 """
-$repoDeclaration
-
-configurations { compile }
-
 dependencies {
-    compile 'org.test:projectA:1.0'
+    conf 'org.test:projectA:1.0'
 }
 
 // implement Sync manually to make sure that task is never up-to-date
@@ -39,7 +36,7 @@ task resolve {
     doLast {
         delete 'libs'
         copy {
-            from configurations.compile
+            from configurations.conf
             into 'libs'
         }
     }
@@ -48,7 +45,9 @@ task resolve {
     }
 
     def "rule receives correct metadata"() {
-        repo.module('org.test', 'projectA', '1.0').publish().allowAll()
+        repository {
+            'org.test:projectA:1.0'()
+        }
         buildFile <<
 """
 dependencies {
@@ -65,12 +64,21 @@ dependencies {
 }
 """
 
-        expect:
+        when:
+        repositoryInteractions {
+            'org.test:projectA:1.0' {
+                allowAll()
+            }
+        }
+
+        then:
         succeeds 'resolve'
     }
 
     def "changes made by a rule are visible to subsequent rules"() {
-        repo.module('org.test', 'projectA', '1.0').publish().allowAll()
+        repository {
+            'org.test:projectA:1.0'()
+        }
 
         buildFile <<
                 """
@@ -90,12 +98,21 @@ dependencies {
 }
 """
 
-        expect:
+        when:
+        repositoryInteractions {
+            'org.test:projectA:1.0' {
+                allowAll()
+            }
+        }
+
+        then:
         succeeds 'resolve'
     }
 
     def "changes made by a rule are not cached"() {
-        repo.module('org.test', 'projectA', '1.0').publish().allowAll()
+        repository {
+            'org.test:projectA:1.0'()
+        }
 
         buildFile <<
                 """
@@ -114,13 +131,22 @@ dependencies {
 }
 """
 
-        expect:
+        when:
+        repositoryInteractions {
+            'org.test:projectA:1.0' {
+                allowAll()
+            }
+        }
+
+        then:
         succeeds 'resolve'
         succeeds 'resolve'
     }
 
     def "can apply all rule types to all modules" () {
-        repo.module('org.test', 'projectA', '1.0').publish().allowAll()
+        repository {
+            'org.test:projectA:1.0'()
+        }
         buildFile << """
             ext.rulesInvoked = []
             dependencies {
@@ -159,12 +185,21 @@ dependencies {
             resolve.doLast { assert rulesInvoked == [ '1.0', '1.0', '1.0', '1.0', '1.0' ] }
         """
 
-        expect:
+        when:
+        repositoryInteractions {
+            'org.test:projectA:1.0' {
+                allowAll()
+            }
+        }
+
+        then:
         succeeds 'resolve'
     }
 
     def "can apply all rule types by module" () {
-        repo.module('org.test', 'projectA', '1.0').publish().allowAll()
+        repository {
+            'org.test:projectA:1.0'()
+        }
         buildFile << """
             ext.rulesInvoked = []
             ext.rulesUninvoked = []
@@ -209,15 +244,82 @@ dependencies {
             }
         """
 
-        expect:
+        when:
+        repositoryInteractions {
+            'org.test:projectA:1.0' {
+                allowAll()
+            }
+        }
+
+        then:
         succeeds 'resolve'
     }
 
-    String sq(String input) {
-        return escapeForSingleQuoting(input)
+    def "produces sensible error when @Mutate method does not have ComponentMetadata as first parameter"() {
+        buildFile << """
+            dependencies {
+                components {
+                    all(new BadRuleSource())
+                }
+            }
+
+            class BadRuleSource {
+                @org.gradle.model.Mutate
+                void doSomething(String s) { }
+            }
+        """
+
+        when:
+        fails "resolve"
+
+        then:
+        fails 'resolveConf'
+        failureDescriptionStartsWith("A problem occurred evaluating root project")
+        failure.assertHasCause("""Type BadRuleSource is not a valid rule source:
+- Method doSomething(java.lang.String) is not a valid rule method: First parameter of a rule method must be of type org.gradle.api.artifacts.ComponentMetadataDetails""")
     }
 
-    String escapeForSingleQuoting(String input) {
-        return input.replace('\\', '\\\\').replace('\'', '\\\'')
+    @RequiredFeatures(
+        @RequiredFeature(feature=GradleMetadataResolveRunner.REPOSITORY_TYPE, value="maven")
+    )
+    def "rule that accepts IvyModuleDescriptor isn't invoked for Maven component"() {
+        given:
+        repository {
+            'org.test:projectA:1.0'()
+        }
+
+        buildFile <<
+            """
+def plainRuleInvoked = false
+def ivyRuleInvoked = false
+
+dependencies {
+    components {
+        all { ComponentMetadataDetails details ->
+            plainRuleInvoked = true
+        }
+        all { ComponentMetadataDetails details, IvyModuleDescriptor descriptor ->
+            ivyRuleInvoked = true
+        }
     }
+}
+
+resolve.doLast {
+    assert plainRuleInvoked
+    assert !ivyRuleInvoked
+}
+"""
+        when:
+        repositoryInteractions {
+            'org.test:projectA:1.0' {
+                expectResolve()
+            }
+        }
+
+        then:
+        succeeds 'resolve'
+        // also works when already cached
+        succeeds 'resolve'
+    }
+
 }

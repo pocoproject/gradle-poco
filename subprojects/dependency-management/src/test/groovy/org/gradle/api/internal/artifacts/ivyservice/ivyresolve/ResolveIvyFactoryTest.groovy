@@ -27,10 +27,10 @@ import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionC
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelectorScheme
 import org.gradle.api.internal.artifacts.ivyservice.modulecache.ModuleArtifactsCache
 import org.gradle.api.internal.artifacts.ivyservice.modulecache.ModuleMetaDataCache
+import org.gradle.api.internal.artifacts.repositories.metadata.ImmutableMetadataSources
+import org.gradle.api.internal.artifacts.repositories.metadata.MetadataArtifactProvider
 import org.gradle.api.internal.artifacts.repositories.ResolutionAwareRepository
 import org.gradle.api.internal.artifacts.repositories.resolver.ExternalResourceResolver
-import org.gradle.api.internal.artifacts.repositories.resolver.VersionLister
-import org.gradle.api.internal.file.TestFiles
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata
 import org.gradle.internal.resource.ExternalResourceRepository
 import org.gradle.internal.resource.cached.CachedArtifactIndex
@@ -117,9 +117,9 @@ class ResolveIvyFactoryTest extends Specification {
     def externalResourceResolverSpy() {
         ExternalResourceRepository externalResourceRepository = Stub()
         CacheAwareExternalResourceAccessor cacheAwareExternalResourceAccessor = Stub()
-        VersionLister versionLister = Stub()
         LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> locallyAvailableResourceFinder = Stub()
         FileStore<ModuleComponentArtifactMetadata> artifactFileStore = Stub()
+        ImmutableMetadataSources metadataSources = Stub()
 
         return Spy(ExternalResourceResolver,
             constructorArgs: [
@@ -127,11 +127,11 @@ class ResolveIvyFactoryTest extends Specification {
                 false,
                 externalResourceRepository,
                 cacheAwareExternalResourceAccessor,
-                versionLister,
                 locallyAvailableResourceFinder,
                 artifactFileStore,
                 moduleIdentifierFactory,
-                TestFiles.fileRepository()
+                metadataSources,
+                Stub(MetadataArtifactProvider)
             ]
         ) {
             appendId(_) >> { }

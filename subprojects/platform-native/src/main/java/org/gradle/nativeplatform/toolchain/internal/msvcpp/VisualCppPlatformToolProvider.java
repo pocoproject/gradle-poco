@@ -18,6 +18,7 @@ package org.gradle.nativeplatform.toolchain.internal.msvcpp;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import org.gradle.api.NonNullApi;
 import org.gradle.api.Transformer;
 import org.gradle.internal.Transformers;
 import org.gradle.internal.jvm.Jvm;
@@ -48,6 +49,7 @@ import org.gradle.nativeplatform.toolchain.internal.compilespec.CPCHCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.CppCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.CppPCHCompileSpec;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.WindowsResourceCompileSpec;
+import org.gradle.nativeplatform.toolchain.internal.metadata.CompilerMetadata;
 import org.gradle.nativeplatform.toolchain.internal.tools.CommandLineToolConfigurationInternal;
 import org.gradle.process.internal.ExecActionFactory;
 
@@ -55,6 +57,9 @@ import java.io.File;
 import java.util.List;
 import java.util.Map;
 
+import static org.gradle.internal.FileUtils.withExtension;
+
+@NonNullApi
 class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider implements SystemIncludesAwarePlatformToolProvider {
     private final Map<ToolType, CommandLineToolConfigurationInternal> commandLineToolConfigurations;
     private final VisualCppInstall visualCpp;
@@ -83,8 +88,13 @@ class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider impleme
     }
 
     @Override
+    public boolean requiresDebugBinaryStripping() {
+        return false;
+    }
+
+    @Override
     public String getSharedLibraryLinkFileName(String libraryName) {
-        return getSharedLibraryName(libraryName).replaceFirst("\\.dll$", ".lib");
+        return withExtension(getSharedLibraryName(libraryName), ".lib");
     }
 
     @Override
@@ -206,7 +216,7 @@ class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider impleme
     }
 
     @Override
-    public List<File> getSystemIncludes() {
+    public List<File> getSystemIncludes(ToolType compilerType) {
         ImmutableList.Builder<File> builder = ImmutableList.builder();
         builder.add(visualCpp.getIncludePath(targetPlatform));
         builder.add(sdk.getIncludeDirs());
@@ -243,5 +253,20 @@ class VisualCppPlatformToolProvider extends AbstractPlatformToolProvider impleme
 
     public String getPCHFileExtension() {
         return ".pch";
+    }
+
+    @Override
+    public String getLibrarySymbolFileName(String libraryPath) {
+        return withExtension(getSharedLibraryName(libraryPath), ".pdb");
+    }
+
+    @Override
+    public String getExecutableSymbolFileName(String executablePath) {
+        return withExtension(getExecutableName(executablePath), ".pdb");
+    }
+
+    @Override
+    public CompilerMetadata getCompilerMetadata() {
+        throw new UnsupportedOperationException("Compiler metadata for Visual C++ is not yet implemented");
     }
 }

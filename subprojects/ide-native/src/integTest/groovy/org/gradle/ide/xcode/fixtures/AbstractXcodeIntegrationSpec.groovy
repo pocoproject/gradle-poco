@@ -16,10 +16,16 @@
 
 package org.gradle.ide.xcode.fixtures
 
+import com.google.common.base.Splitter
 import org.gradle.ide.xcode.internal.DefaultXcodeProject
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.internal.os.OperatingSystem
+import org.gradle.nativeplatform.fixtures.AvailableToolChains
+import org.gradle.nativeplatform.fixtures.NativeBinaryFixture
+import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.test.fixtures.file.TestFile
+
+import static org.junit.Assume.assumeTrue
 
 class AbstractXcodeIntegrationSpec extends AbstractIntegrationSpec {
     def setup() {
@@ -37,12 +43,24 @@ rootProject.name = "${rootProjectName}"
         'app'
     }
 
+    protected NativeBinaryFixture fixture(String path) {
+        fixture(file(path))
+    }
+
+    protected NativeBinaryFixture fixture(TestFile binary) {
+        new NativeBinaryFixture(binary, null)
+    }
+
     protected TestFile exe(String str) {
         file(OperatingSystem.current().getExecutableName(str))
     }
 
     protected TestFile sharedLib(String str) {
         file(OperatingSystem.current().getSharedLibraryName(str))
+    }
+
+    protected TestFile staticLib(String str) {
+        file(OperatingSystem.current().getStaticLibraryName(str))
     }
 
     protected TestFile xctest(String str) {
@@ -130,10 +148,30 @@ Actual: ${actual[key]}
         '''
     }
 
+    void useSwiftCompiler() {
+        def toolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFT)
+        assumeTrue(toolChain != null && toolChain.isAvailable())
+
+        File initScript = file("init.gradle") << """
+            allprojects { p ->
+                apply plugin: ${toolChain.pluginClass}
+
+                model {
+                      toolChains {
+                        ${toolChain.buildScriptConfig}
+                      }
+                }
+            }
+        """
+        executer.beforeExecute({
+            usingInitScript(initScript)
+        })
+    }
+
     void assertTargetIsUnitTest(ProjectFile.PBXTarget target, String expectedProductName) {
         target.assertIsUnitTest()
         assert target.productName == expectedProductName
-        assert target.name == "$expectedProductName XCTestBundle"
+        assert target.name == "$expectedProductName"
         assert target.buildConfigurationList.buildConfigurations.name == [DefaultXcodeProject.BUILD_DEBUG, DefaultXcodeProject.BUILD_RELEASE, DefaultXcodeProject.TEST_DEBUG]
         assert target.buildConfigurationList.buildConfigurations.every { it.buildSettings.PRODUCT_NAME == expectedProductName }
         assert target.buildConfigurationList.buildConfigurations.every {
@@ -147,8 +185,21 @@ Actual: ${actual[key]}
     void assertTargetIsDynamicLibrary(ProjectFile.PBXTarget target, String expectedProductName, String expectedBinaryName = expectedProductName) {
         target.assertIsDynamicLibrary()
         assert target.productName == expectedProductName
-        assert target.name == "$expectedProductName SharedLibrary"
+        assert target.name == expectedProductName
         assert target.productReference.path == sharedLib("build/lib/main/debug/$expectedBinaryName").absolutePath
+        assert target.buildConfigurationList.buildConfigurations.name == [DefaultXcodeProject.BUILD_DEBUG, DefaultXcodeProject.BUILD_RELEASE]
+        assert target.buildConfigurationList.buildConfigurations.every { it.buildSettings.PRODUCT_NAME == expectedProductName }
+        assertNotUnitTestBuildSettings(target.buildConfigurationList.buildConfigurations[0].buildSettings)
+        assert target.buildConfigurationList.buildConfigurations[0].buildSettings.CONFIGURATION_BUILD_DIR == file("build/lib/main/debug").absolutePath
+        assertNotUnitTestBuildSettings(target.buildConfigurationList.buildConfigurations[1].buildSettings)
+        assert target.buildConfigurationList.buildConfigurations[1].buildSettings.CONFIGURATION_BUILD_DIR == file("build/lib/main/release/stripped").absolutePath
+    }
+
+    void assertTargetIsStaticLibrary(ProjectFile.PBXTarget target, String expectedProductName, String expectedBinaryName = expectedProductName) {
+        target.assertIsStaticLibrary()
+        assert target.productName == expectedProductName
+        assert target.name == expectedProductName
+        assert target.productReference.path == staticLib("build/lib/main/debug/$expectedBinaryName").absolutePath
         assert target.buildConfigurationList.buildConfigurations.name == [DefaultXcodeProject.BUILD_DEBUG, DefaultXcodeProject.BUILD_RELEASE]
         assert target.buildConfigurationList.buildConfigurations.every { it.buildSettings.PRODUCT_NAME == expectedProductName }
         assertNotUnitTestBuildSettings(target.buildConfigurationList.buildConfigurations[0].buildSettings)
@@ -160,10 +211,11 @@ Actual: ${actual[key]}
     void assertTargetIsTool(ProjectFile.PBXTarget target, String expectedProductName, String expectedBinaryName = expectedProductName) {
         target.assertIsTool()
         assert target.productName == expectedProductName
-        assert target.name == "$expectedProductName Executable"
+        assert target.name == expectedProductName
         assert target.productReference.path == exe("build/exe/main/debug/$expectedBinaryName").absolutePath
         assert target.buildConfigurationList.buildConfigurations.name == [DefaultXcodeProject.BUILD_DEBUG, DefaultXcodeProject.BUILD_RELEASE]
         assert target.buildConfigurationList.buildConfigurations.every { it.buildSettings.PRODUCT_NAME == expectedProductName }
+        assert target.buildArgumentsString == '-Porg.gradle.internal.xcode.bridge.ACTION="${ACTION}" -Porg.gradle.internal.xcode.bridge.PRODUCT_NAME="${PRODUCT_NAME}" -Porg.gradle.internal.xcode.bridge.CONFIGURATION="${CONFIGURATION}" -Porg.gradle.internal.xcode.bridge.BUILT_PRODUCTS_DIR="${BUILT_PRODUCTS_DIR}" :_xcode__${ACTION}_${PRODUCT_NAME}_${CONFIGURATION}'
         assertNotUnitTestBuildSettings(target.buildConfigurationList.buildConfigurations[0].buildSettings)
         assert target.buildConfigurationList.buildConfigurations[0].buildSettings.CONFIGURATION_BUILD_DIR == file("build/exe/main/debug").absolutePath
         assertNotUnitTestBuildSettings(target.buildConfigurationList.buildConfigurations[1].buildSettings)
@@ -192,5 +244,10 @@ Actual: ${actual[key]}
         assert target.buildConfigurationList.buildConfigurations.name == [DefaultXcodeProject.BUILD_DEBUG]
         assert target.buildConfigurationList.buildConfigurations[0].buildSettings.PRODUCT_NAME == expectedProductName
         assert target.buildConfigurationList.buildConfigurations[0].buildSettings.SWIFT_INCLUDE_PATHS == swiftIncludes
+    }
+
+    static List<TestFile> toFiles(Object includePath) {
+        def includePathElements = Splitter.on('"').splitToList(String.valueOf(includePath))
+        return includePathElements.grep( { !it.trim().empty }).collect { new TestFile(it) }
     }
 }

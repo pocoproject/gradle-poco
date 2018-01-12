@@ -16,8 +16,9 @@
 
 package org.gradle.internal.component.model;
 
-import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ImmutableList;
 import org.gradle.api.artifacts.Dependency;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.attributes.AttributeContainer;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
@@ -26,39 +27,40 @@ import org.gradle.internal.component.IncompatibleConfigurationSelectionException
 import org.gradle.internal.exceptions.ConfigurationNotConsumableException;
 import org.gradle.util.GUtil;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
-public class LocalComponentDependencyMetadata extends AbstractDependencyMetadata implements LocalOriginDependencyMetadata {
+public class LocalComponentDependencyMetadata implements LocalOriginDependencyMetadata {
+    private final ComponentIdentifier componentId;
     private final ComponentSelector selector;
     private final String moduleConfiguration;
     private final String dependencyConfiguration;
-    private final List<Exclude> excludes;
-    private final Set<IvyArtifactName> artifactNames;
+    private final List<ExcludeMetadata> excludes;
+    private final ImmutableList<IvyArtifactName> artifactNames;
     private final boolean force;
     private final boolean changing;
     private final boolean transitive;
+    private final boolean pending;
 
     private final AttributeContainer moduleAttributes;
 
-    public LocalComponentDependencyMetadata(ComponentSelector selector,
+    public LocalComponentDependencyMetadata(ComponentIdentifier componentId,
+                                            ComponentSelector selector,
                                             String moduleConfiguration,
                                             AttributeContainer moduleAttributes,
                                             String dependencyConfiguration,
-                                            Set<IvyArtifactName> artifactNames, List<Exclude> excludes,
-                                            boolean force, boolean changing, boolean transitive) {
+                                            List<IvyArtifactName> artifactNames, List<ExcludeMetadata> excludes,
+                                            boolean force, boolean changing, boolean transitive, boolean pending) {
+        this.componentId = componentId;
         this.selector = selector;
         this.moduleConfiguration = moduleConfiguration;
         this.moduleAttributes = moduleAttributes;
         this.dependencyConfiguration = dependencyConfiguration;
-        this.artifactNames = artifactNames;
+        this.artifactNames = ImmutableList.copyOf(artifactNames);
         this.excludes = excludes;
         this.force = force;
         this.changing = changing;
         this.transitive = transitive;
+        this.pending = pending;
     }
 
     @Override
@@ -81,19 +83,23 @@ public class LocalComponentDependencyMetadata extends AbstractDependencyMetadata
         return getOrDefaultConfiguration(dependencyConfiguration);
     }
 
+    private static String getOrDefaultConfiguration(String configuration) {
+        return GUtil.elvis(configuration, Dependency.DEFAULT_CONFIGURATION);
+    }
+
     @Override
-    public Set<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata fromComponent, ConfigurationMetadata fromConfiguration, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
+    public List<ConfigurationMetadata> selectConfigurations(ImmutableAttributes consumerAttributes, ComponentResolveMetadata targetComponent, AttributesSchemaInternal consumerSchema) {
         boolean consumerHasAttributes = !consumerAttributes.isEmpty();
         List<? extends ConfigurationMetadata> consumableConfigurations = targetComponent.getVariantsForGraphTraversal();
         boolean useConfigurationAttributes = dependencyConfiguration == null && (consumerHasAttributes || !consumableConfigurations.isEmpty());
         if (useConfigurationAttributes) {
-            return ImmutableSet.of(selectConfigurationUsingAttributeMatching(consumerAttributes, targetComponent, consumerSchema));
+            return ImmutableList.of(AttributeConfigurationSelector.selectConfigurationUsingAttributeMatching(consumerAttributes, targetComponent, consumerSchema));
         }
 
         String targetConfiguration = GUtil.elvis(dependencyConfiguration, Dependency.DEFAULT_CONFIGURATION);
         ConfigurationMetadata toConfiguration = targetComponent.getConfiguration(targetConfiguration);
         if (toConfiguration == null) {
-            throw new ConfigurationNotFoundException(fromComponent.getComponentId(), moduleConfiguration, targetConfiguration, targetComponent.getComponentId());
+            throw new ConfigurationNotFoundException(componentId, moduleConfiguration, targetConfiguration, targetComponent.getComponentId());
         }
         if (!toConfiguration.isCanBeConsumed()) {
             throw new ConfigurationNotConsumableException(targetComponent.toString(), toConfiguration.getName());
@@ -105,25 +111,11 @@ public class LocalComponentDependencyMetadata extends AbstractDependencyMetadata
                 throw new IncompatibleConfigurationSelectionException(consumerAttributes, consumerSchema.withProducer(producerAttributeSchema), targetComponent, targetConfiguration);
             }
         }
-        return ImmutableSet.of(toConfiguration);
-    }
-
-    private static String getOrDefaultConfiguration(String configuration) {
-        return GUtil.elvis(configuration, Dependency.DEFAULT_CONFIGURATION);
+        return ImmutableList.of(toConfiguration);
     }
 
     @Override
-    public Set<String> getModuleConfigurations() {
-        return ImmutableSet.of(getOrDefaultConfiguration(moduleConfiguration));
-    }
-
-    @Override
-    public List<Exclude> getExcludes() {
-        return excludes;
-    }
-
-    @Override
-    public List<Exclude> getExcludes(Collection<String> configurations) {
+    public List<ExcludeMetadata> getExcludes() {
         return excludes;
     }
 
@@ -143,24 +135,12 @@ public class LocalComponentDependencyMetadata extends AbstractDependencyMetadata
     }
 
     @Override
-    public boolean isOptional() {
-        return false;
+    public boolean isPending() {
+        return pending;
     }
 
     @Override
-    public Set<ComponentArtifactMetadata> getArtifacts(ConfigurationMetadata fromConfiguration, ConfigurationMetadata toConfiguration) {
-        if (artifactNames.isEmpty()) {
-            return Collections.emptySet();
-        }
-        Set<ComponentArtifactMetadata> artifacts = new LinkedHashSet<ComponentArtifactMetadata>();
-        for (IvyArtifactName artifactName : artifactNames) {
-            artifacts.add(toConfiguration.artifact(artifactName));
-        }
-        return artifacts;
-    }
-
-    @Override
-    public Set<IvyArtifactName> getArtifacts() {
+    public List<IvyArtifactName> getArtifacts() {
         return artifactNames;
     }
 
@@ -173,6 +153,6 @@ public class LocalComponentDependencyMetadata extends AbstractDependencyMetadata
     }
 
     private LocalOriginDependencyMetadata copyWithTarget(ComponentSelector selector) {
-        return new LocalComponentDependencyMetadata(selector, moduleConfiguration, moduleAttributes, dependencyConfiguration, artifactNames, excludes, force, changing, transitive);
+        return new LocalComponentDependencyMetadata(componentId, selector, moduleConfiguration, moduleAttributes, dependencyConfiguration, artifactNames, excludes, force, changing, transitive, pending);
     }
 }

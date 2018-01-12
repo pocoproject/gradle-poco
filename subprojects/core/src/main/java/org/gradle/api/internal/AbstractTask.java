@@ -18,6 +18,7 @@ package org.gradle.api.internal;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Collections2;
+import com.google.common.collect.ImmutableSet;
 import groovy.lang.Closure;
 import groovy.lang.MissingPropertyException;
 import groovy.util.ObservableList;
@@ -33,11 +34,13 @@ import org.gradle.api.internal.file.TemporaryFileProvider;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.tasks.ClassLoaderAwareTaskAction;
 import org.gradle.api.internal.tasks.ContextAwareTaskAction;
+import org.gradle.api.internal.tasks.DefaultPropertySpecFactory;
 import org.gradle.api.internal.tasks.DefaultTaskDependency;
 import org.gradle.api.internal.tasks.DefaultTaskDestroyables;
 import org.gradle.api.internal.tasks.DefaultTaskInputs;
 import org.gradle.api.internal.tasks.DefaultTaskLocalState;
 import org.gradle.api.internal.tasks.DefaultTaskOutputs;
+import org.gradle.api.internal.tasks.PropertySpecFactory;
 import org.gradle.api.internal.tasks.TaskContainerInternal;
 import org.gradle.api.internal.tasks.TaskDependencyInternal;
 import org.gradle.api.internal.tasks.TaskExecuter;
@@ -47,6 +50,7 @@ import org.gradle.api.internal.tasks.TaskMutator;
 import org.gradle.api.internal.tasks.TaskStateInternal;
 import org.gradle.api.internal.tasks.execution.DefaultTaskExecutionContext;
 import org.gradle.api.internal.tasks.execution.TaskValidator;
+import org.gradle.api.internal.tasks.properties.PropertyWalker;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.plugins.Convention;
@@ -134,6 +138,7 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     private LoggingManagerInternal loggingManager;
 
     private String toStringValue;
+    private final PropertySpecFactory specFactory;
 
     protected AbstractTask() {
         this(taskInfo());
@@ -155,18 +160,21 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
         assert name != null;
         state = new TaskStateInternal();
         TaskContainerInternal tasks = project.getTasks();
-        dependencies = new DefaultTaskDependency(tasks);
         mustRunAfter = new DefaultTaskDependency(tasks);
         finalizedBy = new DefaultTaskDependency(tasks);
         shouldRunAfter = new DefaultTaskDependency(tasks);
         services = project.getServices();
 
         FileResolver fileResolver = project.getFileResolver();
+        PropertyWalker propertyWalker = services.get(PropertyWalker.class);
         taskMutator = new TaskMutator(this);
-        taskInputs = new DefaultTaskInputs(fileResolver, this, taskMutator);
-        taskOutputs = new DefaultTaskOutputs(fileResolver, this, taskMutator);
-        taskDestroyables = new DefaultTaskDestroyables(fileResolver, this, taskMutator);
-        taskLocalState = new DefaultTaskLocalState(fileResolver, this, taskMutator);
+        specFactory = new DefaultPropertySpecFactory(this, fileResolver);
+        taskInputs = new DefaultTaskInputs(this, taskMutator, propertyWalker, specFactory);
+        taskOutputs = new DefaultTaskOutputs(this, taskMutator, propertyWalker, specFactory);
+        taskDestroyables = new DefaultTaskDestroyables(taskMutator);
+        taskLocalState = new DefaultTaskLocalState(taskMutator);
+
+        dependencies = new DefaultTaskDependency(tasks, ImmutableSet.<Object>of(taskInputs.getFiles()));
     }
 
     private void assertDynamicObject() {
@@ -220,7 +228,7 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
     @Override
     public List<ContextAwareTaskAction> getTaskActions() {
         if (actions == null) {
-            actions = new ArrayList<ContextAwareTaskAction>();
+            actions = new ArrayList<ContextAwareTaskAction>(3);
         }
         return actions;
     }
@@ -244,7 +252,7 @@ public abstract class AbstractTask implements TaskInternal, DynamicObjectAware {
 
     @Override
     public Set<Object> getDependsOn() {
-        return dependencies.getValues();
+        return dependencies.getMutableValues();
     }
 
     @Override

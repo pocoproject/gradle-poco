@@ -15,6 +15,7 @@
  */
 package org.gradle.language.base.internal.model;
 
+import com.google.common.collect.ImmutableList;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
@@ -27,7 +28,8 @@ import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.external.model.DefaultModuleComponentSelector;
 import org.gradle.internal.component.local.model.DefaultLibraryComponentSelector;
 import org.gradle.internal.component.local.model.DefaultLocalComponentMetadata;
-import org.gradle.internal.component.model.Exclude;
+import org.gradle.internal.component.local.model.OpaqueComponentIdentifier;
+import org.gradle.internal.component.model.ExcludeMetadata;
 import org.gradle.internal.component.model.IvyArtifactName;
 import org.gradle.internal.component.model.LocalComponentDependencyMetadata;
 import org.gradle.internal.component.model.LocalOriginDependencyMetadata;
@@ -46,7 +48,7 @@ import static org.gradle.platform.base.internal.DefaultModuleDependencySpec.effe
 
 public class DefaultLibraryLocalComponentMetadata extends DefaultLocalComponentMetadata {
     private static final String VERSION = "<local component>";
-    private static final List<Exclude> EXCLUDE_RULES = Collections.emptyList();
+    private static final List<ExcludeMetadata> EXCLUDE_RULES = Collections.emptyList();
     private static final String CONFIGURATION_COMPILE = "compile";
 
     public static DefaultLibraryLocalComponentMetadata newResolvedLibraryMetadata(
@@ -151,10 +153,11 @@ public class DefaultLibraryLocalComponentMetadata extends DefaultLocalComponentM
      */
     private LocalOriginDependencyMetadata dependencyMetadataFor(ComponentSelector selector, String usageConfigurationName, String mappedUsageConfiguration) {
         return new LocalComponentDependencyMetadata(
+            new OpaqueComponentIdentifier("TODO"), // TODO:DAZ
             selector, usageConfigurationName, null, mappedUsageConfiguration,
-            Collections.<IvyArtifactName>emptySet(),
+            ImmutableList.<IvyArtifactName>of(),
             EXCLUDE_RULES,
-            false, false, true);
+            false, false, true, false);
     }
 
 }

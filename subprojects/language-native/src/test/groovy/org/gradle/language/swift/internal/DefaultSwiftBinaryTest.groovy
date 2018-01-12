@@ -16,11 +16,16 @@
 
 package org.gradle.language.swift.internal
 
+import org.gradle.api.artifacts.ArtifactCollection
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.ConfigurationContainer
+import org.gradle.api.artifacts.ResolvableDependencies
 import org.gradle.api.file.FileCollection
 import org.gradle.api.file.ProjectLayout
 import org.gradle.api.provider.Provider
+import org.gradle.language.swift.SwiftPlatform
+import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal
+import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider
 import org.gradle.util.TestUtil
 import spock.lang.Specification
 
@@ -30,19 +35,30 @@ class DefaultSwiftBinaryTest extends Specification {
     def link = Stub(Configuration)
     def runtime = Stub(Configuration)
     def configurations = Stub(ConfigurationContainer)
+    def incoming = Mock(ResolvableDependencies)
     DefaultSwiftBinary binary
 
     def setup() {
-        _ * configurations.maybeCreate("swiftCompileDebug") >> compile
-        _ * configurations.maybeCreate("nativeLinkDebug") >> link
-        _ * configurations.maybeCreate("nativeRuntimeDebug") >> runtime
+        _ * configurations.create("swiftCompileDebug") >> compile
+        _ * configurations.create("nativeLinkDebug") >> link
+        _ * configurations.create("nativeRuntimeDebug") >> runtime
 
-        binary = new DefaultSwiftBinary("mainDebug", Mock(ProjectLayout), TestUtil.objectFactory(), Stub(Provider), true, false, Stub(FileCollection),  configurations, implementation)
+        binary = new DefaultSwiftBinary("mainDebug", Mock(ProjectLayout), TestUtil.objectFactory(), Stub(Provider), true, false,false, Stub(FileCollection),  configurations, implementation, Stub(SwiftPlatform), Stub(NativeToolChainInternal), Stub(PlatformToolProvider))
     }
 
-    def "creates configurations for the binary"() {
+    def "compileModules is a transformed view of compile"() {
+        given:
+        compile.incoming >> incoming
+
+        when:
+        binary.compileModules.files
+
+        then:
+        1 * incoming.artifacts >> Stub(ArtifactCollection)
+    }
+
+    def "creates configurations for the binary" () {
         expect:
-        binary.compileModules == compile
         binary.linkLibraries == link
         binary.runtimeLibraries == runtime
     }

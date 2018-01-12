@@ -41,6 +41,7 @@ class CrossVersionPerformanceTestRunner extends PerformanceTestSpec {
 
     GradleDistribution current
     final IntegrationTestBuildContext buildContext
+    final ResultsStore resultsStore
     final DataReporter<CrossVersionPerformanceResults> reporter
     TestProjectLocator testProjectLocator = new TestProjectLocator()
     final BuildExperimentRunner experimentRunner
@@ -63,7 +64,8 @@ class CrossVersionPerformanceTestRunner extends PerformanceTestSpec {
     private CompositeBuildExperimentListener buildExperimentListeners = new CompositeBuildExperimentListener()
     private CompositeInvocationCustomizer invocationCustomizers = new CompositeInvocationCustomizer()
 
-    CrossVersionPerformanceTestRunner(BuildExperimentRunner experimentRunner, DataReporter<CrossVersionPerformanceResults> reporter, ReleasedVersionDistributions releases, IntegrationTestBuildContext buildContext) {
+    CrossVersionPerformanceTestRunner(BuildExperimentRunner experimentRunner, ResultsStore resultsStore, DataReporter<CrossVersionPerformanceResults> reporter, ReleasedVersionDistributions releases, IntegrationTestBuildContext buildContext) {
+        this.resultsStore = resultsStore
         this.reporter = reporter
         this.experimentRunner = experimentRunner
         this.releases = releases
@@ -82,7 +84,7 @@ class CrossVersionPerformanceTestRunner extends PerformanceTestSpec {
         }
 
         def scenarioSelector = new TestScenarioSelector()
-        Assume.assumeTrue(scenarioSelector.shouldRun(testId, [testProject].toSet(), (ResultsStore) reporter))
+        Assume.assumeTrue(scenarioSelector.shouldRun(testId, [testProject].toSet(), resultsStore))
 
         def results = new CrossVersionPerformanceResults(
             testId: testId,
@@ -103,13 +105,13 @@ class CrossVersionPerformanceTestRunner extends PerformanceTestSpec {
             channel: ResultsStoreHelper.determineChannel()
         )
 
-        runVersion(current, perVersionWorkingDirectory('current'), results.current)
+        def baselineVersions = toBaselineVersions(releases, targetVersions, minimumVersion).collect { results.baseline(it) }
+        def maxWorkingDirLength = (['current'] + baselineVersions*.version).collect { sanitizeVersionWorkingDir(it) }*.length().max()
 
-        def baselineVersions = toBaselineVersions(releases, targetVersions, minimumVersion)
+        runVersion(current, perVersionWorkingDirectory('current', maxWorkingDirLength), results.current)
 
-        baselineVersions.each { it ->
-            def baselineVersion = results.baseline(it)
-            runVersion(buildContext.distribution(baselineVersion.version), perVersionWorkingDirectory(baselineVersion.version), baselineVersion.results)
+        baselineVersions.each { baselineVersion ->
+            runVersion(buildContext.distribution(baselineVersion.version), perVersionWorkingDirectory(baselineVersion.version, maxWorkingDirLength), baselineVersion.results)
         }
 
         results.endTime = clock.getCurrentTime()
@@ -121,14 +123,18 @@ class CrossVersionPerformanceTestRunner extends PerformanceTestSpec {
         return results
     }
 
-    protected File perVersionWorkingDirectory(String version) {
-        def perVersion = new File(workingDir, version.replace('+', ''))
+    protected File perVersionWorkingDirectory(String version, int maxWorkingDirLength) {
+        def perVersion = new File(workingDir, sanitizeVersionWorkingDir(version).padRight(maxWorkingDirLength, '_'))
         if (!perVersion.exists()) {
             perVersion.mkdirs()
         } else {
             GFileUtils.cleanDirectory(perVersion)
         }
         perVersion
+    }
+
+    private static String sanitizeVersionWorkingDir(String version) {
+        version.replace('+', '')
     }
 
     static Iterable<String> toBaselineVersions(ReleasedVersionDistributions releases, List<String> targetVersions, String minimumVersion) {

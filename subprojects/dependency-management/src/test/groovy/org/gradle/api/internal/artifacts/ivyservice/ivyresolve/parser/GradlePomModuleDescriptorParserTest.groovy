@@ -18,7 +18,9 @@ package org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser
 import groovy.transform.NotYetImplemented
 import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.internal.component.external.descriptor.MavenScope
+import org.gradle.internal.component.external.model.MavenDependencyDescriptor
 import org.gradle.internal.component.external.model.MutableMavenModuleResolveMetadata
+import org.gradle.internal.component.model.DefaultIvyArtifactName
 import org.gradle.internal.hash.HashUtil
 import spock.lang.Issue
 import spock.lang.Unroll
@@ -195,12 +197,64 @@ class GradlePomModuleDescriptorParserTest extends AbstractGradlePomModuleDescrip
         def dep = single(metadata.dependencies)
         dep.selector == moduleId('group-two', 'artifact-two', '1.2')
         dep.scope == MavenScope.Test
-        def excludeRule = single(dep.excludes)
+        def excludeRule = single(dep.allExcludes)
         excludeRule.moduleId == DefaultModuleIdentifier.newId('group-three', 'artifact-three')
         hasDefaultDependencyArtifact(dep)
     }
 
-    def "throws exception if parent pom dependency management section does not provide default values for dependency"() {
+    def "can provide different values for different scopes in dependency management section"() {
+        given:
+        pomFile << """
+<project>
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>group-one</groupId>
+    <artifactId>artifact-one</artifactId>
+    <version>version-one</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>group-two</groupId>
+            <artifactId>artifact-two</artifactId>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>group-two</groupId>
+            <artifactId>artifact-two</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>group-two</groupId>
+                <artifactId>artifact-two</artifactId>
+                <version>1.1</version>
+                <scope>compile</scope>
+            </dependency>
+            <dependency>
+                <groupId>group-two</groupId>
+                <artifactId>artifact-two</artifactId>
+                <version>1.2</version>
+                <scope>runtime</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
+"""
+
+        when:
+        parsePom()
+
+        then:
+        def depCompile = metadata.dependencies[0]
+        depCompile.selector == moduleId('group-two', 'artifact-two', '1.1')
+        depCompile.scope == MavenScope.Compile
+        def depRuntime = metadata.dependencies[1]
+        depRuntime.selector == moduleId('group-two', 'artifact-two', '1.2')
+        depRuntime.scope == MavenScope.Runtime
+    }
+
+    def "uses empty version if parent pom dependency management section does not provide default values for dependency"() {
         given:
         def parent = tmpDir.file("parent.xml") << """
 <project>
@@ -249,9 +303,8 @@ class GradlePomModuleDescriptorParserTest extends AbstractGradlePomModuleDescrip
         parsePom()
 
         then:
-        Throwable t = thrown(MetaDataParseException)
-        t.cause instanceof UnresolvedDependencyVersionException
-        t.cause.message == "Unable to resolve version for dependency 'group-two:artifact-two:jar'"
+        def dep = single(metadata.dependencies)
+        dep.selector == moduleId('group-two', 'artifact-two', '')
     }
 
     def "uses parent pom dependency management section to provide default values for a dependency"() {
@@ -1803,10 +1856,10 @@ class GradlePomModuleDescriptorParserTest extends AbstractGradlePomModuleDescrip
         parsePom()
 
         then:
-        def dep = single(metadata.dependencies)
+        MavenDependencyDescriptor dep = single(metadata.dependencies) as MavenDependencyDescriptor
         dep.selector == moduleId('group-relocated', 'relocated', 'version-one')
-        dep.confMappings.keySet() == ['default', 'master', 'compile', 'provided', 'runtime', 'system', 'sources', 'javadoc', 'optional'] as Set
-        hasDefaultDependencyArtifact(dep)
+        dep.scope == MavenScope.Runtime
+        dep.dependencyArtifact == null
     }
 
     @Issue("GRADLE-2931")
@@ -1882,8 +1935,7 @@ class GradlePomModuleDescriptorParserTest extends AbstractGradlePomModuleDescrip
         hasDependencyArtifact(depTest, 'artifact-two', 'test-jar', 'jar', 'tests')
     }
 
-    @Issue("GRADLE-2931")
-    def "throws exception if parent dependency management doesn't provide correct defaults for dependency"() {
+    def "parent dependency management applies does not apply to dependency with different type"() {
         given:
         def parent = tmpDir.file("parent.xml") << """
 <project>
@@ -1938,9 +1990,12 @@ class GradlePomModuleDescriptorParserTest extends AbstractGradlePomModuleDescrip
         parsePom()
 
         then:
-        Throwable t = thrown(MetaDataParseException)
-        t.cause instanceof UnresolvedDependencyVersionException
-        t.cause.message == "Unable to resolve version for dependency 'group-two:artifact-two:test-jar'"
+        metadata.dependencies.size() == 2
+        def dep1 = metadata.dependencies.find { it.dependencyArtifact == null }
+        dep1.selector == moduleId('group-two', 'artifact-two', '1.1')
+        def dep2 = metadata.dependencies.find { it.dependencyArtifact != null }
+        dep2.selector == moduleId('group-two', 'artifact-two', '')
+        dep2.dependencyArtifact == new DefaultIvyArtifactName('artifact-two', 'test-jar', 'jar', 'tests')
     }
 
     @Issue("GRADLE-2931")

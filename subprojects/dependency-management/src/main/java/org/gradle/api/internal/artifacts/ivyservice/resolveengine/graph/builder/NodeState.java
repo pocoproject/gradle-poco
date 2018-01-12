@@ -32,7 +32,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -44,7 +43,7 @@ class NodeState implements DependencyGraphNode {
 
     private final Long resultId;
     private final ComponentState component;
-    private final Set<EdgeState> incomingEdges = new LinkedHashSet<EdgeState>();
+    private final List<EdgeState> incomingEdges = Lists.newLinkedList();
     private final List<EdgeState> outgoingEdges = Lists.newLinkedList();
     private final ResolvedConfigurationIdentifier id;
 
@@ -90,7 +89,7 @@ class NodeState implements DependencyGraphNode {
     }
 
     @Override
-    public Set<EdgeState> getIncomingEdges() {
+    public List<EdgeState> getIncomingEdges() {
         return incomingEdges;
     }
 
@@ -126,7 +125,7 @@ class NodeState implements DependencyGraphNode {
         return metaData.isTransitive();
     }
 
-    public void visitOutgoingDependencies(Collection<EdgeState> target, OptionalDependenciesHandler optionalDependenciesHandler) {
+    public void visitOutgoingDependencies(Collection<EdgeState> target, PendingDependenciesHandler pendingDependenciesHandler) {
         // If this configuration's version is in conflict, don't do anything
         // If not traversed before, add all selected outgoing edges
         // If traversed before, and the selected modules have changed, remove previous outgoing edges and add outgoing edges again with
@@ -165,20 +164,20 @@ class NodeState implements DependencyGraphNode {
             removeOutgoingEdges();
         }
 
-        visitDependencies(resolutionFilter, optionalDependenciesHandler, target);
+        visitDependencies(resolutionFilter, pendingDependenciesHandler, target);
 
     }
 
-    protected void visitDependencies(ModuleExclusion resolutionFilter, OptionalDependenciesHandler optionalDependenciesHandler, Collection<EdgeState> resultingOutgoingEdges) {
+    protected void visitDependencies(ModuleExclusion resolutionFilter, PendingDependenciesHandler pendingDependenciesHandler, Collection<EdgeState> resultingOutgoingEdges) {
         boolean isOptionalConfiguration = "optional".equals(metaData.getName());
-        OptionalDependenciesHandler.Visitor optionalDepsVisitor =  optionalDependenciesHandler.start(isOptionalConfiguration);
+        PendingDependenciesHandler.Visitor pendingDepsVisitor =  pendingDependenciesHandler.start(isOptionalConfiguration);
         try {
             for (DependencyMetadata dependency : metaData.getDependencies()) {
                 DependencyState dependencyState = new DependencyState(dependency, resolveState.getComponentSelectorConverter());
                 if (isExcluded(resolutionFilter, dependencyState)) {
                     continue;
                 }
-                if (!optionalDepsVisitor.maybeAddAsOptionalDependency(this, dependencyState)) {
+                if (!pendingDepsVisitor.maybeAddAsPendingDependency(this, dependencyState)) {
                     EdgeState dependencyEdge = new EdgeState(this, dependencyState, resolutionFilter, resolveState);
                     outgoingEdges.add(dependencyEdge);
                     resultingOutgoingEdges.add(dependencyEdge);
@@ -187,7 +186,7 @@ class NodeState implements DependencyGraphNode {
             previousTraversalExclusions = resolutionFilter;
         } finally {
             // we must do this after `previousTraversalExclusions` has been written, or state won't be reset properly
-            optionalDepsVisitor.complete();
+            pendingDepsVisitor.complete();
         }
     }
 
@@ -252,20 +251,18 @@ class NodeState implements DependencyGraphNode {
         return !incomingEdges.isEmpty();
     }
 
-    private ModuleExclusion getModuleResolutionFilter(List<EdgeState> transitiveEdges) {
-        ModuleExclusion resolutionFilter;
+    private ModuleExclusion getModuleResolutionFilter(List<EdgeState> incomingEdges) {
         ModuleExclusions moduleExclusions = resolveState.getModuleExclusions();
-        if (transitiveEdges.isEmpty()) {
-            resolutionFilter = ModuleExclusions.excludeNone();
-        } else {
-            resolutionFilter = transitiveEdges.get(0).getExclusions(moduleExclusions);
-            for (int i = 1; i < transitiveEdges.size(); i++) {
-                EdgeState dependencyEdge = transitiveEdges.get(i);
-                resolutionFilter = moduleExclusions.union(resolutionFilter, dependencyEdge.getExclusions(moduleExclusions));
-            }
+        ModuleExclusion nodeExclusions = moduleExclusions.excludeAny(metaData.getExcludes());
+        if (incomingEdges.isEmpty()) {
+            return nodeExclusions;
         }
-        resolutionFilter = moduleExclusions.intersect(resolutionFilter, metaData.getExclusions(moduleExclusions));
-        return resolutionFilter;
+        ModuleExclusion edgeExclusions = incomingEdges.get(0).getExclusions();
+        for (int i = 1; i < incomingEdges.size(); i++) {
+            EdgeState dependencyEdge = incomingEdges.get(i);
+            edgeExclusions = moduleExclusions.union(edgeExclusions, dependencyEdge.getExclusions());
+        }
+        return moduleExclusions.intersect(edgeExclusions, nodeExclusions);
     }
 
     public void removeOutgoingEdges() {
