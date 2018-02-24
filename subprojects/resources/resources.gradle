@@ -3,6 +3,7 @@
  */
 plugins {
     id 'java-library'
+    id 'classycle'
 }
 
 sourceCompatibility = javaVersion.java9Compatible ? 1.6 : 1.5
@@ -13,11 +14,12 @@ dependencies {
     api project(':native')
     api project(':modelCore')
 
-    implementation libraries.guava
-    implementation libraries.commons_io
+    implementation libraries.guava.coordinates
+    implementation libraries.commons_io.coordinates
 
     integTestImplementation project(':internalIntegTesting')
 }
 
-useTestFixtures()
-useClassycle()
+testFixtures {
+    from(':core')
+}

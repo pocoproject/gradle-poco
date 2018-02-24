@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
-import org.gradle.api.internal.PropertiesUtils
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.io.File
 import java.util.Properties
+import kotlin.coroutines.experimental.EmptyCoroutineContext.plus
 
 plugins {
     groovy
     `java-gradle-plugin`
+    `kotlin-dsl`
     idea
     eclipse
 }
@@ -31,6 +34,18 @@ java {
 
 gradlePlugin {
     (plugins) {
+        "classycle" {
+            id = "classycle"
+            implementationClass = "org.gradle.plugins.classycle.ClassyclePlugin"
+        }
+        "testFixtures" {
+            id = "test-fixtures"
+            implementationClass = "org.gradle.plugins.testfixtures.TestFixturesPlugin"
+        }
+        "strictCompile" {
+            id = "strict-compile"
+            implementationClass = "org.gradle.plugins.strictcompile.StrictCompilePlugin"
+        }
         "jsoup" {
             id = "jsoup"
             implementationClass = "org.gradle.plugins.jsoup.JsoupPlugin"
@@ -56,17 +71,14 @@ dependencies {
     compile("org.ow2.asm:asm:6.0")
     compile("org.ow2.asm:asm-commons:6.0")
     compile(gradleApi())
-    compile("com.google.guava:guava-jdk5:14.0.1@jar")
-    compile("commons-lang:commons-lang:2.6@jar")
+    compile("com.google.guava:guava-jdk5:14.0.1")
+    compile("commons-lang:commons-lang:2.6")
     compile(localGroovy())
-    compile("org.codehaus.groovy.modules.http-builder:http-builder:0.7.2") {
-        exclude(module = "groovy")
-        exclude(module = "xercesImpl")
-    }
-    testCompile("junit:junit:4.12@jar")
-    testCompile("org.spockframework:spock-core:1.0-groovy-2.4@jar")
+    compile("org.codehaus.groovy.modules.http-builder:http-builder:0.7.2")
+    testCompile("junit:junit:4.12")
+    testCompile("org.spockframework:spock-core:1.0-groovy-2.4")
     testCompile("cglib:cglib-nodep:3.2.5")
-    testCompile("org.objenesis:objenesis:1.2")
+    testCompile("org.objenesis:objenesis:2.4")
     testCompile("org.hamcrest:hamcrest-core:1.3")
 
     compile("org.pegdown:pegdown:1.6.0")
@@ -74,17 +86,41 @@ dependencies {
     compile("me.champeau.gradle:japicmp-gradle-plugin:0.2.4")
     compile("org.asciidoctor:asciidoctor-gradle-plugin:1.5.6")
     compile("com.github.javaparser:javaparser-core:2.4.0")
+
+    constraints {
+        compile("org.codehaus.groovy:groovy-all:2.4.12")
+    }
+
+    components {
+        withModule("net.sourceforge.nekohtml:nekohtml") {
+            allVariants {
+                // Xerces on the runtime classpath is breaking some of our doc tasks
+                withDependencies { removeAll { it.group == "xerces" } }
+            }
+        }
+    }
+}
+
+// Allow Kotlin types to reference both Java and Groovy types
+// Remove compileGroovy -> compileJava dependency added by GroovyBasePlugin
+// Prevent cycles in the task graph as compileJava depends on compileKotlin
+tasks {
+    val compileGroovy by getting(GroovyCompile::class) {
+        dependsOn.remove("compileJava")
+    }
+    "compileKotlin"(KotlinCompile::class) {
+        classpath += files(compileGroovy.destinationDir).builtBy(compileGroovy)
+    }
 }
 
 val isCiServer: Boolean by extra { System.getenv().containsKey("CI") }
 
 apply {
     from("../gradle/compile.gradle")
-    from("../gradle/dependencies.gradle")
-    from("../gradle/classycle.gradle")
 }
 
 if (!isCiServer || System.getProperty("enableCodeQuality")?.toLowerCase() == "true") {
+    apply { from("../gradle/dependencies.gradle") }
     apply { from("../gradle/codeQuality.gradle") }
 }
 
@@ -101,17 +137,6 @@ fun readProperties(propertiesFile: File) = Properties().apply {
 normalization {
     runtimeClasspath {
         ignore("plugin-under-test-metadata.properties")
-    }
-}
-
-tasks.withType<GeneratePluginDescriptors> {
-    doLast {
-        outputDirectory.listFiles().forEach { descriptorFile ->
-            val descriptorContents = readProperties(descriptorFile)
-            descriptorFile.outputStream().use {
-                PropertiesUtils.store(descriptorContents, it, null, Charsets.ISO_8859_1, "\n")
-            }
-        }
     }
 }
 // ^^^^^

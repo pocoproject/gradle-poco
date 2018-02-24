@@ -112,7 +112,7 @@ public class DefaultLibraryLocalComponentMetadata extends DefaultLocalComponentM
             ? moduleDependencyMetadata((ModuleDependencySpec) dependency, usageConfigurationName)
             : dependency instanceof ProjectDependencySpec ? projectDependencyMetadata((ProjectDependencySpec) dependency, defaultProject, usageConfigurationName)
             : binaryDependencyMetadata((LibraryBinaryDependencySpec) dependency, usageConfigurationName);
-        addDependency(metadata);
+        getConfiguration(usageConfigurationName).addDependency(metadata);
     }
 
     private LocalOriginDependencyMetadata moduleDependencyMetadata(ModuleDependencySpec moduleDependency, String usageConfigurationName) {
@@ -157,7 +157,7 @@ public class DefaultLibraryLocalComponentMetadata extends DefaultLocalComponentM
             selector, usageConfigurationName, null, mappedUsageConfiguration,
             ImmutableList.<IvyArtifactName>of(),
             EXCLUDE_RULES,
-            false, false, true, false);
+            false, false, true, false, null);
     }
 
 }

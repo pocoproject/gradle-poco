@@ -18,13 +18,15 @@ package org.gradle.api.tasks
 
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.initialization.StartParameterBuildOptions.BuildCacheDebugLoggingOption
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.BuildCacheFixture
+import org.gradle.test.fixtures.file.TestFile
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 import org.gradle.util.ToBeImplemented
-import spock.lang.Ignore
 import spock.lang.Unroll
 
-class NestedInputIntegrationTest extends AbstractIntegrationSpec implements BuildCacheFixture {
+class NestedInputIntegrationTest extends AbstractIntegrationSpec {
 
     @Unroll
     def "nested #type.simpleName input adds a task dependency"() {
@@ -620,8 +622,6 @@ class NestedInputIntegrationTest extends AbstractIntegrationSpec implements Buil
         executedAndNotSkipped task
     }
 
-    @Ignore
-    @ToBeImplemented("A cycle in nested properties currently causes the build to never terminate")
     def "recursive nested bean causes build to fail"() {
         buildFile << """
             class TaskWithNestedInput extends DefaultTask {
@@ -654,6 +654,147 @@ class NestedInputIntegrationTest extends AbstractIntegrationSpec implements Buil
 
         expect:
         fails "myTask"
+        failure.assertHasDescription("Could not determine the dependencies of task ':myTask'.")
+        failure.assertHasCause("Cycles between nested beans are not allowed. Cycle detected between: 'nested' and 'nested.nested'.")
+    }
+
+    def "implementation of nested property in Groovy build script is tracked"() {
+        setupTaskClassWithNestedAction()
+        buildFile << """
+            task myTask(type: TaskWithNestedAction) {
+                action = ${originalImplementation}
+            }
+        """
+
+        buildFile.makeOlder()
+
+        when:
+        run 'myTask'
+        then:
+        executedAndNotSkipped(':myTask')
+
+        when:
+        buildFile.text = """
+            task myTask(type: TaskWithNestedAction) {
+                action = ${changedImplementation}
+            }
+        """
+        run 'myTask', '--info'
+        then:
+        executedAndNotSkipped(':myTask')
+        file('build/tmp/myTask/output.txt').text == "changed"
+        output.contains "Value of input property 'action.class' has changed for task ':myTask'"
+
+        where:
+        originalImplementation                  | changedImplementation
+        '{ it.text = "hello" }'                 | '{ it.text = "changed" }'
+        wrapAction('outputFile.text = "hello"') | wrapAction('outputFile.text = "changed"')
+    }
+
+    private static String wrapAction(String body) {
+        """
+            new Action() {
+                void execute(outputFile) {
+                    ${body}
+                }
+            }
+        """
+    }
+
+    @Requires(TestPrecondition.JDK8_OR_LATER)
+    def "implementations in nested property defined by Java 8 lambda is tracked"() {
+        setupTaskClassWithNestedAction()
+        file('buildSrc/src/main/java/LambdaActions.java') << """
+            import org.gradle.api.Action;
+            
+            import java.io.File;
+            import java.io.IOException;
+            import java.nio.file.Files;
+            
+            public class LambdaActions {
+                public static final Action<File> ORIGINAL = file -> {
+                    try {
+                        Files.write(file.toPath(), "original".getBytes());
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+                
+                public static final Action<File> CHANGED = file -> {
+                    try {
+                        Files.write(file.toPath(), "changed".getBytes());
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                };
+            }
+        """
+        buildFile << """
+            task myTask(type: TaskWithNestedAction) {
+                action = LambdaActions.ORIGINAL
+            }
+        """
+
+        buildFile.makeOlder()
+
+        when:
+        run 'myTask'
+        then:
+        executedAndNotSkipped(':myTask')
+
+        when:
+        buildFile.text = """
+            task myTask(type: TaskWithNestedAction) {
+                action = LambdaActions.CHANGED
+            }
+        """
+        run 'myTask', '--info'
+        then:
+        executedAndNotSkipped(':myTask')
+        file('build/tmp/myTask/output.txt').text == "changed"
+        output.contains "Value of input property 'action.class' has changed for task ':myTask'"
+    }
+
+    private TestFile setupTaskClassWithNestedAction() {
+        file("buildSrc/src/main/java/TaskWithNestedAction.java") << """
+            import org.gradle.api.Action;
+            import org.gradle.api.DefaultTask;
+            import org.gradle.api.NonNullApi;
+            import org.gradle.api.tasks.Nested;
+            import org.gradle.api.tasks.OutputFile;
+            import org.gradle.api.tasks.TaskAction;
+            
+            import java.io.File;
+            
+            @NonNullApi
+            public class TaskWithNestedAction extends DefaultTask {
+                private File outputFile = new File(getTemporaryDir(), "output.txt");
+                private Action<File> action;
+            
+                @OutputFile
+                public File getOutputFile() {
+                    return outputFile;
+                }
+            
+                public void setOutputFile(File outputFile) {
+                    this.outputFile = outputFile;
+                }
+            
+                @Nested
+                public Action<File> getAction() {
+                    return action;
+                }
+            
+                public void setAction(Action<File> action) {
+                    this.action = action;
+                }
+            
+                @TaskAction
+                public void doStuff() {
+                    getAction().execute(outputFile);
+                }
+            }
+        """
     }
 
     def "task with nested bean loaded with custom classloader is not cached"() {
@@ -661,7 +802,7 @@ class NestedInputIntegrationTest extends AbstractIntegrationSpec implements Buil
         buildFile << taskWithNestedBeanFromCustomClassLoader()
 
         when:
-        withBuildCache().run "customTask", "--info"
+        withBuildCache().run "customTask", "--info", "-D${BuildCacheDebugLoggingOption.GRADLE_PROPERTY}=true"
         then:
         output.contains "The implementation of 'bean' cannot be determined, because it was loaded by an unknown classloader"
         output.contains "Not caching task ':customTask' because no valid cache key was generated"

@@ -148,7 +148,7 @@ public class ClientModuleResolver implements ComponentMetaDataResolver {
 
         @Override
         public ImmutableList<? extends ConfigurationMetadata> getVariantsForGraphTraversal() {
-            return delegate.getVariantsForGraphTraversal();
+            return ImmutableList.of();
         }
 
         @Override
@@ -195,6 +195,11 @@ public class ClientModuleResolver implements ComponentMetaDataResolver {
         @Override
         public Dependency getSource() {
             return delegate.getSource();
+        }
+
+        @Override
+        public String getReason() {
+            return delegate.getReason();
         }
     }
 }

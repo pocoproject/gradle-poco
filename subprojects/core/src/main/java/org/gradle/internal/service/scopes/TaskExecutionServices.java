@@ -22,6 +22,7 @@ import java.util.List;
 
 import org.gradle.StartParameter;
 import org.gradle.api.execution.TaskActionListener;
+import org.gradle.api.execution.TaskExecutionGraph;
 import org.gradle.api.execution.internal.TaskInputsListener;
 import org.gradle.api.internal.cache.StringInterner;
 import org.gradle.api.internal.changedetection.TaskArtifactStateRepository;
@@ -58,7 +59,7 @@ import org.gradle.api.internal.tasks.execution.SkipEmptySourceFilesTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter;
 import org.gradle.api.internal.tasks.execution.SkipUpToDateTaskExecuter;
-import org.gradle.api.internal.tasks.execution.TaskOutputsGenerationListener;
+import org.gradle.api.internal.tasks.execution.TaskOutputChangesListener;
 import org.gradle.api.internal.tasks.execution.ValidatingTaskExecuter;
 import org.gradle.api.internal.tasks.properties.PropertyWalker;
 import org.gradle.api.internal.tasks.properties.annotations.FileSnapshottingPropertyAnnotationHandler;
@@ -68,6 +69,7 @@ import org.gradle.cache.CacheRepository;
 import org.gradle.cache.FileLockManager;
 import org.gradle.cache.PersistentCache;
 import org.gradle.caching.internal.controller.BuildCacheController;
+import org.gradle.caching.internal.tasks.TaskCacheKeyCalculator;
 import org.gradle.caching.internal.tasks.TaskOutputCacheCommandFactory;
 import org.gradle.execution.taskgraph.TaskPlanExecutor;
 import org.gradle.execution.taskgraph.TaskPlanExecutorFactory;
@@ -105,15 +107,16 @@ public class TaskExecutionServices {
                                     BuildScanPluginApplied buildScanPlugin,
                                     PathToFileResolver resolver,
                                     PropertyWalker propertyWalker,
+                                    TaskExecutionGraph taskExecutionGraph,
                                     BuildInvocationScopeId buildInvocationScopeId
     ) {
 
         boolean taskOutputCacheEnabled = startParameter.isBuildCacheEnabled();
         boolean scanPluginApplied = buildScanPlugin.isBuildScanPluginApplied();
-        TaskOutputsGenerationListener taskOutputsGenerationListener = listenerManager.getBroadcaster(TaskOutputsGenerationListener.class);
+        TaskOutputChangesListener taskOutputChangesListener = listenerManager.getBroadcaster(TaskOutputChangesListener.class);
 
         TaskExecuter executer = new ExecuteActionsTaskExecuter(
-            taskOutputsGenerationListener,
+            taskOutputChangesListener,
             listenerManager.getBroadcaster(TaskActionListener.class),
             buildOperationExecutor,
             asyncWorkTracker,
@@ -123,7 +126,7 @@ public class TaskExecutionServices {
         if (taskOutputCacheEnabled) {
             executer = new SkipCachedTaskExecuter(
                 buildCacheController,
-                taskOutputsGenerationListener,
+                taskOutputChangesListener,
                 taskOutputCacheCommandFactory,
                 executer
             );
@@ -131,15 +134,14 @@ public class TaskExecutionServices {
         executer = new SkipUpToDateTaskExecuter(executer);
         executer = new ResolveTaskOutputCachingStateExecuter(taskOutputCacheEnabled, executer);
         if (taskOutputCacheEnabled || scanPluginApplied) {
-            executer = new ResolveBuildCacheKeyExecuter(executer, buildOperationExecutor);
+            executer = new ResolveBuildCacheKeyExecuter(executer, buildOperationExecutor, startParameter.isBuildCacheDebugLogging());
         }
         executer = new ValidatingTaskExecuter(executer);
-        executer = new SkipEmptySourceFilesTaskExecuter(inputsListener, cleanupRegistry, taskOutputsGenerationListener, executer, buildInvocationScopeId);
+        executer = new SkipEmptySourceFilesTaskExecuter(inputsListener, cleanupRegistry, taskOutputChangesListener, executer, buildInvocationScopeId);
         executer = new FinalizeInputFilePropertiesTaskExecuter(executer);
-        executer = new CleanupStaleOutputsExecuter(cleanupRegistry, taskOutputFilesRepository, buildOperationExecutor, executer);
+        executer = new CleanupStaleOutputsExecuter(cleanupRegistry, taskOutputFilesRepository, buildOperationExecutor, taskOutputChangesListener, executer);
         executer = new ResolveTaskArtifactStateTaskExecuter(repository, resolver, propertyWalker, executer);
-        executer = new SkipTaskWithNoActionsExecuter(executer);
-        executer = new SkipDisabledTaskExecuter(executer);
+        executer = new SkipTaskWithNoActionsExecuter(taskExecutionGraph, executer);
         executer = new SkipOnlyIfTaskExecuter(executer);
         executer = new ExecuteAtMostOnceTaskExecuter(executer);
         executer = new CatchExceptionTaskExecuter(executer);
@@ -196,6 +198,7 @@ public class TaskExecutionServices {
     }
 
     TaskArtifactStateRepository createTaskArtifactStateRepository(Instantiator instantiator, StartParameter startParameter, TaskHistoryRepository taskHistoryRepository, TaskOutputFilesRepository taskOutputsRepository) {
+        TaskCacheKeyCalculator taskCacheKeyCalculator = new TaskCacheKeyCalculator(startParameter.isBuildCacheDebugLogging());
 
         return new ShortCircuitTaskArtifactStateRepository(
             startParameter,
@@ -203,7 +206,8 @@ public class TaskExecutionServices {
             new DefaultTaskArtifactStateRepository(
                 taskHistoryRepository,
                 instantiator,
-                taskOutputsRepository
+                taskOutputsRepository,
+                taskCacheKeyCalculator
             )
         );
     }

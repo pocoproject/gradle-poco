@@ -15,18 +15,21 @@
  */
 plugins {
     id 'java-library'
+    id 'strict-compile'
+    id 'classycle'
 }
 
 dependencies {
     api project(':coreApi')
 
     implementation project(':core')
-    implementation libraries.jgit
+    implementation libraries.jgit.coordinates, libraries.commons_httpclient.coordinates, libraries.jsch.coordinates
 
     testFixturesImplementation project(":internalTesting")
-    testFixturesCompile libraries.jgit
+    testFixturesImplementation project(":internalIntegTesting")
+    testFixturesCompile libraries.jgit.coordinates, libraries.commons_httpclient.coordinates, libraries.jsch.coordinates
 }
 
-useTestFixtures()
-useClassycle()
-strictCompile()
+testFixtures {
+    from(':core')
+}

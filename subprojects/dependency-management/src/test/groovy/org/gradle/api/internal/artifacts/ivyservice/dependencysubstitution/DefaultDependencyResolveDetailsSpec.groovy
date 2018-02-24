@@ -17,7 +17,9 @@
 package org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution
 import org.gradle.api.artifacts.ModuleVersionSelector
 import org.gradle.api.artifacts.component.ModuleComponentSelector
+import org.gradle.api.artifacts.result.ComponentSelectionCause
 import org.gradle.api.internal.artifacts.DefaultModuleVersionSelector
+import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint
 import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.VersionSelectionReasons
 import org.gradle.internal.component.external.model.DefaultModuleComponentSelector
@@ -33,7 +35,7 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         details.requested == newVersionSelector("org", "foo", "1.0")
         details.target == newVersionSelector("org", "foo", "1.0")
         !details.updated
-        !details.selectionReason
+        details.selectionDescription == VersionSelectionReasons.REQUESTED
 
         when:
         details.useVersion("1.0") //the same version
@@ -42,7 +44,7 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         details.requested == newVersionSelector("org", "foo", "1.0")
         details.target == newVersionSelector("org", "foo", "1.0")
         details.updated
-        details.selectionReason == VersionSelectionReasons.SELECTED_BY_RULE
+        details.selectionDescription == VersionSelectionReasons.SELECTED_BY_RULE
 
         when:
         details.useVersion("2.0") //different version
@@ -51,7 +53,7 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         details.requested == newVersionSelector("org", "foo", "1.0")
         details.target == newVersionSelector("org", "foo", "2.0")
         details.updated
-        details.selectionReason == VersionSelectionReasons.SELECTED_BY_RULE
+        details.selectionDescription == VersionSelectionReasons.SELECTED_BY_RULE
     }
 
     def "can specify version with selection reason"() {
@@ -64,7 +66,7 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         details.requested == newVersionSelector("org", "foo", "1.0")
         details.target == newVersionSelector("org", "foo", "1.0")
         details.updated
-        details.selectionReason == VersionSelectionReasons.FORCED
+        details.selectionDescription == VersionSelectionReasons.FORCED
 
         when:
         details.useVersion(new DefaultMutableVersionConstraint("3.0"), VersionSelectionReasons.FORCED) //different version
@@ -73,7 +75,7 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         details.requested == newVersionSelector("org", "foo", "1.0")
         details.target == newVersionSelector("org", "foo", "3.0")
         details.updated
-        details.selectionReason == VersionSelectionReasons.FORCED
+        details.selectionDescription == VersionSelectionReasons.FORCED
     }
 
     def "can override version and selection reason"() {
@@ -87,7 +89,7 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         details.requested == newVersionSelector("org", "foo", "1.0")
         details.target == newVersionSelector("org", "foo", "3.0")
         details.updated
-        details.selectionReason == VersionSelectionReasons.SELECTED_BY_RULE
+        details.selectionDescription == VersionSelectionReasons.SELECTED_BY_RULE
     }
 
     def "does not allow null version"() {
@@ -115,7 +117,7 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         then:
         details.target.toString() == 'org:bar:2.0'
         details.updated
-        details.selectionReason == VersionSelectionReasons.SELECTED_BY_RULE
+        details.selectionDescription == VersionSelectionReasons.SELECTED_BY_RULE
     }
 
     def "can mix configuring version and target module"() {
@@ -150,8 +152,8 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         then:
         details.target.toString() == 'org:bar:2.0'
         details.updated
-        details.selectionReason.selectedByRule
-        details.selectionReason.description == "forcefully upgrade dependency"
+        details.selectionDescription.cause == ComponentSelectionCause.SELECTED_BY_RULE
+        details.selectionDescription.description == "forcefully upgrade dependency"
 
     }
 
@@ -165,8 +167,8 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         then:
         details.target.toString() == 'org:foo:2.0'
         details.updated
-        details.selectionReason.selectedByRule
-        details.selectionReason.description == "forcefully upgrade dependency"
+        details.selectionDescription.cause == ComponentSelectionCause.SELECTED_BY_RULE
+        details.selectionDescription.description == "forcefully upgrade dependency"
 
     }
 
@@ -180,8 +182,8 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         then:
         details.target.toString() == 'org:bar:2.0'
         details.updated
-        details.selectionReason.selectedByRule
-        details.selectionReason.description == "forcefully upgrade dependency"
+        details.selectionDescription.cause == ComponentSelectionCause.SELECTED_BY_RULE
+        details.selectionDescription.description == "forcefully upgrade dependency"
 
     }
 
@@ -195,20 +197,48 @@ class DefaultDependencyResolveDetailsSpec extends Specification {
         then:
         details.target.toString() == 'org:foo:2.0'
         details.updated
-        details.selectionReason.selectedByRule
-        details.selectionReason.description == "forcefully upgrade dependency"
+        details.selectionDescription.cause == ComponentSelectionCause.SELECTED_BY_RULE
+        details.selectionDescription.description == "forcefully upgrade dependency"
 
     }
 
-    private static def newDependencyResolveDetails(String group, String name, String version) {
-        return new DefaultDependencyResolveDetails(new DefaultDependencySubstitution(newComponentSelector(group, name, version)), newVersionSelector(group, name, version))
+    def "can provide a custom selection reason on dependency details"() {
+        when:
+        def details = newDependencyResolveDetails("org", "foo", "1.0", 'with a custom description')
+
+        then:
+        details.target.toString() == 'org:foo:1.0'
+        !details.updated
+        details.selectionDescription.cause == ComponentSelectionCause.REQUESTED
+        details.selectionDescription.description == "with a custom description"
+
+    }
+
+    def "overwrites dependency reason"() {
+        given:
+        def details = newDependencyResolveDetails("org", "foo", "1.0", 'with a custom description')
+
+        when:
+        details.useVersion("2.0")
+        details.because("forcefully upgrade dependency")
+
+        then:
+        details.target.toString() == 'org:foo:2.0'
+        details.updated
+        details.selectionDescription.cause == ComponentSelectionCause.SELECTED_BY_RULE
+        details.selectionDescription.description == "forcefully upgrade dependency"
+
+    }
+
+    private static def newDependencyResolveDetails(String group, String name, String version, String reason = null) {
+        return new DefaultDependencyResolveDetails(new DefaultDependencySubstitution(newComponentSelector(group, name, version), reason), newVersionSelector(group, name, version))
     }
 
     private static ModuleComponentSelector newComponentSelector(String group, String module, String version) {
-        return DefaultModuleComponentSelector.newSelector(group, module, new DefaultMutableVersionConstraint(version))
+        return DefaultModuleComponentSelector.newSelector(group, module, new DefaultImmutableVersionConstraint(version))
     }
 
     private static ModuleVersionSelector newVersionSelector(String group, String name, String version) {
-        return DefaultModuleVersionSelector.newSelector(group, name, new DefaultMutableVersionConstraint(version))
+        return DefaultModuleVersionSelector.newSelector(group, name, new DefaultImmutableVersionConstraint(version))
     }
 }

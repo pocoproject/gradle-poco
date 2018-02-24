@@ -16,17 +16,16 @@
 package org.gradle.integtests.resolve
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.ExperimentalFeaturesFixture
 import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
+
 /**
  * This is a variation of {@link PublishedDependencyConstraintsIntegrationTest} that tests dependency constraints
  * declared in the build script (instead of published)
  */
 class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
-    private final ResolveTestFixture resolve = new ResolveTestFixture(buildFile, "conf").expectDefaultConfiguration('runtime')
+    private final ResolveTestFixture resolve = new ResolveTestFixture(buildFile, "conf")
 
     def setup() {
-        ExperimentalFeaturesFixture.enable(settingsFile)
         settingsFile << "rootProject.name = 'test'"
         resolve.prepare()
         buildFile << """
@@ -37,36 +36,6 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
                 conf
             }
         """
-    }
-
-    void "dependency constraint is ignored when feature not enabled"() {
-        given:
-        // Do not enable feature
-        settingsFile.text = """
-            rootProject.name = 'test'
-        """
-        resolve.expectDefaultConfiguration('default')
-        mavenRepo.module("org", "foo", '1.0').publish()
-        mavenRepo.module("org", "foo", '1.1').publish()
-
-        buildFile << """
-            dependencies {
-                conf 'org:foo:1.0'
-                constraints {
-                    conf 'org:foo:1.1'
-                }
-            }
-        """
-
-        when:
-        run 'checkDeps'
-
-        then:
-        resolve.expectGraph {
-            root(":", ":test:") {
-                module("org:foo:1.0")
-            }
-        }
     }
 
     void "dependency constraint is not included in resolution without a hard dependency"() {
@@ -109,7 +78,7 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         then:
         resolve.expectGraph {
             root(":", ":test:") {
-                edge("org:foo:","org:foo:1.1")
+                edge("org:foo","org:foo:1.1")
                 module("org:foo:1.1")
             }
         }
@@ -166,7 +135,7 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
                 module("org:bar:1.0") {
                     edge("org:foo:1.0", "org:foo:1.1").byConflictResolution()
                 }
-                module("org:foo:1.1")
+                edgeFromConstraint("org:foo:1.1", "org:foo:1.1")
             }
         }
     }
@@ -183,7 +152,9 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
             dependencies {
                 conf 'org:bar:1.0'
                 constraints {
-                    conf 'org:foo:[1.0,1.1]'
+                    conf('org:foo:[1.0,1.1]') {
+                        because 'tested versions'
+                    }
                 }
             }
         """
@@ -195,9 +166,9 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         resolve.expectGraph {
             root(":", ":test:") {
                 module("org:bar:1.0") {
-                    edge("org:foo:[1.0,1.2]", "org:foo:1.1")
+                    edge("org:foo:[1.0,1.2]", "org:foo:1.1").byReason('tested versions')
                 }
-                edge("org:foo:[1.0,1.1]", "org:foo:1.1")
+                edgeFromConstraint("org:foo:[1.0,1.1]", "org:foo:1.1").byReason('tested versions')
             }
         }
     }
@@ -320,7 +291,9 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
                 }
                 dependencies {
                     constraints {
-                        conf 'org:foo:1.1'
+                        conf('org:foo:1.1') {
+                            because 'transitive dependency constraint'
+                        }
                     }
                 }
             }
@@ -332,11 +305,11 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         then:
         resolve.expectGraph {
             root(":", ":test:") {
-                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution()
+                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution().byReason('transitive dependency constraint')
                 project(":b", "test:b:") {
                     configuration = "conf"
                     noArtifacts()
-                    module("org:foo:1.1")
+                    module("org:foo:1.1").byReason('transitive dependency constraint')
                 }
             }
         }
@@ -380,11 +353,71 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         then:
         resolve.expectGraph {
             root(":", ":test:") {
-                edge("org:foo:1.0", "org:foo:1.1:runtime").byConflictResolution()
+                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution()
                 edge("org:included:1.0", "project :included", "org:included:1.0") {
                     noArtifacts()
                     module("org:foo:1.1:runtime")
                 }.compositeSubstitute()
+            }
+        }
+    }
+
+    void "dependency constraints should not pull in additional artifacts"() {
+        given:
+        mavenRepo.module("org", "foo", '1.0').artifact(classifier: 'shaded').publish()
+        mavenRepo.module("org", "foo", '1.1').artifact(classifier: 'shaded').publish()
+
+        buildFile << """
+            dependencies {
+                conf 'org:foo:1.0:shaded'
+                constraints {
+                    conf 'org:foo:1.1'
+                }
+            }
+        """
+
+        when:
+        run 'checkDeps'
+
+        then:
+        resolve.expectGraph {
+            root(":", ":test:") {
+                edge("org:foo:1.0","org:foo:1.1")
+                module("org:foo:1.1") {
+                    artifact(classifier: 'shaded')
+                }
+            }
+        }
+    }
+
+    void "dependency constraints should not pull in additional artifacts for transitive dependencies"() {
+        given:
+        def foo11 = mavenRepo.module("org", "foo", '1.0').artifact(classifier: 'shaded').publish()
+        mavenRepo.module("org", "foo", '1.1').artifact(classifier: 'shaded').publish()
+        mavenRepo.module("org", "bar", '1.0').dependsOn(classifier: 'shaded', foo11).publish()
+
+        buildFile << """
+            dependencies {
+                conf 'org:bar:1.0'
+                constraints {
+                    conf 'org:foo:1.1'
+                }
+            }
+        """
+
+        when:
+        run 'checkDeps'
+
+        then:
+        resolve.expectGraph {
+            root(":", ":test:") {
+                module("org:foo:1.1") {
+                    graph.constraints.add(delegate)
+                    artifact(classifier: 'shaded')
+                }
+                module("org:bar:1.0") {
+                    edge("org:foo:1.0","org:foo:1.1")
+                }
             }
         }
     }

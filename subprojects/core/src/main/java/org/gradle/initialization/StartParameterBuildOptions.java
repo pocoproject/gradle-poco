@@ -56,6 +56,7 @@ public class StartParameterBuildOptions {
         options.add(new IncludeBuildOption());
         options.add(new ConfigureOnDemandOption());
         options.add(new BuildCacheOption());
+        options.add(new BuildCacheDebugLoggingOption());
         options.add(new BuildScanOption());
         StartParameterBuildOptions.options = Collections.unmodifiableList(options);
     }
@@ -116,8 +117,10 @@ public class StartParameterBuildOptions {
     }
 
     public static class ContinueOption extends EnabledOnlyBooleanBuildOption<StartParameterInternal> {
+        public static final String LONG_OPTION = "continue";
+
         public ContinueOption() {
-            super(null, CommandLineOptionConfiguration.create("continue", "Continue task execution after a task failure."));
+            super(null, CommandLineOptionConfiguration.create(LONG_OPTION, "Continue task execution after a task failure."));
         }
 
         @Override
@@ -267,12 +270,25 @@ public class StartParameterBuildOptions {
         public static final String GRADLE_PROPERTY = "org.gradle.caching";
 
         public BuildCacheOption() {
-            super(GRADLE_PROPERTY, BooleanCommandLineOptionConfiguration.create("build-cache", "Enables the Gradle build cache. Gradle will try to reuse outputs from previous builds.", "Disables the Gradle build cache.").incubating());
+            super(GRADLE_PROPERTY, BooleanCommandLineOptionConfiguration.create("build-cache", "Enables the Gradle build cache. Gradle will try to reuse outputs from previous builds.", "Disables the Gradle build cache."));
         }
 
         @Override
         public void applyTo(boolean value, StartParameterInternal settings, Origin origin) {
             settings.setBuildCacheEnabled(value);
+        }
+    }
+
+    public static class BuildCacheDebugLoggingOption extends BooleanBuildOption<StartParameterInternal> {
+        public static final String GRADLE_PROPERTY = "org.gradle.caching.debug";
+
+        public BuildCacheDebugLoggingOption() {
+            super(GRADLE_PROPERTY);
+        }
+
+        @Override
+        public void applyTo(boolean value, StartParameterInternal settings, Origin origin) {
+            settings.setBuildCacheDebugLogging(value);
         }
     }
 

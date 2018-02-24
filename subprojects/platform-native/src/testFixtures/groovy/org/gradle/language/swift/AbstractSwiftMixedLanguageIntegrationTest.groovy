@@ -28,16 +28,16 @@ import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 
 import static org.junit.Assume.assumeTrue
 
-@RequiresInstalledToolChain(ToolChainRequirement.SWIFT)
+@RequiresInstalledToolChain(ToolChainRequirement.SWIFTC)
 class AbstractSwiftMixedLanguageIntegrationTest extends AbstractIntegrationSpec {
     public static final String SHARED = "SHARED"
     public static final String STATIC = "STATIC"
-    def swiftToolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFT) as AvailableToolChains.InstalledToolChain
-    def cppToolChain = AvailableToolChains.getToolChain(ToolChainRequirement.CLANG) as AvailableToolChains.InstalledToolChain
+    def swiftToolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFTC)
+    def cppToolChain = AvailableToolChains.getToolChain(ToolChainRequirement.CLANG)
 
     def setup() {
-        assumeTrue(swiftToolChain != null && swiftToolChain.isAvailable())
-        assumeTrue(cppToolChain != null && cppToolChain.isAvailable())
+        assumeTrue(swiftToolChain != null)
+        assumeTrue(cppToolChain != null)
 
         File initScript = file("init.gradle") << """
         allprojects { p ->        

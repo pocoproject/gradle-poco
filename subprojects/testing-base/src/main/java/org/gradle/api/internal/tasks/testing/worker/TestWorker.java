@@ -39,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
+import java.security.AccessControlException;
 import java.util.concurrent.CountDownLatch;
 
 public class TestWorker implements Action<WorkerProcessContext>, RemoteTestClassProcessor, Serializable {
@@ -106,6 +107,9 @@ public class TestWorker implements Action<WorkerProcessContext>, RemoteTestClass
         Thread.currentThread().setName("Test worker");
         try {
             processor.processTestClass(testClass);
+        } catch (AccessControlException e) {
+            completed.countDown();
+            throw e;
         } finally {
             // Clean the interrupted status
             Thread.interrupted();
@@ -119,6 +123,9 @@ public class TestWorker implements Action<WorkerProcessContext>, RemoteTestClass
             processor.stop();
         } finally {
             completed.countDown();
+            // Clean the interrupted status
+            // because some test class processors do work here, e.g. JUnitPlatform
+            Thread.interrupted();
         }
     }
 

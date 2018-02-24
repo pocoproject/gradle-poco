@@ -18,7 +18,7 @@ package org.gradle.internal.service.scopes;
 
 import org.gradle.StartParameter;
 import org.gradle.api.Action;
-import org.gradle.api.internal.ExperimentalFeatures;
+import org.gradle.api.internal.FeaturePreviews;
 import org.gradle.api.internal.attributes.DefaultImmutableAttributesFactory;
 import org.gradle.api.internal.cache.StringInterner;
 import org.gradle.api.internal.changedetection.state.BuildScopeFileTimeStampInspector;
@@ -38,6 +38,7 @@ import org.gradle.api.internal.changedetection.state.ResourceSnapshotterCacheSer
 import org.gradle.api.internal.changedetection.state.TaskHistoryStore;
 import org.gradle.api.internal.changedetection.state.isolation.IsolatableFactory;
 import org.gradle.api.internal.file.collections.DirectoryFileTreeFactory;
+import org.gradle.api.internal.model.NamedObjectInstantiator;
 import org.gradle.api.internal.project.BuildOperationCrossProjectConfigurator;
 import org.gradle.api.internal.project.CrossProjectConfigurator;
 import org.gradle.api.model.ObjectFactory;
@@ -139,7 +140,7 @@ public class BuildSessionScopeServices extends DefaultServiceRegistry {
         return new DefaultBuildOperationListenerManager(listenerManager);
     }
 
-    BuildOperationTrace createBuildOperationTrace(StartParameter startParameter, BuildOperationListenerManager listenerManager) {
+    BuildOperationTrace createBuildOperationTrace(StartParameter startParameter, ListenerManager listenerManager) {
         return new BuildOperationTrace(startParameter, listenerManager);
     }
 
@@ -223,7 +224,7 @@ public class BuildSessionScopeServices extends DefaultServiceRegistry {
     }
 
     DefaultImmutableAttributesFactory createImmutableAttributesFactory(IsolatableFactory isolatableFactory) {
-        return new DefaultImmutableAttributesFactory(isolatableFactory);
+        return new DefaultImmutableAttributesFactory(isolatableFactory, NamedObjectInstantiator.INSTANCE);
     }
 
     ResourceLockCoordinationService createWorkerLeaseCoordinationService() {
@@ -251,8 +252,8 @@ public class BuildSessionScopeServices extends DefaultServiceRegistry {
         return BuildStartedTime.startingAt(Math.min(currentTime, buildRequestMetaData.getStartTime()));
     }
 
-    ExperimentalFeatures createExperimentalFeatures() {
-        return new ExperimentalFeatures();
+    FeaturePreviews createExperimentalFeatures() {
+        return new FeaturePreviews();
     }
 
     CleanupActionFactory createCleanupActionFactory(BuildOperationExecutor buildOperationExecutor) {

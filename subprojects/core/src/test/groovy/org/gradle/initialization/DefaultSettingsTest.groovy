@@ -23,6 +23,7 @@ import org.gradle.api.initialization.ProjectDescriptor
 import org.gradle.api.initialization.Settings
 import org.gradle.api.initialization.dsl.ScriptHandler
 import org.gradle.api.internal.AsmBackedClassGenerator
+import org.gradle.api.internal.FeaturePreviews
 import org.gradle.api.internal.GradleInternal
 import org.gradle.api.internal.file.FileResolver
 import org.gradle.api.internal.initialization.ClassLoaderScope
@@ -30,7 +31,6 @@ import org.gradle.api.internal.initialization.ScriptHandlerFactory
 import org.gradle.api.internal.plugins.DefaultPluginManager
 import org.gradle.configuration.ScriptPluginFactory
 import org.gradle.groovy.scripts.ScriptSource
-import org.gradle.internal.scripts.ScriptFileResolver
 import org.gradle.internal.service.ServiceRegistry
 import org.gradle.internal.service.scopes.ServiceRegistryFactory
 import org.gradle.util.JUnit4GroovyMockery
@@ -42,6 +42,7 @@ import org.junit.runner.RunWith
 
 import java.lang.reflect.Type
 
+import static org.gradle.api.internal.FeaturePreviews.Feature.GRADLE_METADATA
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.*
 
@@ -59,11 +60,11 @@ class DefaultSettingsTest {
     ProjectDescriptorRegistry projectDescriptorRegistry
     ServiceRegistryFactory serviceRegistryFactory
     FileResolver fileResolver
-    ScriptFileResolver scriptFileResolver
     ScriptPluginFactory scriptPluginFactory
     ScriptHandlerFactory scriptHandlerFactory
     ScriptHandler settingsScriptHandler
     DefaultPluginManager pluginManager
+    FeaturePreviews previews
 
     @Before
     public void setUp() {
@@ -78,20 +79,18 @@ class DefaultSettingsTest {
         scriptSourceMock = context.mock(ScriptSource)
         gradleMock = context.mock(GradleInternal)
         serviceRegistryFactory = context.mock(ServiceRegistryFactory.class)
-        scriptFileResolver = context.mock(ScriptFileResolver.class)
         scriptPluginFactory = context.mock(ScriptPluginFactory.class)
         scriptHandlerFactory = context.mock(ScriptHandlerFactory.class)
         settingsScriptHandler = context.mock(ScriptHandler.class)
         fileResolver = context.mock(FileResolver.class)
         projectDescriptorRegistry = new DefaultProjectDescriptorRegistry()
+        previews = new FeaturePreviews()
 
         def settingsServices = context.mock(ServiceRegistry.class)
         context.checking {
             one(serviceRegistryFactory).createFor(with(any(Settings.class)));
             will(returnValue(settingsServices));
 
-            allowing(settingsServices).get((Type)ScriptFileResolver.class);
-            will(returnValue(scriptFileResolver));
             allowing(settingsServices).get((Type)FileResolver.class);
             will(returnValue(fileResolver));
             allowing(settingsServices).get((Type)ScriptPluginFactory.class);
@@ -100,10 +99,11 @@ class DefaultSettingsTest {
             will(returnValue(scriptHandlerFactory));
             allowing(settingsServices).get((Type)ProjectDescriptorRegistry.class);
             will(returnValue(projectDescriptorRegistry));
+            allowing(settingsServices).get(FeaturePreviews.class)
+            will(returnValue(previews))
             allowing(settingsServices).get((Type)DefaultPluginManager.class);
             will(returnValue(pluginManager));
 
-            allowing(scriptFileResolver).resolveScriptFile(withParam(notNullValue()), withParam(notNullValue()));
             will(returnValue(null));
             allowing(fileResolver).resolve(withParam(notNullValue()))
             will { File file -> file.canonicalFile }
@@ -238,5 +238,11 @@ class DefaultSettingsTest {
     @Test
     public void testHasUsefulToString() {
         assertEquals('settings \'root\'', settings.toString())
+    }
+
+    @Test
+    public void testCanEnableFeaturePreview() {
+        settings.enableFeaturePreview("GRADLE_METADATA")
+        assertTrue(previews.isFeatureEnabled(GRADLE_METADATA))
     }
 }

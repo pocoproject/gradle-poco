@@ -29,16 +29,37 @@ class DefaultSwiftXCTestSuiteTest extends Specification {
     TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     def project = TestUtil.createRootProject(tmpDir.testDirectory)
 
-    def "can add a test executable"() {
-        def testSuite = new DefaultSwiftXCTestSuite("test", project, project.objects, project.configurations)
+    def "has display name"() {
+        def testSuite = new DefaultSwiftXCTestSuite("test", project, project.objects)
 
         expect:
-        def exe = testSuite.addExecutable("Executable", Stub(SwiftPlatform), Stub(NativeToolChainInternal), Stub(PlatformToolProvider))
+        testSuite.displayName.displayName == "XCTest suite 'test'"
+        testSuite.toString() == "XCTest suite 'test'"
+    }
+
+    def "has implementation dependencies"() {
+        def testSuite = new DefaultSwiftXCTestSuite("test", project, project.objects)
+
+        expect:
+        testSuite.implementationDependencies == project.configurations.testImplementation
+    }
+
+    def "can add a test executable"() {
+        def targetPlatform = Stub(SwiftPlatform)
+        def toolChain = Stub(NativeToolChainInternal)
+        def platformToolProvider = Stub(PlatformToolProvider)
+        def testSuite = new DefaultSwiftXCTestSuite("test", project, project.objects)
+
+        expect:
+        def exe = testSuite.addExecutable("Executable", targetPlatform, toolChain, platformToolProvider)
         exe.name == 'testExecutable'
+        exe.targetPlatform == targetPlatform
+        exe.toolChain == toolChain
+        exe.platformToolProvider == platformToolProvider
     }
 
     def "can add a test bundle"() {
-        def testSuite = new DefaultSwiftXCTestSuite("test", project, project.objects, project.configurations)
+        def testSuite = new DefaultSwiftXCTestSuite("test", project, project.objects)
 
         expect:
         def exe = testSuite.addBundle("Executable", Stub(SwiftPlatform), Stub(NativeToolChainInternal), Stub(PlatformToolProvider))

@@ -16,10 +16,11 @@
 
 package org.gradle.language.cpp
 
+import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraries
 import org.gradle.vcs.internal.spec.DirectoryRepositorySpec
 
-class CppDependenciesIntegrationTest extends AbstractCppInstalledToolChainIntegrationTest {
+class CppDependenciesIntegrationTest extends AbstractInstalledToolChainIntegrationSpec {
     def app = new CppAppWithLibraries()
 
     def "can combine C++ builds in a composite"() {
@@ -58,9 +59,9 @@ class CppDependenciesIntegrationTest extends AbstractCppInstalledToolChainIntegr
 
             sourceControl {
                 vcsMappings {
-                    addRule("org.gradle.cpp VCS rule") { details ->
+                    all { details ->
                         if (details.requested.group == "org.gradle.cpp") {
-                            from vcs(DirectoryRepositorySpec) {
+                            from(DirectoryRepositorySpec) {
                                 sourceDir = file(details.requested.module)
                             }
                         }

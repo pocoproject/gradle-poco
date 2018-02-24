@@ -28,7 +28,18 @@ class DefaultSwiftApplicationTest extends Specification {
     @Rule
     TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
     def project = TestUtil.createRootProject(tmpDir.testDirectory)
-    def app = new DefaultSwiftApplication("main", project.objects, project, project.configurations)
+    def app = new DefaultSwiftApplication("main", project.objects, project)
+
+    def "has display name"() {
+        expect:
+        app.displayName.displayName == "Swift application 'main'"
+        app.toString() == "Swift application 'main'"
+    }
+
+    def "has implementation dependencies"() {
+        expect:
+        app.implementationDependencies == project.configurations['implementation']
+    }
 
     def "can create executable binary"() {
         def targetPlatform = Stub(SwiftPlatform)

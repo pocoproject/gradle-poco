@@ -28,6 +28,8 @@ import org.gradle.api.internal.TaskExecutionHistory;
 import org.gradle.api.internal.TaskInternal;
 import org.gradle.api.internal.changedetection.TaskArtifactState;
 import org.gradle.api.internal.changedetection.TaskArtifactStateRepository;
+import org.gradle.api.internal.changedetection.rules.DefaultTaskUpToDateState;
+import org.gradle.api.internal.changedetection.rules.NoHistoryTaskUpToDateState;
 import org.gradle.api.internal.changedetection.rules.TaskStateChange;
 import org.gradle.api.internal.changedetection.rules.TaskUpToDateState;
 import org.gradle.api.internal.changedetection.state.CurrentTaskExecution;
@@ -58,12 +60,14 @@ public class DefaultTaskArtifactStateRepository implements TaskArtifactStateRepo
     private final TaskHistoryRepository taskHistoryRepository;
     private final Instantiator instantiator;
     private final TaskOutputFilesRepository taskOutputFilesRepository;
+    private final TaskCacheKeyCalculator taskCacheKeyCalculator;
 
     public DefaultTaskArtifactStateRepository(TaskHistoryRepository taskHistoryRepository, Instantiator instantiator,
-                                              TaskOutputFilesRepository taskOutputFilesRepository) {
+                                              TaskOutputFilesRepository taskOutputFilesRepository, TaskCacheKeyCalculator taskCacheKeyCalculator) {
         this.taskHistoryRepository = taskHistoryRepository;
         this.instantiator = instantiator;
         this.taskOutputFilesRepository = taskOutputFilesRepository;
+        this.taskCacheKeyCalculator = taskCacheKeyCalculator;
     }
 
     public TaskArtifactState getStateFor(final TaskInternal task, TaskProperties taskProperties) {
@@ -122,7 +126,7 @@ public class DefaultTaskArtifactStateRepository implements TaskArtifactStateRepo
 
         @Override
         public TaskOutputCachingBuildCacheKey calculateCacheKey() {
-            return TaskCacheKeyCalculator.calculate(task, history.getCurrentExecution());
+            return taskCacheKeyCalculator.calculate(task, history.getCurrentExecution());
         }
 
         @Override
@@ -200,8 +204,13 @@ public class DefaultTaskArtifactStateRepository implements TaskArtifactStateRepo
             if (states == null) {
                 HistoricalTaskExecution previousExecution = history.getPreviousExecution();
                 // Calculate initial state - note this is potentially expensive
+                // We need to evaluate this even if we have no history, since every input property should be evaluated before the task executes
                 CurrentTaskExecution currentExecution = history.getCurrentExecution();
-                states = new TaskUpToDateState(previousExecution, currentExecution, task);
+                if (previousExecution == null) {
+                    states = NoHistoryTaskUpToDateState.INSTANCE;
+                } else {
+                    states = new DefaultTaskUpToDateState(previousExecution, currentExecution, task);
+                }
             }
             return states;
         }

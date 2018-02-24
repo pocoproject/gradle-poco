@@ -23,6 +23,7 @@ import org.gradle.api.initialization.ConfigurableIncludedBuild;
 import org.gradle.api.initialization.ProjectDescriptor;
 import org.gradle.api.initialization.Settings;
 import org.gradle.api.initialization.dsl.ScriptHandler;
+import org.gradle.api.internal.FeaturePreviews;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.internal.SettingsInternal;
 import org.gradle.api.internal.file.FileResolver;
@@ -37,7 +38,6 @@ import org.gradle.configuration.ScriptPluginFactory;
 import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.internal.Actions;
 import org.gradle.internal.resource.TextResourceLoader;
-import org.gradle.internal.scripts.ScriptFileResolver;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.service.scopes.ServiceRegistryFactory;
 import org.gradle.plugin.management.PluginManagementSpec;
@@ -109,7 +109,7 @@ public class DefaultSettings extends AbstractPluginAware implements SettingsInte
     }
 
     public DefaultProjectDescriptor createProjectDescriptor(DefaultProjectDescriptor parent, String name, File dir) {
-        return new DefaultProjectDescriptor(parent, name, dir, getProjectDescriptorRegistry(), getFileResolver(), getScriptFileResolver());
+        return new DefaultProjectDescriptor(parent, name, dir, getProjectDescriptorRegistry(), getFileResolver());
     }
 
     public DefaultProjectDescriptor findProject(String path) {
@@ -222,7 +222,13 @@ public class DefaultSettings extends AbstractPluginAware implements SettingsInte
 
     @Override
     protected DefaultObjectConfigurationAction createObjectConfigurationAction() {
-        return new DefaultObjectConfigurationAction(getFileResolver(), getScriptPluginFactory(), getScriptHandlerFactory(), getRootClassLoaderScope(), getResourceLoader(), this);
+        return new DefaultObjectConfigurationAction(
+            getFileResolver(),
+            getScriptPluginFactory(),
+            getScriptHandlerFactory(),
+            getRootClassLoaderScope(),
+            getResourceLoader(),
+            this);
     }
 
     public ClassLoaderScope getRootClassLoaderScope() {
@@ -235,11 +241,6 @@ public class DefaultSettings extends AbstractPluginAware implements SettingsInte
 
     protected ServiceRegistry getServices() {
         return services;
-    }
-
-    @Inject
-    protected ScriptFileResolver getScriptFileResolver() {
-        throw new UnsupportedOperationException();
     }
 
     @Inject
@@ -313,5 +314,10 @@ public class DefaultSettings extends AbstractPluginAware implements SettingsInte
     @Inject
     public SourceControl getSourceControl() {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void enableFeaturePreview(String name) {
+        services.get(FeaturePreviews.class).enableFeature(name);
     }
 }

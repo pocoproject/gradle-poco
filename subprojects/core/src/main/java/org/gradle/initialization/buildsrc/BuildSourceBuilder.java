@@ -17,6 +17,7 @@
 package org.gradle.initialization.buildsrc;
 
 import org.gradle.StartParameter;
+import org.gradle.api.internal.BuildDefinition;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.internal.initialization.ClassLoaderScope;
 import org.gradle.initialization.GradleLauncher;
@@ -35,8 +36,6 @@ import org.slf4j.LoggerFactory;
 
 public class BuildSourceBuilder {
     private static final Logger LOGGER = LoggerFactory.getLogger(BuildSourceBuilder.class);
-    public static final BuildBuildSrcBuildOperationType.Details BUILD_BUILDSRC_DETAILS = new BuildBuildSrcBuildOperationType.Details() {
-    };
     public static final BuildBuildSrcBuildOperationType.Result BUILD_BUILDSRC_RESULT = new BuildBuildSrcBuildOperationType.Result() {
     };
     public static final String BUILD_SRC = "buildSrc";
@@ -55,16 +54,15 @@ public class BuildSourceBuilder {
         this.buildSrcBuildListenerFactory = buildSrcBuildListenerFactory;
     }
 
-    public ClassLoaderScope buildAndCreateClassLoader(StartParameter startParameter) {
-        ClassPath classpath = createBuildSourceClasspath(startParameter);
+    public ClassLoaderScope buildAndCreateClassLoader(GradleInternal gradle, StartParameter startParameter) {
+        ClassPath classpath = createBuildSourceClasspath(gradle, startParameter);
         return classLoaderScope.createChild(startParameter.getCurrentDir().getAbsolutePath())
             .export(cachedClasspathTransformer.transform(classpath))
             .lock();
     }
 
-    ClassPath createBuildSourceClasspath(final StartParameter startParameter) {
+    ClassPath createBuildSourceClasspath(final GradleInternal gradle, final StartParameter startParameter) {
         assert startParameter.getCurrentDir() != null && startParameter.getBuildFile() == null;
-
         LOGGER.debug("Starting to build the build sources.");
         if (!startParameter.getCurrentDir().isDirectory()) {
             LOGGER.debug("Gradle source dir does not exist. We leave.");
@@ -83,7 +81,13 @@ public class BuildSourceBuilder {
             public BuildOperationDescriptor.Builder description() {
                 return BuildOperationDescriptor.displayName("Build buildSrc").
                     progressDisplayName("Building buildSrc").
-                    details(BUILD_BUILDSRC_DETAILS);
+                    details(new BuildBuildSrcBuildOperationType.Details(){
+
+                        @Override
+                        public String getBuildPath() {
+                            return gradle.getIdentityPath().toString();
+                        }
+                    });
             }
         });
     }
@@ -107,7 +111,8 @@ public class BuildSourceBuilder {
         startParameterArg.setProjectProperties(startParameter.getProjectProperties());
         startParameterArg.setSearchUpwards(false);
         startParameterArg.setProfile(startParameter.isProfile());
-        GradleLauncher gradleLauncher = nestedBuildFactory.nestedInstance(startParameterArg);
+        // TODO: Migrate buildSrc builds to be more similar to other "included" builds.
+        GradleLauncher gradleLauncher = nestedBuildFactory.nestedInstance(BuildDefinition.fromStartParameter(startParameterArg));
         GradleInternal build = gradleLauncher.getGradle();
         if (build.getParent().findIdentityPath() == null) {
             // When nested inside a nested build, we need to synthesize a path for this build, as the root project is not yet known for the parent build

@@ -17,17 +17,23 @@
 package org.gradle.ide.xcode.fixtures
 
 import com.google.common.base.Splitter
+import org.gradle.ide.fixtures.IdeCommandLineUtil
 import org.gradle.ide.xcode.internal.DefaultXcodeProject
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.internal.os.OperatingSystem
+import org.gradle.language.swift.SwiftVersion
 import org.gradle.nativeplatform.fixtures.AvailableToolChains
 import org.gradle.nativeplatform.fixtures.NativeBinaryFixture
 import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.test.fixtures.file.TestFile
+import org.hamcrest.Matchers
 
+import static org.junit.Assume.assumeThat
 import static org.junit.Assume.assumeTrue
 
 class AbstractXcodeIntegrationSpec extends AbstractIntegrationSpec {
+    def toolChain = null
+
     def setup() {
         buildFile << """
 allprojects {
@@ -48,7 +54,7 @@ rootProject.name = "${rootProjectName}"
     }
 
     protected NativeBinaryFixture fixture(TestFile binary) {
-        new NativeBinaryFixture(binary, null)
+        new NativeBinaryFixture(binary, AvailableToolChains.defaultToolChain)
     }
 
     protected TestFile exe(String str) {
@@ -91,66 +97,28 @@ rootProject.name = "${rootProjectName}"
         xcodeWorkspace("${rootProjectName}.xcworkspace")
     }
 
-    protected XcodebuildExecuter getXcodebuild() {
+    protected XcodebuildExecutor getXcodebuild() {
         // Gradle needs to be isolated so the xcodebuild does not leave behind daemons
         assert executer.isRequiresGradleDistribution()
         assert !executer.usesSharedDaemons()
-        new XcodebuildExecuter(testDirectory)
+        new XcodebuildExecutor(testDirectory)
     }
 
     void useXcodebuildTool() {
         executer.requireGradleDistribution().requireIsolatedDaemons()
 
-        buildFile << '''
-            gradle.startParameter.showStacktrace = ShowStacktrace.ALWAYS_FULL
-            Properties gatherEnvironment() {
-                Properties properties = new Properties()
-                properties.JAVA_HOME = String.valueOf(System.getenv('JAVA_HOME'))
-                properties.GRADLE_USER_HOME = String.valueOf(gradle.gradleUserHomeDir.absolutePath)
-                properties.GRADLE_OPTS = String.valueOf(System.getenv('GRADLE_OPTS'))
-                return properties
-            }
-            
-            void assertEquals(key, expected, actual) {
-                assert expected[key] == actual[key]
-                if (expected[key] != actual[key]) {
-                    throw new GradleException("""
-Environment's $key did not match! 
-Expected: ${expected[key]} 
-Actual: ${actual[key]} 
-""")
-                }
-            }
-            
-            def gradleEnvironment = file("gradle-environment")
-            def xcodeTask = tasks.findByName('xcode')
-            if (xcodeTask) {
-                xcodeTask.doLast {
-                    def writer = gradleEnvironment.newOutputStream()
-                    gatherEnvironment().store(writer, null)
-                    writer.close()
-                }
-            }
-            gradle.buildFinished {
-                if (!gradleEnvironment.exists()) {
-                    throw new GradleException("could not determine if xcodebuild is using the correct environment, did xcode task run?")
-                } else {
-                    def expectedEnvironment = new Properties()
-                    expectedEnvironment.load(gradleEnvironment.newInputStream())
-                    
-                    def actualEnvironment = gatherEnvironment()
-                    
-                    assertEquals('JAVA_HOME', expectedEnvironment, actualEnvironment)
-                    assertEquals('GRADLE_USER_HOME', expectedEnvironment, actualEnvironment)
-                    assertEquals('GRADLE_OPTS', expectedEnvironment, actualEnvironment)
-                }
-            }
-        '''
+        def initScript = file("init.gradle")
+        initScript << IdeCommandLineUtil.generateGradleProbeInitFile('xcode', 'xcodebuild')
+
+        executer.beforeExecute({
+            usingInitScript(initScript)
+        })
     }
 
-    void useSwiftCompiler() {
-        def toolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFT)
-        assumeTrue(toolChain != null && toolChain.isAvailable())
+    // TODO: Use AbstractInstalledToolChainIntegrationSpec instead once Xcode test are sorted out
+    void requireSwiftToolChain() {
+        toolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFTC)
+        assumeTrue(toolChain != null)
 
         File initScript = file("init.gradle") << """
             allprojects { p ->
@@ -166,6 +134,12 @@ Actual: ${actual[key]}
         executer.beforeExecute({
             usingInitScript(initScript)
         })
+    }
+
+    // TODO: Use @RequiresInstalledToolChain instead once Xcode test are sorted out
+    void assumeSwiftCompilerVersion(SwiftVersion swiftVersion) {
+        assert toolChain != null, "You need to specify Swift tool chain requirement with 'requireSwiftToolChain()'"
+        assumeThat(toolChain.version.major, Matchers.equalTo(swiftVersion.version))
     }
 
     void assertTargetIsUnitTest(ProjectFile.PBXTarget target, String expectedProductName) {

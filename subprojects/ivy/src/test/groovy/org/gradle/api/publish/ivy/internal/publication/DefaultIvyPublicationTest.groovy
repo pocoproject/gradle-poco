@@ -21,19 +21,19 @@ import org.gradle.api.artifacts.DependencyArtifact
 import org.gradle.api.artifacts.ExcludeRule
 import org.gradle.api.artifacts.ExternalModuleDependency
 import org.gradle.api.artifacts.ModuleDependency
+import org.gradle.api.artifacts.ModuleVersionIdentifier
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.artifacts.PublishArtifact
 import org.gradle.api.attributes.Usage
 import org.gradle.api.internal.AsmBackedClassGenerator
 import org.gradle.api.internal.ClassGeneratorBackedInstantiator
-import org.gradle.api.internal.ExperimentalFeatures
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier
 import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint
+import org.gradle.api.internal.artifacts.ivyservice.projectmodule.ProjectDependencyPublicationResolver
 import org.gradle.api.internal.component.SoftwareComponentInternal
 import org.gradle.api.internal.component.UsageContext
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.api.internal.file.collections.SimpleFileCollection
-import org.gradle.api.publish.internal.ProjectDependencyPublicationResolver
 import org.gradle.api.publish.internal.PublicationInternal
 import org.gradle.api.publish.ivy.IvyArtifact
 import org.gradle.api.publish.ivy.internal.publisher.IvyPublicationIdentity
@@ -54,7 +54,7 @@ class DefaultIvyPublicationTest extends Specification {
     def notationParser = Mock(NotationParser)
     def projectDependencyResolver = Mock(ProjectDependencyPublicationResolver)
     def attributesFactory = TestUtil.attributesFactory()
-    def experimentalFeatures = new ExperimentalFeatures()
+    def featurePreviews = TestUtil.featurePreviews()
 
     File ivyDescriptorFile
     File moduleDescriptorFile
@@ -161,7 +161,7 @@ class DefaultIvyPublicationTest extends Specification {
         def exclude = Mock(ExcludeRule)
 
         and:
-        projectDependencyResolver.resolve(projectDependency) >> DefaultModuleVersionIdentifier.newId("pub-org", "pub-module", "pub-revision")
+        projectDependencyResolver.resolve(ModuleVersionIdentifier, projectDependency) >> DefaultModuleVersionIdentifier.newId("pub-org", "pub-module", "pub-revision")
         projectDependency.targetConfiguration >> "dep-configuration"
         projectDependency.excludeRules >> [exclude]
 
@@ -282,7 +282,7 @@ class DefaultIvyPublicationTest extends Specification {
             projectDependencyResolver,
             TestFiles.fileCollectionFactory(),
             attributesFactory,
-            experimentalFeatures
+            featurePreviews
         )
         publication.setIvyDescriptorFile(new SimpleFileCollection(ivyDescriptorFile))
         publication.setGradleModuleDescriptorFile(new SimpleFileCollection(moduleDescriptorFile))

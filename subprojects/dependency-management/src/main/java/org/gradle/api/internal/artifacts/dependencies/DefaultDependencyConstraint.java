@@ -18,10 +18,11 @@ package org.gradle.api.internal.artifacts.dependencies;
 
 import org.apache.commons.lang.StringUtils;
 import org.gradle.api.Action;
-import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.artifacts.DependencyConstraint;
+import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.MutableVersionConstraint;
 import org.gradle.api.artifacts.VersionConstraint;
+import org.gradle.api.internal.artifacts.ModuleVersionSelectorStrictSpec;
 
 import javax.annotation.Nullable;
 
@@ -29,6 +30,8 @@ public class DefaultDependencyConstraint implements DependencyConstraint {
     private final String group;
     private final String name;
     private final MutableVersionConstraint versionConstraint;
+
+    private String reason;
 
     public DefaultDependencyConstraint(String group, String name, String version) {
         this.group = group;
@@ -79,8 +82,7 @@ public class DefaultDependencyConstraint implements DependencyConstraint {
         return contentEquals(that);
     }
 
-    @Override
-    public boolean contentEquals(Dependency dependency) {
+    private boolean contentEquals(DependencyConstraint dependency) {
         if (this == dependency) {
             return true;
         }
@@ -92,11 +94,6 @@ public class DefaultDependencyConstraint implements DependencyConstraint {
     }
 
     @Override
-    public DependencyConstraint copy() {
-        return new DefaultDependencyConstraint(group, name, versionConstraint);
-    }
-
-    @Override
     public void version(Action<? super MutableVersionConstraint> configureAction) {
         configureAction.execute(versionConstraint);
     }
@@ -104,5 +101,26 @@ public class DefaultDependencyConstraint implements DependencyConstraint {
     @Override
     public VersionConstraint getVersionConstraint() {
         return versionConstraint;
+    }
+
+    @Override
+    public boolean matchesStrictly(ModuleVersionIdentifier identifier) {
+        return new ModuleVersionSelectorStrictSpec(this).isSatisfiedBy(identifier);
+    }
+
+    @Override
+    public String getReason() {
+        return reason;
+    }
+
+    @Override
+    public void because(String reason) {
+        this.reason = reason;
+    }
+
+    public DependencyConstraint copy() {
+        DefaultDependencyConstraint constraint = new DefaultDependencyConstraint(group, name, versionConstraint);
+        constraint.reason = reason;
+        return constraint;
     }
 }

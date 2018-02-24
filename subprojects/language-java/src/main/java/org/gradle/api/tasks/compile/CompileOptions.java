@@ -36,6 +36,7 @@ import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
+import org.gradle.process.CommandLineArgumentProvider;
 import org.gradle.util.DeprecationLogger;
 
 import javax.annotation.Nullable;
@@ -78,7 +79,7 @@ public class CompileOptions extends AbstractOptions {
     private String extensionDirs;
 
     private List<String> compilerArgs = Lists.newArrayList();
-    private List<CompilerArgumentProvider> compilerArgumentProviders = Lists.newArrayList();
+    private List<CommandLineArgumentProvider> compilerArgumentProviders = Lists.newArrayList();
 
     private boolean incremental;
 
@@ -347,7 +348,7 @@ public class CompileOptions extends AbstractOptions {
     public List<String> getAllCompilerArgs() {
         ImmutableList.Builder<String> builder = ImmutableList.builder();
         builder.addAll(getCompilerArgs());
-        for (CompilerArgumentProvider compilerArgumentProvider : getCompilerArgumentProviders()) {
+        for (CommandLineArgumentProvider compilerArgumentProvider : getCompilerArgumentProviders()) {
             builder.addAll(compilerArgumentProvider.asArguments());
         }
         return builder.build();
@@ -360,7 +361,7 @@ public class CompileOptions extends AbstractOptions {
      */
     @Nested
     @Incubating
-    public List<CompilerArgumentProvider> getCompilerArgumentProviders() {
+    public List<CommandLineArgumentProvider> getCompilerArgumentProviders() {
         return compilerArgumentProviders;
     }
 
@@ -438,7 +439,7 @@ public class CompileOptions extends AbstractOptions {
     /**
      * informs whether to use incremental compilation feature. See {@link #setIncremental(boolean)}
      */
-    @Input
+    @Internal
     public boolean isIncremental() {
         return incremental;
     }
@@ -478,13 +479,12 @@ public class CompileOptions extends AbstractOptions {
     }
 
     /**
-     * Returns the classpath to use to load annotation processors. This path is also used for annotation processor discovery. The default value is {@code null}, which means use the compile classpath.
+     * Returns the classpath to use to load annotation processors. This path is also used for annotation processor discovery. If set to {@code null}, it means use the compile classpath.
      *
-     * @return The annotation processor path, or {@code null} to use the default.
+     * @return The annotation processor path, or {@code null} to use the compile classpath.
      * @since 3.4
      */
     @Optional
-    @Incubating
     @Internal // Handled on the compile task
     @Nullable
     public FileCollection getAnnotationProcessorPath() {
@@ -494,10 +494,9 @@ public class CompileOptions extends AbstractOptions {
     /**
      * Set the classpath to use to load annotation processors. This path is also used for annotation processor discovery. The value can be {@code null}, which means use the compile classpath.
      *
-     * @param annotationProcessorPath The annotation processor path, or {@code null} to use the default.
+     * @param annotationProcessorPath The annotation processor path, or {@code null} to use the compile classpath.
      * @since 3.4
      */
-    @Incubating
     public void setAnnotationProcessorPath(@Nullable FileCollection annotationProcessorPath) {
         this.annotationProcessorPath = annotationProcessorPath;
     }

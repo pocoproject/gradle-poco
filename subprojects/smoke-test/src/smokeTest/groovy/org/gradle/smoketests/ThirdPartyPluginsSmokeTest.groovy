@@ -17,7 +17,7 @@
 package org.gradle.smoketests
 
 import org.gradle.util.ports.ReleasingPortAllocator
-import org.gradle.vcs.fixtures.GitRepository
+import org.gradle.vcs.fixtures.GitFileRepository
 import org.junit.Rule
 import spock.lang.Issue
 import spock.lang.Unroll
@@ -101,7 +101,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
             plugins {
                 id 'java'
                 id 'application'
-                id "com.bmuschko.docker-java-application" version "3.2.1"
+                id "com.bmuschko.docker-java-application" version "3.2.3"
             }
 
             mainClassName = 'org.gradle.JettyMain'
@@ -149,7 +149,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
         def result = runner("dependencies", "--configuration", "compile").build()
 
         then:
-        result.output.contains('org.springframework:spring-core: -> 4.0.3.RELEASE')
+        result.output.contains('org.springframework:spring-core -> 4.0.3.RELEASE')
     }
 
     @Issue('https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-gradle-plugin/1.5.7.RELEASE')
@@ -315,7 +315,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
         given:
         buildFile << """
             plugins {
-                id "org.xtext.xtend" version "1.0.20"
+                id "org.xtext.xtend" version "1.0.21"
             }
 
             ${mavenCentralRepository()}
@@ -342,7 +342,7 @@ class ThirdPartyPluginsSmokeTest extends AbstractSmokeTest {
 
     def 'org.ajoberstar.grgit plugin'() {
         given:
-        GitRepository.init(testProjectDir.root)
+        GitFileRepository.init(testProjectDir.root)
         buildFile << """
             plugins {
                 id "org.ajoberstar.grgit" version "2.1.0"

@@ -26,6 +26,8 @@ import org.gradle.api.attributes.Usage;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Property;
 import org.gradle.language.internal.NativeComponentFactory;
+import org.gradle.language.nativeplatform.internal.ComponentWithNames;
+import org.gradle.language.nativeplatform.internal.Names;
 import org.gradle.language.nativeplatform.internal.toolchains.ToolChainSelector;
 import org.gradle.language.swift.SwiftComponent;
 import org.gradle.language.swift.SwiftLibrary;
@@ -33,14 +35,14 @@ import org.gradle.language.swift.SwiftPlatform;
 import org.gradle.language.swift.SwiftSharedLibrary;
 import org.gradle.language.swift.SwiftStaticLibrary;
 import org.gradle.language.swift.internal.DefaultSwiftLibrary;
-import org.gradle.language.swift.tasks.SwiftCompile;
+import org.gradle.language.swift.internal.DefaultSwiftSharedLibrary;
+import org.gradle.language.swift.internal.DefaultSwiftStaticLibrary;
 import org.gradle.nativeplatform.Linkage;
 import org.gradle.util.GUtil;
 
 import javax.inject.Inject;
 
-import static org.gradle.language.cpp.CppBinary.DEBUGGABLE_ATTRIBUTE;
-import static org.gradle.language.cpp.CppBinary.OPTIMIZED_ATTRIBUTE;
+import static org.gradle.language.cpp.CppBinary.*;
 
 /**
  * <p>A plugin that produces a shared library from Swift source.</p>
@@ -90,74 +92,66 @@ public class SwiftLibraryPlugin implements Plugin<Project> {
 
                 ToolChainSelector.Result<SwiftPlatform> result = toolChainSelector.select(SwiftPlatform.class);
 
-                SwiftSharedLibrary debugSharedLibrary = null;
                 if (sharedLibs) {
                     String linkageNameSuffix = staticLibs ? "Shared" : "";
-                    debugSharedLibrary = library.addSharedLibrary("debug" + linkageNameSuffix, true, false, true, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
-                    SwiftSharedLibrary releaseSharedLibrary = library.addSharedLibrary("release" + linkageNameSuffix, true, true, false, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
+                    SwiftSharedLibrary debugSharedLibrary = library.addSharedLibrary("debug" + linkageNameSuffix, true, false, true, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
+                    library.addSharedLibrary("release" + linkageNameSuffix, true, true, false, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
 
-                    // Add publications
-                    SwiftCompile compileDebug = debugSharedLibrary.getCompileTask().get();
-                    SwiftCompile compileRelease = releaseSharedLibrary.getCompileTask().get();
+                    // Use the debug variant as the development binary
+                    library.getDevelopmentBinary().set(debugSharedLibrary);
 
-                    // TODO - add lifecycle tasks
+                    // Add outgoing API
                     // TODO - extract some common code to setup the configurations
                     // TODO - extract common code with C++ plugins
 
-                    Configuration api = library.getApiDependencies();
-
-                    Configuration debugApiElements = configurations.create("debugSwiftApiElements");
-                    debugApiElements.extendsFrom(api);
-                    debugApiElements.setCanBeResolved(false);
-                    debugApiElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.SWIFT_API));
-                    debugApiElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, debugSharedLibrary.isDebuggable());
-                    debugApiElements.getAttributes().attribute(OPTIMIZED_ATTRIBUTE, debugSharedLibrary.isOptimized());
-                    debugApiElements.getOutgoing().artifact(compileDebug.getModuleFile());
-
-                    Configuration releaseApiElements = configurations.create("releaseSwiftApiElements");
-                    releaseApiElements.extendsFrom(api);
-                    releaseApiElements.setCanBeResolved(false);
-                    releaseApiElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.SWIFT_API));
-                    releaseApiElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, releaseSharedLibrary.isDebuggable());
-                    releaseApiElements.getAttributes().attribute(OPTIMIZED_ATTRIBUTE, releaseSharedLibrary.isOptimized());
-                    releaseApiElements.getOutgoing().artifact(compileRelease.getModuleFile());
+                    library.getBinaries().whenElementKnown(SwiftSharedLibrary.class, new Action<SwiftSharedLibrary>() {
+                        @Override
+                        public void execute(SwiftSharedLibrary sharedLibrary) {
+                            Names names = ((ComponentWithNames) sharedLibrary).getNames();
+                            Configuration apiElements = configurations.create(names.withSuffix("SwiftApiElements"));
+                            // TODO This should actually extend from the api dependencies, but since Swift currently
+                            // requires all dependencies to be treated like api dependencies (with transitivity) we just
+                            // use the implementation dependencies here.  See https://bugs.swift.org/browse/SR-1393.
+                            apiElements.extendsFrom(((DefaultSwiftSharedLibrary)sharedLibrary).getImplementationDependencies());
+                            apiElements.setCanBeResolved(false);
+                            apiElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.SWIFT_API));
+                            apiElements.getAttributes().attribute(LINKAGE_ATTRIBUTE, Linkage.SHARED);
+                            apiElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, sharedLibrary.isDebuggable());
+                            apiElements.getAttributes().attribute(OPTIMIZED_ATTRIBUTE, sharedLibrary.isOptimized());
+                            apiElements.getOutgoing().artifact(sharedLibrary.getModuleFile());
+                        }
+                    });
                 }
 
                 SwiftStaticLibrary debugStaticLibrary = null;
                 if (staticLibs){
                     String linkageNameSuffix = sharedLibs ? "Static" : "";
                     debugStaticLibrary = library.addStaticLibrary("debug" + linkageNameSuffix, true, false, true, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
-                    SwiftStaticLibrary releaseStaticLibrary = library.addStaticLibrary("release" + linkageNameSuffix, true, true, false, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
+                    library.addStaticLibrary("release" + linkageNameSuffix, true, true, false, result.getTargetPlatform(), result.getToolChain(), result.getPlatformToolProvider());
 
-                    if (!sharedLibs) {
-                        // Add publications
-                        SwiftCompile compileDebug = debugStaticLibrary.getCompileTask().get();
-                        SwiftCompile compileRelease = releaseStaticLibrary.getCompileTask().get();
-
-                        Configuration api = library.getApiDependencies();
-
-                        Configuration debugApiElements = configurations.create("debugStaticSwiftApiElements");
-                        debugApiElements.extendsFrom(api);
-                        debugApiElements.setCanBeResolved(false);
-                        debugApiElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.SWIFT_API));
-                        debugApiElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, debugStaticLibrary.isDebuggable());
-                        debugApiElements.getAttributes().attribute(OPTIMIZED_ATTRIBUTE, debugStaticLibrary.isOptimized());
-                        debugApiElements.getOutgoing().artifact(compileDebug.getModuleFile());
-
-                        Configuration releaseApiElements = configurations.create("releaseStaticSwiftApiElements");
-                        releaseApiElements.extendsFrom(api);
-                        releaseApiElements.setCanBeResolved(false);
-                        releaseApiElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.SWIFT_API));
-                        releaseApiElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, releaseStaticLibrary.isDebuggable());
-                        releaseApiElements.getAttributes().attribute(OPTIMIZED_ATTRIBUTE, releaseStaticLibrary.isOptimized());
-                        releaseApiElements.getOutgoing().artifact(compileRelease.getModuleFile());
+                    if (!library.getDevelopmentBinary().isPresent()) {
+                        library.getDevelopmentBinary().set(debugStaticLibrary);
                     }
-                }
 
-                if (sharedLibs) {
-                    library.getDevelopmentBinary().set(debugSharedLibrary);
-                } else {
-                    library.getDevelopmentBinary().set(debugStaticLibrary);
+                    // Add outgoing API
+
+                    library.getBinaries().whenElementKnown(SwiftStaticLibrary.class, new Action<SwiftStaticLibrary>() {
+                        @Override
+                        public void execute(SwiftStaticLibrary staticLibrary) {
+                            Names names = ((ComponentWithNames) staticLibrary).getNames();
+                            Configuration apiElements = configurations.create(names.withSuffix("SwiftApiElements"));
+                            // TODO This should actually extend from the api dependencies, but since Swift currently
+                            // requires all dependencies to be treated like api dependencies (with transitivity) we just
+                            // use the implementation dependencies here.  See https://bugs.swift.org/browse/SR-1393.
+                            apiElements.extendsFrom(((DefaultSwiftStaticLibrary)staticLibrary).getImplementationDependencies());
+                            apiElements.setCanBeResolved(false);
+                            apiElements.getAttributes().attribute(Usage.USAGE_ATTRIBUTE, objectFactory.named(Usage.class, Usage.SWIFT_API));
+                            apiElements.getAttributes().attribute(LINKAGE_ATTRIBUTE, Linkage.STATIC);
+                            apiElements.getAttributes().attribute(DEBUGGABLE_ATTRIBUTE, staticLibrary.isDebuggable());
+                            apiElements.getAttributes().attribute(OPTIMIZED_ATTRIBUTE, staticLibrary.isOptimized());
+                            apiElements.getOutgoing().artifact(staticLibrary.getModuleFile());
+                        }
+                    });
                 }
 
                 library.getBinaries().realizeNow();

@@ -47,6 +47,7 @@ import org.gradle.cache.CacheRepository
 import org.gradle.cache.internal.CacheScopeMapping
 import org.gradle.cache.internal.CrossBuildInMemoryCacheFactory
 import org.gradle.cache.internal.DefaultCacheRepository
+import org.gradle.caching.internal.tasks.TaskCacheKeyCalculator
 import org.gradle.internal.classloader.ConfigurableClassLoaderHierarchyHasher
 import org.gradle.internal.event.DefaultListenerManager
 import org.gradle.internal.file.PathToFileResolver
@@ -93,6 +94,7 @@ class DefaultTaskArtifactStateRepositoryTest extends AbstractProjectBuilderSpec 
     TaskOutputFilesRepository taskOutputFilesRepository = Stub(TaskOutputFilesRepository)
     final originMetadata = new OriginTaskExecutionMetadata(buildScopeId.id, 1)
     def taskExecutionContext = Mock(TaskExecutionContext)
+    def taskCacheKeyCalculator = new TaskCacheKeyCalculator(false)
 
     def setup() {
         gradle = project.getGradle()
@@ -119,7 +121,7 @@ class DefaultTaskArtifactStateRepositoryTest extends AbstractProjectBuilderSpec 
             snapshotterRegistry,
             TestFiles.fileCollectionFactory()
         )
-        repository = new DefaultTaskArtifactStateRepository(taskHistoryRepository, DirectInstantiator.INSTANCE, taskOutputFilesRepository)
+        repository = new DefaultTaskArtifactStateRepository(taskHistoryRepository, DirectInstantiator.INSTANCE, taskOutputFilesRepository, taskCacheKeyCalculator)
     }
 
     def "artifacts are not up to date when cache is empty"() {
@@ -388,7 +390,7 @@ class DefaultTaskArtifactStateRepositoryTest extends AbstractProjectBuilderSpec 
         when:
         TaskArtifactState state = getStateFor(task1)
         state.isUpToDate([])
-        fileSystemMirror.beforeTaskOutputsGenerated()
+        fileSystemMirror.beforeTaskOutputChanged()
         outputDirFile.createFile()
         state.snapshotAfterTaskExecution(null, buildScopeId.id, Mock(TaskExecutionContext))
 
@@ -396,7 +398,7 @@ class DefaultTaskArtifactStateRepositoryTest extends AbstractProjectBuilderSpec 
         !state.upToDate
 
         when:
-        fileSystemMirror.beforeTaskOutputsGenerated()
+        fileSystemMirror.beforeTaskOutputChanged()
         outputDir.deleteDir()
 
         and:
@@ -407,7 +409,7 @@ class DefaultTaskArtifactStateRepositoryTest extends AbstractProjectBuilderSpec 
         !state.isUpToDate([])
 
         when:
-        fileSystemMirror.beforeTaskOutputsGenerated()
+        fileSystemMirror.beforeTaskOutputChanged()
         outputDirFile2.createFile()
         state.snapshotAfterTaskExecution(null, buildScopeId.id, Mock(TaskExecutionContext))
 
@@ -521,7 +523,7 @@ class DefaultTaskArtifactStateRepositoryTest extends AbstractProjectBuilderSpec 
 
         when:
         execute(task)
-        fileSystemMirror.beforeTaskOutputsGenerated()
+        fileSystemMirror.beforeTaskOutputChanged()
         otherFile.write("new content")
         state.snapshotAfterTaskExecution(null, buildScopeId.id, Mock(TaskExecutionContext))
         otherFile.delete()
@@ -559,7 +561,7 @@ class DefaultTaskArtifactStateRepositoryTest extends AbstractProjectBuilderSpec 
         upToDate noInputsTask
 
         when:
-        fileSystemMirror.beforeTaskOutputsGenerated()
+        fileSystemMirror.beforeTaskOutputChanged()
         outputDirFile.delete()
 
         then:
@@ -685,12 +687,12 @@ class DefaultTaskArtifactStateRepositoryTest extends AbstractProjectBuilderSpec 
             TaskArtifactState state = getStateFor(task)
             state.isUpToDate([])
             // reset state
-            fileSystemMirror.beforeTaskOutputsGenerated()
+            fileSystemMirror.beforeTaskOutputChanged()
             super.execute(task)
             state.snapshotAfterTaskExecution(null, originMetadata.buildInvocationId, taskExecutionContext)
         }
         // reset state
-        fileSystemMirror.beforeTaskOutputsGenerated()
+        fileSystemMirror.beforeTaskOutputChanged()
     }
 
     private static class ChangedFiles {

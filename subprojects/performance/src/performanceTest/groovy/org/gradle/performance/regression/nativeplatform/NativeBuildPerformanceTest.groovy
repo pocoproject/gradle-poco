@@ -24,7 +24,7 @@ class NativeBuildPerformanceTest extends AbstractCrossVersionPerformanceTest {
 
     def setup() {
         runner.minimumVersion = '4.0'
-        runner.targetVersions = ["4.5-20171218235901+0000"]
+        runner.targetVersions = ["4.6-20180125002142+0000"]
     }
 
     @Unroll
@@ -87,9 +87,9 @@ class NativeBuildPerformanceTest extends AbstractCrossVersionPerformanceTest {
         result.assertCurrentVersionHasNotRegressed()
 
         where:
-        testProject   | maxMemory
-        "bigCppApp"   | '256m'
-        "bigCppMulti" | '1g'
+        testProject        | maxMemory
+        "bigCppApp"        | '256m'
+        "bigCppMulti"      | '1g'
     }
 
     @Unroll

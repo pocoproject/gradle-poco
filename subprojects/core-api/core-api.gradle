@@ -15,6 +15,7 @@
  */
 plugins {
     id 'java-library'
+    // id 'strict-compile'
 }
 
 sourceCompatibility = javaVersion.java9Compatible ? 1.6 : 1.5
@@ -29,16 +30,16 @@ dependencies {
     api project(":processServices")
     api project(":resources")
 
-    implementation libraries.ant
-    implementation libraries.commons_io
-    implementation libraries.commons_lang
-    implementation libraries.jcip
+    implementation libraries.ant.coordinates
+    implementation libraries.commons_io.coordinates
+    implementation libraries.commons_lang.coordinates
+    implementation libraries.jcip.coordinates
 
     testFixturesImplementation project(":internalTesting")
 }
 
-useTestFixtures(project: ":logging")
-//useClassycle()
-//strictCompile()
+testFixtures {
+    from(':logging')
+}
 
 verifyTestFilesCleanup.errorWhenNotEmpty = false

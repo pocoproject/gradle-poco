@@ -16,9 +16,8 @@
 
 package org.gradle.caching.internal.tasks;
 
-import org.gradle.BuildResult;
 import org.gradle.StartParameter;
-import org.gradle.api.Action;
+import org.gradle.api.NonNullApi;
 import org.gradle.api.internal.GradleInternal;
 import org.gradle.api.internal.InstantiatorFactory;
 import org.gradle.api.internal.cache.StringInterner;
@@ -43,7 +42,6 @@ import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.internal.time.Clock;
 import org.gradle.util.GradleVersion;
 import org.gradle.util.Path;
-import org.gradle.util.SingleMessageLogger;
 
 import java.io.File;
 
@@ -52,6 +50,7 @@ import static org.gradle.caching.internal.controller.BuildCacheControllerFactory
 import static org.gradle.caching.internal.controller.BuildCacheControllerFactory.RemoteAccessMode.OFFLINE;
 import static org.gradle.caching.internal.controller.BuildCacheControllerFactory.RemoteAccessMode.ONLINE;
 
+@NonNullApi
 public class BuildCacheTaskServices {
 
     private static final Path ROOT_BUILD_SRC_PATH = Path.path(":" + BuildSourceBuilder.BUILD_SRC);
@@ -120,11 +119,7 @@ public class BuildCacheTaskServices {
         RemoteAccessMode remoteAccessMode = startParameter.isOffline() ? OFFLINE : ONLINE;
         boolean logStackTraces = startParameter.getShowStacktrace() != ShowStacktrace.INTERNAL_EXCEPTIONS;
 
-        if (buildCacheMode == ENABLED) {
-            SingleMessageLogger.incubatingFeatureUsed("Build cache");
-        }
-
-        final BuildCacheController controller = BuildCacheControllerFactory.create(
+        return BuildCacheControllerFactory.create(
             buildOperationExecutor,
             buildIdentityPath,
             gradleUserHomeDir,
@@ -134,16 +129,6 @@ public class BuildCacheTaskServices {
             logStackTraces,
             instantiatorFactory.inject(serviceRegistry)
         );
-
-        // Stop the controller early so that any logging emitted during stopping is visible.
-        gradle.buildFinished(new Action<BuildResult>() {
-            @Override
-            public void execute(BuildResult result) {
-                controller.close();
-            }
-        });
-
-        return controller;
     }
 
 }

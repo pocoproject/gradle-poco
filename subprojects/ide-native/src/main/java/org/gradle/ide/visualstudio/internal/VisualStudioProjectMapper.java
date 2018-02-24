@@ -19,6 +19,7 @@ package org.gradle.ide.visualstudio.internal;
 import java.util.List;
 
 import org.apache.commons.lang.StringUtils;
+<<<<<<< HEAD
 import org.gradle.nativeplatform.NativeBinarySpec;
 import org.gradle.nativeplatform.NativeExecutableBinarySpec;
 import org.gradle.nativeplatform.SemiStaticLibraryBinarySpec;
@@ -29,22 +30,19 @@ import org.gradle.nativeplatform.test.NativeTestSuiteBinarySpec;
 
 public class VisualStudioProjectMapper {
 
-    public ProjectConfigurationNames mapToConfiguration(NativeBinarySpec nativeBinary) {
-        String projectName = projectPrefix(nativeBinary) + componentName(nativeBinary) + projectSuffix(nativeBinary);
-        String configurationName = getConfigurationName(nativeBinary);
-        return new ProjectConfigurationNames(projectName, configurationName, "Win32");
+    public static String getProjectName(VisualStudioTargetBinary targetBinary) {
+        return getProjectName(targetBinary.getProjectPath(), targetBinary.getComponentName(), targetBinary.getProjectType());
     }
 
-    private String getConfigurationName(NativeBinarySpec nativeBinary) {
-        List<String> dimensions = ((NativeBinarySpecInternal) nativeBinary).getNamingScheme().getVariantDimensions();
-        if (dimensions.isEmpty()) {
-            return nativeBinary.getBuildType().getName();
-        }
-        return makeName(dimensions);
+    public static String getProjectName(String projectPath, String componentName, VisualStudioTargetBinary.ProjectType type) {
+        return projectPrefix(projectPath) + componentName + type.getSuffix();
     }
 
-    private String projectPrefix(NativeBinarySpec nativeBinary) {
-        String projectPath = nativeBinary.getComponent().getProjectPath();
+    public static String getConfigurationName(List<String> variantDimensions) {
+        return makeName(variantDimensions);
+    }
+
+    private static String projectPrefix(String projectPath) {
         if (":".equals(projectPath)) {
             return "";
         }
@@ -76,17 +74,5 @@ public class VisualStudioProjectMapper {
             }
         }
         return builder.toString();
-    }
-
-    static class ProjectConfigurationNames {
-        public final String project;
-        public final String configuration;
-        public final String platform;
-
-        ProjectConfigurationNames(String project, String configuration, String platform) {
-            this.project = project;
-            this.configuration = configuration;
-            this.platform = platform;
-        }
     }
 }

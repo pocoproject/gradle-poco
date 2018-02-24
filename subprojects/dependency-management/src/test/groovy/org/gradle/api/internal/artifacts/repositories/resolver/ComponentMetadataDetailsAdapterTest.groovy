@@ -49,7 +49,7 @@ class ComponentMetadataDetailsAdapterTest extends Specification {
     def attributes = TestUtil.attributesFactory().of(testAttribute, "someValue")
     def schema = new DefaultAttributesSchema(new ComponentAttributeMatcher(), TestUtil.instantiatorFactory())
     def ivyMetadataFactory = new IvyMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory())
-    def mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.experimentalFeatures())
+    def mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
 
     def gradleMetadata
     def adapterOnMavenMetadata = new ComponentMetadataDetailsAdapter(mavenComponentMetadata(), instantiator, dependencyMetadataNotationParser, dependencyConstraintMetadataNotationParser)
@@ -152,7 +152,7 @@ class ComponentMetadataDetailsAdapterTest extends Specification {
         def componentIdentifier = DefaultModuleComponentIdentifier.newId("org.test", "consumer", "1.0")
         def consumerIdentifier = DefaultModuleVersionIdentifier.newId(componentIdentifier)
         def componentSelector = newSelector(consumerIdentifier.group, consumerIdentifier.name, new DefaultMutableVersionConstraint(consumerIdentifier.version))
-        def consumer = new LocalComponentDependencyMetadata(componentIdentifier, componentSelector, "default", attributes, null, [] as List, [], false, false, true, false)
+        def consumer = new LocalComponentDependencyMetadata(componentIdentifier, componentSelector, "default", attributes, null, [] as List, [], false, false, true, false, null)
 
         def configuration = consumer.selectConfigurations(attributes, immutable, schema)[0]
         configuration.dependencies

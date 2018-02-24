@@ -27,8 +27,6 @@ import org.gradle.internal.Factory;
 import org.gradle.internal.concurrent.Stoppable;
 import org.gradle.util.GFileUtils;
 import org.gradle.vcs.VersionControlSpec;
-import org.gradle.vcs.VersionControlSystem;
-import org.gradle.vcs.VersionRef;
 import org.gradle.vcs.git.internal.GitVersionControlSystem;
 import org.gradle.vcs.internal.spec.DirectoryRepositorySpec;
 
@@ -74,6 +72,25 @@ public class DefaultVersionControlSystemFactory implements VersionControlSystemF
         private LockingVersionControlSystem(VersionControlSystem delegate, CacheAccess cacheAccess) {
             this.delegate = delegate;
             this.cacheAccess = cacheAccess;
+        }
+
+        @Override
+        public VersionRef getDefaultBranch(VersionControlSpec spec) {
+            try {
+                return delegate.getDefaultBranch(spec);
+            } catch (Exception e) {
+                throw new GradleException(String.format("Could not locate default branch for '%s'.", spec.getDisplayName()), e);
+            }
+        }
+
+        @Nullable
+        @Override
+        public VersionRef getBranch(VersionControlSpec spec, String branch) {
+            try {
+                return delegate.getBranch(spec, branch);
+            } catch (Exception e) {
+                throw new GradleException(String.format("Could not locate branch '%s' for '%s'.", branch, spec.getDisplayName()), e);
+            }
         }
 
         @Override

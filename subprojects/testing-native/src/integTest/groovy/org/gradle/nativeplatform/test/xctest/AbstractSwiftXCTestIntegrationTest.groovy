@@ -16,18 +16,19 @@
 
 package org.gradle.nativeplatform.test.xctest
 
-import org.gradle.integtests.fixtures.DefaultTestExecutionResult
-import org.gradle.integtests.fixtures.TestExecutionResult
+import org.gradle.internal.os.OperatingSystem
+import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
+import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.XCTestSourceElement
 import org.gradle.nativeplatform.test.AbstractNativeUnitTestIntegrationTest
-import org.gradle.util.Requires
-import org.gradle.util.TestPrecondition
+import org.junit.Assume
 import spock.lang.Unroll
 
-@Requires([TestPrecondition.SWIFT_SUPPORT])
-abstract class AbstractSwiftXCTestIntegrationTest extends AbstractNativeUnitTestIntegrationTest {
-    TestExecutionResult getTestExecutionResult() {
-        return new DefaultTestExecutionResult(testDirectory, 'build', '', '', 'xcTest')
+@RequiresInstalledToolChain(ToolChainRequirement.SWIFTC)
+abstract class AbstractSwiftXCTestIntegrationTest extends AbstractNativeUnitTestIntegrationTest implements XCTestExecutionResult {
+    def setup() {
+        // TODO: Temporarily disable XCTests with Swift3 on macOS
+        Assume.assumeFalse(OperatingSystem.current().isMacOsX() && toolChain.version.major == 3)
     }
 
     @Unroll

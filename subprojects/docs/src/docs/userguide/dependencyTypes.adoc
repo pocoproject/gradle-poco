@@ -2,9 +2,9 @@
 == Dependency Types
 
 [[sub:module_dependencies]]
-=== External module dependencies
+=== Module dependencies
 
-External module dependencies are the most common dependencies. They refer to a module in an external repository.
+Module dependencies are the most common dependencies. They refer to a module in a repository.
 
 ++++
 <sample id="moduleDependencies" dir="userguide/artifacts/externalDependencies" title="Module dependencies">
@@ -18,7 +18,7 @@ Gradle provides different notations for module dependencies. There is a string n
 
 [NOTE]
 ====
-If you declare a module dependency, Gradle looks for a module descriptor file (`pom.xml` or `ivy.xml`) in the repositories. If such a module descriptor file exists, it is parsed and the artifacts of this module (e.g. `hibernate-3.0.5.jar`) as well as its dependencies (e.g. cglib) are downloaded. If no such module descriptor file exists, Gradle looks for a file called `hibernate-3.0.5.jar` to retrieve. In Maven, a module can have one and only one artifact. In Gradle and Ivy, a module can have multiple artifacts. Each artifact can have a different set of dependencies.
+If you declare a module dependency, Gradle looks for a module metadata file (`.module`, `.pom` or `ivy.xml`) in the repositories. If such a module metadata file exists, it is parsed and the artifacts of this module (e.g. `hibernate-3.0.5.jar`) as well as its dependencies (e.g. cglib) are downloaded. If no such module metadata file exists, Gradle may look, depending on the <<sub:supported_metadata_sources,metadata sources definitions>>, for an artifact file called `hibernate-3.0.5.jar` directly. In Maven, a module can have one and only one artifact. In Gradle and Ivy, a module can have multiple artifacts. Each artifact can have a different set of dependencies.
 ====
 
 [[sub:file_dependencies]]
@@ -48,7 +48,7 @@ You can declare which tasks produce the files for a file dependency. You might d
 [[sub:project_dependencies]]
 === Project dependencies
 
-Gradle distinguishes between external dependencies and dependencies on projects which are part of the same multi-project build. For the latter you can declare _Project Dependencies_.
+Gradle distinguishes between external dependencies and dependencies on projects which are part of the same multi-project build. For the latter you can declare _project dependencies_.
 
 ++++
 <sample id="project-dependencies" dir="java/multiproject/api" title="Project dependencies">

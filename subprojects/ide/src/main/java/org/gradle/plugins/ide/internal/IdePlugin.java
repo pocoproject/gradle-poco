@@ -15,6 +15,7 @@
  */
 package org.gradle.plugins.ide.internal;
 
+import com.google.common.base.Optional;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 import org.gradle.BuildAdapter;
@@ -36,20 +37,49 @@ import org.gradle.api.tasks.Delete;
 import org.gradle.initialization.ProjectPathRegistry;
 import org.gradle.internal.component.local.model.LocalComponentArtifactMetadata;
 import org.gradle.internal.component.local.model.PublishArtifactLocalArtifactMetadata;
+import org.gradle.internal.os.OperatingSystem;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.util.CollectionUtils;
 import org.gradle.util.Path;
 
+import java.io.File;
 import java.util.List;
 import java.util.concurrent.Callable;
 
 import static org.gradle.internal.component.local.model.DefaultProjectComponentIdentifier.newProjectId;
 
-public abstract class IdePlugin implements Plugin<Project> {
+public abstract class IdePlugin implements Plugin<Project>, IdeArtifactRegistry {
 
     private Task lifecycleTask;
     private Task cleanTask;
     protected Project project;
+
+    /**
+     * Returns the path to the correct Gradle distribution to use. The wrapper of the generating project will be used only if the execution context of the currently running Gradle is in the Gradle home (typical of a wrapper execution context). If this isn't the case, we try to use the current Gradle home, if available, as the distribution. Finally, if nothing matches, we default to the system-wide Gradle distribution.
+     *
+     * @param project the Gradle project generating the IDE files
+     * @return path to Gradle distribution to use within the generated IDE files
+     */
+    public static String toGradleCommand(Project project) {
+        Gradle gradle = project.getGradle();
+        Optional<String> gradleWrapperPath = Optional.absent();
+
+        Project rootProject = project.getRootProject();
+        String gradlewExtension = OperatingSystem.current().isWindows() ? ".bat" : "";
+        File gradlewFile = rootProject.file("gradlew" + gradlewExtension);
+        if (gradlewFile.exists()) {
+            gradleWrapperPath = Optional.of(gradlewFile.getAbsolutePath());
+        }
+
+        if (gradle.getGradleHomeDir() != null) {
+            if (gradleWrapperPath.isPresent() && gradle.getGradleHomeDir().getAbsolutePath().startsWith(gradle.getGradleUserHomeDir().getAbsolutePath())) {
+                return gradleWrapperPath.get();
+            }
+            return gradle.getGradleHomeDir().getAbsolutePath() + "/bin/gradle";
+        }
+
+        return gradleWrapperPath.or("gradle");
+    }
 
     @Override
     public void apply(Project target) {
@@ -57,7 +87,7 @@ public abstract class IdePlugin implements Plugin<Project> {
         String lifecycleTaskName = getLifecycleTaskName();
         lifecycleTask = target.task(lifecycleTaskName);
         lifecycleTask.setGroup("IDE");
-        cleanTask = target.task(cleanName(lifecycleTaskName));
+        cleanTask = target.getTasks().create(cleanName(lifecycleTaskName), Delete.class);
         cleanTask.setGroup("IDE");
         onApply(target);
     }
@@ -116,12 +146,14 @@ public abstract class IdePlugin implements Plugin<Project> {
         }
     }
 
-    protected void registerIdeArtifact(PublishArtifact ideArtifact) {
+    @Override
+    public void registerIdeArtifact(PublishArtifact ideArtifact) {
         ProjectLocalComponentProvider projectComponentProvider = ((ProjectInternal) project).getServices().get(ProjectLocalComponentProvider.class);
         ProjectComponentIdentifier projectId = newProjectId(project);
         projectComponentProvider.registerAdditionalArtifact(projectId, new PublishArtifactLocalArtifactMetadata(projectId, ideArtifact));
     }
 
+    @Override
     public List<LocalComponentArtifactMetadata> getIdeArtifactMetadata(String type) {
         ServiceRegistry serviceRegistry = ((ProjectInternal)project).getServices();
         List<LocalComponentArtifactMetadata> result = Lists.newArrayList();
@@ -130,15 +162,18 @@ public abstract class IdePlugin implements Plugin<Project> {
 
         for (Path projectPath : projectPathRegistry.getAllExplicitProjectPaths()) {
             ProjectComponentIdentifier projectId = projectPathRegistry.getProjectComponentIdentifier(projectPath);
-            LocalComponentArtifactMetadata artifactMetadata = localComponentRegistry.findAdditionalArtifact(projectId, type);
-            if (artifactMetadata != null) {
-                result.add(artifactMetadata);
+            Iterable<LocalComponentArtifactMetadata> additionalArtifacts = localComponentRegistry.getAdditionalArtifacts(projectId);
+            for (LocalComponentArtifactMetadata artifactMetadata : additionalArtifacts) {
+                if (artifactMetadata.getName().getType().equals(type)) {
+                    result.add(artifactMetadata);
+                }
             }
         }
 
         return result;
     }
 
+    @Override
     public FileCollection getIdeArtifacts(final String type) {
         return project.files(new Callable<List<FileCollection>>() {
             @Override

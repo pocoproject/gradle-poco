@@ -33,7 +33,6 @@ import org.gradle.nativeplatform.toolchain.internal.CommandLineToolInvocationWor
 import org.gradle.nativeplatform.toolchain.internal.DefaultCommandLineToolInvocationWorker;
 import org.gradle.nativeplatform.toolchain.internal.DefaultMutableCommandLineToolContext;
 import org.gradle.nativeplatform.toolchain.internal.MutableCommandLineToolContext;
-import org.gradle.nativeplatform.toolchain.internal.OutputCleaningCompiler;
 import org.gradle.nativeplatform.toolchain.internal.Stripper;
 import org.gradle.nativeplatform.toolchain.internal.SymbolExtractor;
 import org.gradle.nativeplatform.toolchain.internal.SymbolExtractorOsConfig;
@@ -43,8 +42,8 @@ import org.gradle.nativeplatform.toolchain.internal.gcc.ArStaticLibraryArchiver;
 import org.gradle.nativeplatform.toolchain.internal.swift.metadata.SwiftcMetadata;
 import org.gradle.nativeplatform.toolchain.internal.tools.CommandLineToolConfigurationInternal;
 import org.gradle.nativeplatform.toolchain.internal.tools.ToolSearchPath;
+import org.gradle.platform.base.internal.toolchain.ToolSearchResult;
 import org.gradle.process.internal.ExecActionFactory;
-import org.gradle.util.VersionNumber;
 
 class SwiftPlatformToolProvider extends AbstractPlatformToolProvider {
     private final ToolSearchPath toolSearchPath;
@@ -65,6 +64,23 @@ class SwiftPlatformToolProvider extends AbstractPlatformToolProvider {
     }
 
     @Override
+    public ToolSearchResult isToolAvailable(ToolType toolType) {
+        if (toolType == ToolType.SWIFT_COMPILER || toolType == ToolType.LINKER) {
+            return toolSearchPath.locate(toolType, "swiftc");
+        }
+        if (toolType == ToolType.STATIC_LIB_ARCHIVER) {
+            return toolSearchPath.locate(toolType, "ar");
+        }
+        if (toolType == ToolType.SYMBOL_EXTRACTOR) {
+            return toolSearchPath.locate(toolType, SymbolExtractorOsConfig.current().getExecutableName());
+        }
+        if (toolType == ToolType.STRIPPER) {
+            return toolSearchPath.locate(toolType, "strip");
+        }
+        throw new IllegalArgumentException();
+    }
+
+    @Override
     public <T extends CompileSpec> org.gradle.language.base.internal.compile.Compiler<T> newCompiler(Class<T> spec) {
         if (SwiftCompileSpec.class.isAssignableFrom(spec)) {
             return CompilerUtil.castCompiler(createSwiftCompiler());
@@ -80,10 +96,8 @@ class SwiftPlatformToolProvider extends AbstractPlatformToolProvider {
 
     protected Compiler<SwiftCompileSpec> createSwiftCompiler() {
         CommandLineToolConfigurationInternal swiftCompilerTool = (CommandLineToolConfigurationInternal) toolRegistry.getSwiftCompiler();
-        SwiftCompiler swiftCompiler = new SwiftCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool(ToolType.SWIFT_COMPILER, "swiftc"), context(swiftCompilerTool), getObjectFileExtension(), workerLeaseService);
-        // TODO - OutputCleaningCompiler shouldn't be required
-        OutputCleaningCompiler<SwiftCompileSpec> outputCleaningCompiler = new OutputCleaningCompiler<SwiftCompileSpec>(swiftCompiler, compilerOutputFileNamingSchemeFactory, getObjectFileExtension());
-        return new VersionAwareCompiler<SwiftCompileSpec>(outputCleaningCompiler, new DefaultCompilerVersion("swiftc", swiftcMetaData.getVendor(), VersionNumber.UNKNOWN));
+        SwiftCompiler swiftCompiler = new SwiftCompiler(buildOperationExecutor, compilerOutputFileNamingSchemeFactory, commandLineTool(ToolType.SWIFT_COMPILER, "swiftc"), context(swiftCompilerTool), getObjectFileExtension(), workerLeaseService, swiftcMetaData.getVersion());
+        return new VersionAwareCompiler<SwiftCompileSpec>(swiftCompiler, new DefaultCompilerVersion("swiftc", swiftcMetaData.getVendor(), swiftcMetaData.getVersion()));
     }
 
     @Override

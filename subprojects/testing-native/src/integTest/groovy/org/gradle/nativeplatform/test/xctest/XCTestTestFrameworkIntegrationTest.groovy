@@ -23,16 +23,13 @@ import org.gradle.nativeplatform.fixtures.app.XCTestCaseElement
 import org.gradle.nativeplatform.fixtures.app.XCTestSourceElement
 import org.gradle.nativeplatform.fixtures.app.XCTestSourceFileElement
 import org.gradle.testing.AbstractTestFrameworkIntegrationTest
-import org.gradle.util.Requires
-import org.gradle.util.TestPrecondition
 
 import static org.junit.Assume.assumeTrue
 
-@Requires(TestPrecondition.SWIFT_SUPPORT)
 class XCTestTestFrameworkIntegrationTest extends AbstractTestFrameworkIntegrationTest {
     def setup() {
-        def toolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFT)
-        assumeTrue(toolChain != null && toolChain.isAvailable())
+        def toolChain = AvailableToolChains.getToolChain(ToolChainRequirement.SWIFTC)
+        assumeTrue(toolChain != null)
 
         File initScript = file("init.gradle") << """
 allprojects { p ->

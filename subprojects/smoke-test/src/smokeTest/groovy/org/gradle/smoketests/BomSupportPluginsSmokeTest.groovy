@@ -16,7 +16,7 @@
 
 package org.gradle.smoketests
 
-import org.gradle.integtests.fixtures.ExperimentalFeaturesFixture
+import org.gradle.integtests.fixtures.FeaturePreviewsFixture
 import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
 import org.gradle.test.fixtures.file.TestFile
 import spock.lang.Unroll
@@ -33,7 +33,7 @@ class BomSupportPluginsSmokeTest extends AbstractSmokeTest {
         settingsFile << """
             rootProject.name = 'springbootproject'
         """
-        ExperimentalFeaturesFixture.enable(settingsFile)
+        FeaturePreviewsFixture.enableImprovedPomSupport(settingsFile)
         def buildScript = """
             plugins {
                 id "java"
@@ -130,19 +130,19 @@ class BomSupportPluginsSmokeTest extends AbstractSmokeTest {
                         module("org.hamcrest:hamcrest-core:1.3")
                     }.noArtifacts()
                 }
-                edge("org.springframework.boot:spring-boot-test-autoconfigure:", "org.springframework.boot:spring-boot-test-autoconfigure:$bomVersion", springBootTestAutoconfigureDeps).byReason(reason1)
-                edge("org.springframework.boot:spring-boot-test:", "org.springframework.boot:spring-boot-test:$bomVersion", springBootTestDeps).byReason(reason2)
-                edge("org.springframework.boot:spring-boot-autoconfigure:", "org.springframework.boot:spring-boot-autoconfigure:$bomVersion", springBootAutoconfigureDeps).byReason(reason2)
-                edge("org.springframework.boot:spring-boot:", "org.springframework.boot:spring-boot:$bomVersion", springBootDeps).byReason(reason2)
-                edge("org.springframework:spring-test:", "org.springframework:spring-test:4.3.12.RELEASE", springTestDeps).byReason(reason2)
-                edge("junit:junit:", "junit:junit:4.12", junitDeps).byReason(reason2)
+                edge("org.springframework.boot:spring-boot-test-autoconfigure", "org.springframework.boot:spring-boot-test-autoconfigure:$bomVersion", springBootTestAutoconfigureDeps).byReason(reason1)
+                edge("org.springframework.boot:spring-boot-test", "org.springframework.boot:spring-boot-test:$bomVersion", springBootTestDeps).byReason(reason2)
+                edge("org.springframework.boot:spring-boot-autoconfigure", "org.springframework.boot:spring-boot-autoconfigure:$bomVersion", springBootAutoconfigureDeps).byReason(reason2)
+                edge("org.springframework.boot:spring-boot", "org.springframework.boot:spring-boot:$bomVersion", springBootDeps).byReason(reason2)
+                edge("org.springframework:spring-test", "org.springframework:spring-test:4.3.12.RELEASE", springTestDeps).byReason(reason2)
+                edge("junit:junit", "junit:junit:4.12", junitDeps).byReason(reason2)
             }
         }
 
         where:
-        bomSupportProvider                    | directBomDependency | reason1          | reason2          | reason3          | bomDeclaration                                        | dependencyManagementPlugin
-        "gradle"                              | true                | "requested"      | "requested"      | "requested"      | "dependencies { implementation $bom }"                | ""
-        "nebula recommender plugin"           | false               | "selectedByRule" | "requested"      | "requested"      | "dependencyRecommendations { mavenBom module: $bom }" | "id 'nebula.dependency-recommender' version '5.1.0'"
-        "spring dependency management plugin" | false               | "selectedByRule" | "selectedByRule" | "selectedByRule" | "dependencyManagement { imports { mavenBom $bom } }"  | "id 'io.spring.dependency-management' version '1.0.4.RELEASE'"
+        bomSupportProvider                    | directBomDependency | reason1            | reason2            | reason3            | bomDeclaration                                        | dependencyManagementPlugin
+        "gradle"                              | true                | "requested"        | "requested"        | "requested"        | "dependencies { implementation $bom }"                | ""
+        "nebula recommender plugin"           | false               | "selected by rule" | "selected by rule" | "requested"        | "dependencyRecommendations { mavenBom module: $bom }" | "id 'nebula.dependency-recommender' version '5.1.0'"
+        "spring dependency management plugin" | false               | "selected by rule" | "selected by rule" | "selected by rule" | "dependencyManagement { imports { mavenBom $bom } }"  | "id 'io.spring.dependency-management' version '1.0.4.RELEASE'"
     }
 }

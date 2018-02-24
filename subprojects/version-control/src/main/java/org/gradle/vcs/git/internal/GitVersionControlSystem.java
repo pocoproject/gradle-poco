@@ -25,13 +25,17 @@ import org.eclipse.jgit.api.errors.JGitInternalException;
 import org.eclipse.jgit.lib.Config;
 import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.submodule.SubmoduleWalk;
 import org.eclipse.jgit.transport.URIish;
 import org.gradle.api.GradleException;
+import org.gradle.api.logging.Logger;
+import org.gradle.api.logging.Logging;
 import org.gradle.vcs.VersionControlSpec;
-import org.gradle.vcs.VersionControlSystem;
-import org.gradle.vcs.VersionRef;
 import org.gradle.vcs.git.GitVersionControlSpec;
+import org.gradle.vcs.internal.VersionControlSystem;
+import org.gradle.vcs.internal.VersionRef;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -44,13 +48,18 @@ import java.util.Set;
  * A Git {@link VersionControlSystem} implementation.
  */
 public class GitVersionControlSystem implements VersionControlSystem {
+
+    private static final Logger LOGGER = Logging.getLogger(GitVersionControlSystem.class);
+
     @Override
     public File populate(File versionDir, VersionRef ref, VersionControlSpec spec) {
         GitVersionControlSpec gitSpec = cast(spec);
         File workingDir = new File(versionDir, gitSpec.getRepoName());
 
-        // TODO: Assuming the default branch for the repository
         File dbDir = new File(workingDir, ".git");
+
+        LOGGER.info("Populating VCS workingDir {}/{} with ref {}", versionDir.getName(), workingDir.getName(), ref);
+
         if (dbDir.exists() && dbDir.isDirectory()) {
             updateRepo(workingDir, gitSpec, ref);
         } else {
@@ -64,7 +73,7 @@ public class GitVersionControlSystem implements VersionControlSystem {
         GitVersionControlSpec gitSpec = cast(spec);
         Collection<Ref> refs;
         try {
-            refs = Git.lsRemoteRepository().setRemote(normalizeUri(gitSpec.getUrl())).call();
+            refs = Git.lsRemoteRepository().setRemote(normalizeUri(gitSpec.getUrl())).setTags(true).setHeads(false).call();
         } catch (URISyntaxException e) {
             throw wrapGitCommandException("ls-remote", gitSpec.getUrl(), null, e);
         } catch (GitAPIException e) {
@@ -74,17 +83,55 @@ public class GitVersionControlSystem implements VersionControlSystem {
         for (Ref ref : refs) {
             GitVersionRef gitRef = GitVersionRef.from(ref);
             versions.add(gitRef);
-            // The HEAD reference in a Git Repository is a logical choice if the user is looking
-            // for the 'latest.integration' version of a dependency.
-            if (gitRef.getVersion().equals("HEAD")) {
-                versions.add(GitVersionRef.from("latest.integration", gitRef.getCanonicalId()));
-            }
         }
         return versions;
     }
 
+    @Override
+    public VersionRef getDefaultBranch(VersionControlSpec spec) {
+        GitVersionControlSpec gitSpec = cast(spec);
+        Collection<Ref> refs;
+        try {
+            refs = Git.lsRemoteRepository().setRemote(normalizeUri(gitSpec.getUrl())).setTags(false).call();
+        } catch (URISyntaxException e) {
+            throw wrapGitCommandException("ls-remote", gitSpec.getUrl(), null, e);
+        } catch (GitAPIException e) {
+            throw wrapGitCommandException("ls-remote", gitSpec.getUrl(), null, e);
+        }
+        for (Ref ref : refs) {
+            if (ref.getName().equals("refs/heads/master")) {
+                return GitVersionRef.from(ref);
+            }
+        }
+        throw new UnsupportedOperationException("Git repository has no master branch");
+    }
+
+    @Nullable
+    @Override
+    public VersionRef getBranch(VersionControlSpec spec, String branch) {
+        GitVersionControlSpec gitSpec = cast(spec);
+        Collection<Ref> refs;
+        try {
+            refs = Git.lsRemoteRepository().setRemote(normalizeUri(gitSpec.getUrl())).setHeads(true).setTags(false).call();
+        } catch (URISyntaxException e) {
+            throw wrapGitCommandException("ls-remote", gitSpec.getUrl(), null, e);
+        } catch (GitAPIException e) {
+            throw wrapGitCommandException("ls-remote", gitSpec.getUrl(), null, e);
+        }
+        String refName = "refs/heads/" + branch;
+        for (Ref ref : refs) {
+            if (ref.getName().equals(refName)) {
+                return GitVersionRef.from(ref);
+            }
+        }
+        return null;
+    }
+
     private static void cloneRepo(File workingDir, GitVersionControlSpec gitSpec, VersionRef ref) {
-        CloneCommand clone = Git.cloneRepository().setURI(gitSpec.getUrl().toString()).setDirectory(workingDir);
+        CloneCommand clone = Git.cloneRepository().
+            setURI(gitSpec.getUrl().toString()).
+            setDirectory(workingDir).
+            setCloneSubmodules(true);
         Git git = null;
         try {
             git = clone.call();
@@ -106,6 +153,7 @@ public class GitVersionControlSystem implements VersionControlSystem {
             git = Git.open(workingDir);
             git.fetch().setRemote(getRemoteForUrl(git.getRepository(), gitSpec.getUrl())).call();
             git.reset().setMode(ResetCommand.ResetType.HARD).setRef(ref.getCanonicalId()).call();
+            updateSubModules(git);
         } catch (IOException e) {
             throw wrapGitCommandException("update", gitSpec.getUrl(), workingDir, e);
         } catch (URISyntaxException e) {
@@ -118,6 +166,26 @@ public class GitVersionControlSystem implements VersionControlSystem {
             if (git != null) {
                 git.close();
             }
+        }
+    }
+
+    private static void updateSubModules(Git git) throws IOException, GitAPIException {
+        SubmoduleWalk walker = SubmoduleWalk.forIndex(git.getRepository());
+        try {
+            while (walker.next()) {
+                Repository submodule = walker.getRepository();
+                try {
+                    Git submoduleGit = Git.wrap(submodule);
+                    submoduleGit.fetch().call();
+                    git.submoduleUpdate().addPath(walker.getPath()).call();
+                    submoduleGit.reset().setMode(ResetCommand.ResetType.HARD).call();
+                    updateSubModules(submoduleGit);
+                } finally {
+                    submodule.close();
+                }
+            }
+        } finally {
+            walker.close();
         }
     }
 

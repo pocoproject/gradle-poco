@@ -37,7 +37,6 @@ import org.gradle.internal.concurrent.DefaultParallelismConfiguration;
 import org.gradle.internal.installation.CurrentGradleInstallation;
 import org.gradle.internal.installation.GradleInstallation;
 import org.gradle.internal.logging.DefaultLoggingConfiguration;
-import org.gradle.util.SingleMessageLogger;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -90,6 +89,7 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     private boolean refreshDependencies;
     private boolean recompileScripts;
     private boolean buildCacheEnabled;
+    private boolean buildCacheDebugLogging;
     private boolean configureOnDemand;
     private boolean continuous;
     private List<File> includedBuilds = new ArrayList<File>();
@@ -681,7 +681,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @since 3.5
      */
-    @Incubating
     public boolean isBuildCacheEnabled() {
         return buildCacheEnabled;
     }
@@ -691,32 +690,28 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @since 3.5
      */
-    @Incubating
     public void setBuildCacheEnabled(boolean buildCacheEnabled) {
         this.buildCacheEnabled = buildCacheEnabled;
     }
 
     /**
-     * Returns true if task output caching is enabled.
+     * Whether build cache debug logging is enabled.
      *
-     * @deprecated Use {@link #isBuildCacheEnabled()}
+     * @since 4.6
      */
     @Incubating
-    @Deprecated
-    public boolean isTaskOutputCacheEnabled() {
-        return isBuildCacheEnabled();
+    public boolean isBuildCacheDebugLogging() {
+        return buildCacheDebugLogging;
     }
 
     /**
-     * Enables/disables task output caching.
+     * Whether build cache debug logging is enabled.
      *
-     * @deprecated Use {@link #setBuildCacheEnabled(boolean)}
+     * @since 4.6
      */
     @Incubating
-    @Deprecated
-    public void setTaskOutputCacheEnabled(boolean buildCacheEnabled) {
-        SingleMessageLogger.nagUserOfReplacedMethod("StartParameter.setTaskOutputCacheEnabled", "StartParameter.setBuildCacheEnabled");
-        setBuildCacheEnabled(buildCacheEnabled);
+    public void setBuildCacheDebugLogging(boolean buildCacheDebugLogging) {
+        this.buildCacheDebugLogging = buildCacheDebugLogging;
     }
 
     /**

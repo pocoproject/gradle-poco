@@ -1,4 +1,3 @@
-
 /*
  * Copyright 2014 the original author or authors.
  *
@@ -20,6 +19,8 @@
  */
 plugins {
     id 'java-library'
+    id 'strict-compile'
+    id 'classycle'
 }
 
 sourceCompatibility = javaVersion.java9Compatible ? 1.6 : 1.5
@@ -27,14 +28,14 @@ sourceCompatibility = javaVersion.java9Compatible ? 1.6 : 1.5
 dependencies {
     api project(':baseServices')
     api project(':modelCore')
-    api libraries.groovy
+    api libraries.groovy.coordinates
 
     implementation project(':baseServicesGroovy')
-    implementation libraries.jcip
-    implementation libraries.guava
+    implementation libraries.jcip.coordinates
+    implementation libraries.guava.coordinates
 }
 
-useTestFixtures()
-useTestFixtures(project: ':modelCore', sourceSet: 'test')
-useClassycle()
-strictCompile()
+testFixtures {
+    from(':core')
+    from(':modelCore')
+}

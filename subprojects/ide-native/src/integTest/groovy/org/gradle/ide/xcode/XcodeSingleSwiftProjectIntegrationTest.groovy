@@ -17,7 +17,7 @@
 package org.gradle.ide.xcode
 
 import org.gradle.ide.xcode.fixtures.AbstractXcodeIntegrationSpec
-import org.gradle.ide.xcode.fixtures.XcodebuildExecuter
+import org.gradle.ide.xcode.fixtures.XcodebuildExecutor
 import org.gradle.ide.xcode.internal.DefaultXcodeProject
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.app.SwiftApp
@@ -28,7 +28,10 @@ import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
 
 class XcodeSingleSwiftProjectIntegrationTest extends AbstractXcodeIntegrationSpec {
+
     def "can create xcode project for Swift application"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-application'
@@ -60,6 +63,8 @@ apply plugin: 'swift-application'
     }
 
     def "can create xcode project for Swift library"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-library'
@@ -90,6 +95,8 @@ apply plugin: 'swift-library'
     }
 
     def "can create xcode project for Swift static library"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
             apply plugin: 'swift-library'
@@ -163,6 +170,8 @@ apply plugin: 'swift-library'
     }
 
     def "can create xcode project for Swift application with xctest"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-application'
@@ -197,6 +206,8 @@ apply plugin: 'xctest'
     }
 
     def "can create xcode project for Swift library and xctest"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-library'
@@ -246,7 +257,7 @@ apply plugin: 'swift-application'
         def resultDebug = xcodebuild
             .withProject(rootXcodeProject)
             .withScheme("App")
-            .fails(XcodebuildExecuter.XcodeAction.TEST)
+            .fails(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         resultDebug.error.contains("Scheme App is not currently configured for the test action.")
@@ -256,7 +267,7 @@ apply plugin: 'swift-application'
             .withProject(rootXcodeProject)
             .withScheme("App")
             .withConfiguration(DefaultXcodeProject.BUILD_RELEASE)
-            .fails(XcodebuildExecuter.XcodeAction.TEST)
+            .fails(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         resultRelease.error.contains("Scheme App is not currently configured for the test action.")
@@ -266,7 +277,7 @@ apply plugin: 'swift-application'
             .withProject(rootXcodeProject)
             .withScheme("App")
             .withConfiguration(DefaultXcodeProject.TEST_DEBUG)
-            .fails(XcodebuildExecuter.XcodeAction.TEST)
+            .fails(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         resultRunner.error.contains("Scheme App is not currently configured for the test action.")
@@ -289,7 +300,7 @@ apply plugin: 'swift-library'
         def resultDebug = xcodebuild
             .withProject(rootXcodeProject)
             .withScheme("App")
-            .fails(XcodebuildExecuter.XcodeAction.TEST)
+            .fails(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         resultDebug.error.contains("Scheme App is not currently configured for the test action.")
@@ -299,7 +310,7 @@ apply plugin: 'swift-library'
             .withProject(rootXcodeProject)
             .withScheme("App")
             .withConfiguration(DefaultXcodeProject.BUILD_RELEASE)
-            .fails(XcodebuildExecuter.XcodeAction.TEST)
+            .fails(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         resultRelease.error.contains("Scheme App is not currently configured for the test action.")
@@ -323,7 +334,7 @@ apply plugin: 'swift-library'
         def resultDebugWithoutXCTest = xcodebuild
             .withProject(xcodeProject("greeter.xcodeproj"))
             .withScheme("Greeter")
-            .fails(XcodebuildExecuter.XcodeAction.TEST)
+            .fails(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         resultDebugWithoutXCTest.error.contains("Scheme Greeter is not currently configured for the test action.")
@@ -334,7 +345,7 @@ apply plugin: 'swift-library'
         def resultDebugWithXCTest = xcodebuild
             .withProject(xcodeProject("greeter.xcodeproj"))
             .withScheme("Greeter")
-            .succeeds(XcodebuildExecuter.XcodeAction.TEST)
+            .succeeds(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         !resultDebugWithXCTest.error.contains("Scheme Greeter is not currently configured for the test action.")
@@ -362,7 +373,7 @@ apply plugin: 'xctest'
         def resultTestRunner = xcodebuild
             .withProject(xcodeProject("greeter.xcodeproj"))
             .withScheme("Greeter")
-            .succeeds(XcodebuildExecuter.XcodeAction.TEST)
+            .succeeds(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         resultTestRunner.assertTasksExecuted(':compileDebugSwift', ':compileTestSwift', ':linkTest', ':installTest',
@@ -393,7 +404,7 @@ apply plugin: 'xctest'
         def resultTestRunner = xcodebuild
             .withProject(xcodeProject("app.xcodeproj"))
             .withScheme("App")
-            .succeeds(XcodebuildExecuter.XcodeAction.TEST)
+            .succeeds(XcodebuildExecutor.XcodeAction.TEST)
 
         then:
         resultTestRunner.assertTasksExecuted(':compileDebugSwift', ':compileTestSwift', ":relocateMainForTest", ':linkTest', ':installTest',
@@ -495,7 +506,7 @@ apply plugin: 'swift-application'
         xcodebuild
             .withProject(rootXcodeProject)
             .withScheme('App')
-            .succeeds(XcodebuildExecuter.XcodeAction.CLEAN)
+            .succeeds(XcodebuildExecutor.XcodeAction.CLEAN)
         then:
         file("build").assertDoesNotExist()
     }
@@ -544,6 +555,8 @@ apply plugin: 'swift-library'
     }
 
     def "adds new source files in the project"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-application'
@@ -567,6 +580,8 @@ apply plugin: 'swift-application'
     }
 
     def "removes deleted source files from the project"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-application'
@@ -591,6 +606,8 @@ apply plugin: 'swift-application'
     }
 
     def "includes source files in a non-default location in Swift application project"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-application'
@@ -611,6 +628,8 @@ application {
     }
 
     def "includes source files in a non-default location in Swift library project"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-library'
@@ -631,6 +650,8 @@ library {
     }
 
     def "honors changes to executable output file locations"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-application'
@@ -660,6 +681,8 @@ application.module = 'TestApp'
     }
 
     def "honors changes to library output file locations"() {
+        requireSwiftToolChain()
+
         given:
         buildFile << """
 apply plugin: 'swift-library'

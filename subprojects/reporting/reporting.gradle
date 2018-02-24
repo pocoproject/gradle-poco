@@ -13,15 +13,19 @@ repositories {
 }
 
 dependencies {
-    compile libraries.groovy
+    compile libraries.groovy.coordinates
     compile project(':core')
-    compile libraries.jatl
+    compile libraries.jatl.coordinates
 
-    testCompile libraries.jsoup
+    testCompile testLibraries.jsoup
     integTestRuntime project(':codeQuality')
     integTestRuntime project(':jacoco')
 
     reports "jquery:jquery.min:1.11.0@js"
+}
+
+testFixtures {
+    from(':core')
 }
 
 task reportResources(type: Copy) {
@@ -29,5 +33,3 @@ task reportResources(type: Copy) {
     into "$generatedResourcesDir/org/gradle/reporting"
 }
 sourceSets.main.output.dir generatedResourcesDir, builtBy: reportResources
-
-useTestFixtures()

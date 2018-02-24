@@ -21,7 +21,7 @@ import org.gradle.test.fixtures.file.TestFile
 import org.junit.Before
 
 @SelfType(AbstractIntegrationSpec)
-trait DirectoryBuildCacheFixture extends BuildCacheFixture {
+trait DirectoryBuildCacheFixture {
     private TestBuildCache buildCache
 
     @Before
@@ -43,19 +43,7 @@ trait DirectoryBuildCacheFixture extends BuildCacheFixture {
         buildCache.gcFile()
     }
 
-    List<TestFile> listCacheTempFiles() {
-        buildCache.listCacheTempFiles()
-    }
-
     List<TestFile> listCacheFiles() {
         buildCache.listCacheFiles()
-    }
-
-    List<TestFile> listCacheFailedFiles() {
-        buildCache.listCacheFailedFiles()
-    }
-
-    TestFile cacheArtifact(String cacheKey) {
-        buildCache.cacheArtifact(cacheKey)
     }
 }

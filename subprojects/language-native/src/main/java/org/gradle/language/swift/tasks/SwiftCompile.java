@@ -16,6 +16,9 @@
 
 package org.gradle.language.swift.tasks;
 
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Incubating;
 import org.gradle.api.file.ConfigurableFileCollection;
@@ -33,26 +36,35 @@ import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
+import org.gradle.api.tasks.SkipWhenEmpty;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.api.tasks.WorkResult;
+import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
+import org.gradle.api.tasks.incremental.InputFileDetails;
 import org.gradle.internal.operations.logging.BuildOperationLogger;
 import org.gradle.internal.operations.logging.BuildOperationLoggerFactory;
 import org.gradle.language.base.compile.CompilerVersion;
 import org.gradle.language.base.internal.compile.Compiler;
 import org.gradle.language.base.internal.compile.VersionAwareCompiler;
-import org.gradle.language.base.internal.tasks.SimpleStaleClassCleaner;
+import org.gradle.language.swift.SwiftVersion;
 import org.gradle.language.swift.tasks.internal.DefaultSwiftCompileSpec;
 import org.gradle.nativeplatform.internal.BuildOperationLoggingCompilerDecorator;
+import org.gradle.nativeplatform.internal.CompilerOutputFileNamingSchemeFactory;
 import org.gradle.nativeplatform.platform.NativePlatform;
 import org.gradle.nativeplatform.platform.internal.NativePlatformInternal;
 import org.gradle.nativeplatform.toolchain.NativeToolChain;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
 import org.gradle.nativeplatform.toolchain.internal.compilespec.SwiftCompileSpec;
+import org.gradle.nativeplatform.toolchain.internal.swift.IncrementalSwiftCompiler;
 
+import javax.inject.Inject;
 import java.io.File;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Compiles Swift source files into object files.
@@ -72,15 +84,20 @@ public class SwiftCompile extends DefaultTask {
     private final ListProperty<String> compilerArgs;
     private final DirectoryProperty objectFileDir;
     private final ConfigurableFileCollection source;
+    private final Property<SwiftVersion> sourceCompatibility;
+    private final CompilerOutputFileNamingSchemeFactory compilerOutputFileNamingSchemeFactory;
     private final Map<String, String> macros = new LinkedHashMap<String, String>();
 
-    public SwiftCompile() {
+    @Inject
+    public SwiftCompile(CompilerOutputFileNamingSchemeFactory compilerOutputFileNamingSchemeFactory) {
+        this.compilerOutputFileNamingSchemeFactory = compilerOutputFileNamingSchemeFactory;
         source = getProject().files();
         compilerArgs = getProject().getObjects().listProperty(String.class);
         objectFileDir = newOutputDirectory();
         moduleName = getProject().getObjects().property(String.class);
         moduleFile = newOutputFile();
         modules = getProject().files();
+        sourceCompatibility = getProject().getObjects().property(SwiftVersion.class);
     }
 
     /**
@@ -127,6 +144,7 @@ public class SwiftCompile extends DefaultTask {
      * @since 4.4
      */
     @InputFiles
+    @SkipWhenEmpty
     @PathSensitive(PathSensitivity.RELATIVE)
     public ConfigurableFileCollection getSource() {
         return source;
@@ -241,6 +259,16 @@ public class SwiftCompile extends DefaultTask {
     }
 
     /**
+     * Returns the Swift language level to use to compile the source files.
+     *
+     * @since 4.6
+     */
+    @Input
+    public Property<SwiftVersion> getSourceCompatibility() {
+        return sourceCompatibility;
+    }
+
+    /**
      * The compiler used, including the type and the version.
      *
      * @since 4.4
@@ -255,18 +283,51 @@ public class SwiftCompile extends DefaultTask {
     }
 
     @TaskAction
-    void compile() {
-        SimpleStaleClassCleaner cleaner = new SimpleStaleClassCleaner(getOutputs());
-        cleaner.setDestinationDir(getObjectFileDir().getAsFile().get());
-        cleaner.execute();
+    void compile(IncrementalTaskInputs inputs) {
+        final List<File> removedFiles = Lists.newArrayList();
+        final Set<File> changedFiles = Sets.newHashSet();
+        boolean isIncremental = inputs.isIncremental();
 
-        if (getSource().isEmpty()) {
-            setDidWork(cleaner.getDidWork());
-            return;
+        // TODO: This should become smarter and move into the compiler infrastructure instead
+        // of the task, similar to how the other native languages are done.
+        // For now, this does a rudimentary incremental build analysis by looking at
+        // which files changed and marking the compilation incremental or not.
+        if (isIncremental) {
+            inputs.outOfDate(new Action<InputFileDetails>() {
+                @Override
+                public void execute(InputFileDetails inputFileDetails) {
+                    if (inputFileDetails.isModified()) {
+                        changedFiles.add(inputFileDetails.getFile());
+                    }
+                }
+            });
+            inputs.removed(new Action<InputFileDetails>() {
+                @Override
+                public void execute(InputFileDetails removed) {
+                    removedFiles.add(removed.getFile());
+                }
+            });
+
+            Set<File> allSourceFiles = getSource().getFiles();
+            if (!allSourceFiles.containsAll(changedFiles)) {
+                // If a non-source file changed, the compilation cannot be incremental
+                // due to the way the Swift compiler detects changes from other modules
+                isIncremental = false;
+            }
         }
 
         BuildOperationLogger operationLogger = getServices().get(BuildOperationLoggerFactory.class).newOperationLogger(getName(), getTemporaryDir());
 
+        SwiftCompileSpec spec = createSpec(operationLogger, isIncremental, changedFiles, removedFiles);
+
+        PlatformToolProvider platformToolProvider = toolChain.select(targetPlatform);
+        Compiler<SwiftCompileSpec> baseCompiler = new IncrementalSwiftCompiler(platformToolProvider.newCompiler(SwiftCompileSpec.class), getOutputs(), compilerOutputFileNamingSchemeFactory);
+        Compiler<SwiftCompileSpec> loggingCompiler = BuildOperationLoggingCompilerDecorator.wrap(baseCompiler);
+        WorkResult result = loggingCompiler.execute(spec);
+        setDidWork(result.getDidWork());
+    }
+
+    private SwiftCompileSpec createSpec(BuildOperationLogger operationLogger, boolean isIncremental, Collection<File> changedFiles, Collection<File> removedFiles) {
         SwiftCompileSpec spec = new DefaultSwiftCompileSpec();
         spec.setModuleName(moduleName.getOrNull());
         spec.setModuleFile(moduleFile.get().getAsFile());
@@ -282,17 +343,15 @@ public class SwiftCompile extends DefaultTask {
         spec.setTempDir(getTemporaryDir());
         spec.setObjectFileDir(objectFileDir.get().getAsFile());
         spec.source(getSource());
+        spec.setRemovedSourceFiles(removedFiles);
+        spec.setChangedFiles(changedFiles);
         spec.setMacros(getMacros());
         spec.args(getCompilerArgs().get());
         spec.setDebuggable(isDebuggable());
         spec.setOptimized(isOptimized());
-        spec.setIncrementalCompile(false);
+        spec.setIncrementalCompile(isIncremental);
         spec.setOperationLogger(operationLogger);
-
-        PlatformToolProvider platformToolProvider = toolChain.select(targetPlatform);
-        Compiler<SwiftCompileSpec> baseCompiler = platformToolProvider.newCompiler(SwiftCompileSpec.class);
-        Compiler<SwiftCompileSpec> loggingCompiler = BuildOperationLoggingCompilerDecorator.wrap(baseCompiler);
-        WorkResult result = loggingCompiler.execute(spec);
-        setDidWork(result.getDidWork());
+        spec.setSourceCompatibility(sourceCompatibility.get());
+        return spec;
     }
 }
