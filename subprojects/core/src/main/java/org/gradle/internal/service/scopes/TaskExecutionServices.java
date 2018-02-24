@@ -54,7 +54,6 @@ import org.gradle.api.internal.tasks.execution.ResolveBuildCacheKeyExecuter;
 import org.gradle.api.internal.tasks.execution.ResolveTaskArtifactStateTaskExecuter;
 import org.gradle.api.internal.tasks.execution.ResolveTaskOutputCachingStateExecuter;
 import org.gradle.api.internal.tasks.execution.SkipCachedTaskExecuter;
-import org.gradle.api.internal.tasks.execution.SkipDisabledTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipEmptySourceFilesTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter;
