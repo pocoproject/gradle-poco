@@ -3,6 +3,8 @@ The Gradle team is pleased to announce Gradle 4.6.
 First and foremost, this release of Gradle includes built-in support for JUnit Platform and the JUnit Jupiter/Vintage Engine, also known as [JUnit 5 support](#junit-5-support).
 You can use the new filtering and engines functionality in JUnit 5 using the examples provided below and in the documentation.
 
+Thank you to the [JUnit team](https://github.com/orgs/junit-team/people) for helping to achieve JUnit Platform support, and a special thank you to [Andrew Oberstar](https://github.com/ajoberstar) for extraordinary contributions toward this effort.
+
 Also regarding testing, you can now improve your testing feedback loop when running JVM-based tests using the [new fail-fast option for `Test` tasks](#fail-fast-option-for-test-tasks), which stops the build immediately after the first test failure.
 
     // Example JUnit 5 and fail-fast test configuration
@@ -15,7 +17,7 @@ Also regarding testing, you can now improve your testing feedback loop when runn
         failFast = true
     }
 
-Next, you can now [declare dependency constraints for transitive dependencies](#dependency-constraints-for-transitive-dependencies) and avoid problems caused by oft-hidden upstream dependency changes. 
+Moving on to dependency management improvements: you can now [declare dependency constraints for transitive dependencies](#dependency-constraints-for-transitive-dependencies) and avoid problems caused by oft-hidden upstream dependency changes. 
 
 This release also features enhanced Maven dependency compatibility: support for [importing BOMs](#bom-import), [optional dependencies](#support-for-optional-dependencies-in-pom-consumption), and [compile/runtime separation when consuming POMs](#compile/runtime-scope-separation-in-pom-consumption).
 For now you must enable these features by adding `enableFeaturePreview('IMPROVED_POM_SUPPORT')` to your _settings.gradle_ file, as they break backward compatibility in some cases.
@@ -34,7 +36,7 @@ Switch your build to use Gradle 4.6 quickly by updating your wrapper properties:
 
     gradle wrapper --gradle-version=4.6
 
-Standalone downloads are available at [gradle.org/install](https://gradle.org/install). 
+Standalone downloads are available at [gradle.org/releases](https://gradle.org/releases). 
 
 ## New and noteworthy
 
@@ -74,8 +76,8 @@ You can find more information on [test grouping and filtering in the Java Plugin
 To enable `JUnit Jupiter` support, add the following dependencies:
 
     dependencies {
-        testImplementation 'org.junit.jupiter:junit-jupiter-api:5.0.3'
-        testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.0.3'
+        testImplementation 'org.junit.jupiter:junit-jupiter-api:5.1.0'
+        testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.1.0'
     }      
 
 Put your first `Jupiter` test into `src/test/java/foo/bar`:
@@ -104,7 +106,7 @@ If you want to run JUnit 3/4 tests on `JUnit Platform`, you should add extra `JU
     
     dependencies {
         testCompileOnly 'junit:junit:4.12' 
-        testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:4.12.3' 
+        testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:5.1.0' 
     }
     
 You can mix JUnit 3/4 tests with `Jupiter` tests without the need to rewrite old tests.
@@ -208,7 +210,7 @@ Since Gradle 1.0, `runtime` scoped dependencies have been included in the Java c
 - The compile classpath is much larger than it needs to be, slowing down compilation.
 - The compile classpath includes `runtime` files that do not impact compilation, resulting in unnecessary re-compilation when these files change.
 
-Now, if this new behavior is turned on, the Java and Java Library plugins both [honor the separation of compile and runtime scopes](userguide/javaLibraryPlugin.html#sec:java_library_separation).
+Now, if this new behavior is turned on, the Java and Java Library plugins both [honor the separation of compile and runtime scopes](userguide/java_library_plugin.html#sec:java_library_separation).
 Meaning that the compile classpath only includes `compile` scoped dependencies, while the runtime classpath adds the `runtime` scoped dependencies as well.
 This is in particular useful if you develop and publish Java libraries with Gradle where the api/implementation dependencies separation is reflected in the published scopes.
 
@@ -337,9 +339,19 @@ Previous versions of Gradle would only generate Visual Studio solution files for
 
 ### Improvements in gradle-native plugins
 
-The `gradle-native` has been working on adding new features for building with native languages (like C++). As mentioned above, Gradle now generates a single Visual Studio solution for a multi-project build. Other unannounced features have continued to be developed, which we hope to detail in a future [blog post](https://blog.gradle.org/).
+The `gradle-native` has been working on adding new features for building with native languages (like C++). As mentioned above, Gradle now generates a single Visual Studio solution for a multi-project build. Other unannounced features have continued to be developed, which we hope to detail in a [future blog post](https://blog.gradle.org/).
 
 Highlights to the `gradle-native` plugins will continue to be mentioned in Gradle's release notes, but more information will be provided in the [gradle-native release notes](https://github.com/gradle/gradle-native/blob/master/docs/RELEASE-NOTES.md#changes-included-in-gradle-46).
+
+### Documentation updates
+
+Documentation in this release of Gradle has significantly improved in the following areas:
+ 
+ * Dependency management, especially regarding [managing dependency configurations](userguide/managing_dependency_configurations.html) and [understanding terminology](userguide/dependency_management_terminology.html)
+ * [Troubleshooting](userguide/troubleshooting.html)
+ * [Installation](userguide/installation.html)
+
+Please reach out to [@gradle on Twitter](https://twitter.com/gradle) or [through GitHub](https://github.com/gradle/gradle/issues) to provide feedback to help ensure improvements are useful for you.
 
 ### Honour cache-expiry settings in the presence of detached configurations
 
@@ -464,6 +476,7 @@ We would like to thank the following community members for making contributions 
 <!--
  - [Some person](https://github.com/some-person) - fixed some issue (gradle/gradle#1234)
 -->
+ - [Andrew Oberstar](https://github.com/ajoberstar) - Spike multiple JUnit 5 implementations (gradle/gradle#3886)
  - [Thomas Broyer](https://github.com/tbroyer) - Add annotationProcessor configuration for each source set (gradle/gradle#3786)
  - [Sergei Dryganets](https://github.com/dryganets) - Improved gpg instructions in signing plugin documentation (gradle/gradle#4023)
  - [Kevin Macksamie](https://github.com/k-mack) - Fix xref id to java-gradle-plugin section of user guide (gradle/gradle#4179)
