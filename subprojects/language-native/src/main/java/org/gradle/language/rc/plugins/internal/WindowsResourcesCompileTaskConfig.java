@@ -15,7 +15,10 @@
  */
 package org.gradle.language.rc.plugins.internal;
 
-import com.google.common.collect.ImmutableSet;
+import java.io.File;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
@@ -32,6 +35,7 @@ import org.gradle.language.rc.WindowsResourceSet;
 import org.gradle.language.rc.tasks.WindowsResourceCompile;
 import org.gradle.nativeplatform.PreprocessingTool;
 import org.gradle.nativeplatform.internal.NativeBinarySpecInternal;
+import org.gradle.nativeplatform.internal.SemiStaticLibraryBinarySpecInternal;
 import org.gradle.nativeplatform.internal.StaticLibraryBinarySpecInternal;
 import org.gradle.nativeplatform.platform.internal.NativePlatformInternal;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
@@ -40,9 +44,7 @@ import org.gradle.nativeplatform.toolchain.internal.SystemIncludesAwarePlatformT
 import org.gradle.nativeplatform.toolchain.internal.ToolType;
 import org.gradle.platform.base.BinarySpec;
 
-import java.io.File;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import com.google.common.collect.ImmutableSet;
 
 public class WindowsResourcesCompileTaskConfig implements SourceTransformTaskConfig {
     @Override
@@ -98,6 +100,9 @@ public class WindowsResourcesCompileTaskConfig implements SourceTransformTaskCon
         binary.binaryInputs(resourceOutputs);
         if (binary instanceof StaticLibraryBinarySpecInternal) {
             ((StaticLibraryBinarySpecInternal) binary).additionalLinkFiles(resourceOutputs);
+        }
+        if (binary instanceof SemiStaticLibraryBinarySpecInternal) {
+            ((SemiStaticLibraryBinarySpecInternal) binary).additionalLinkFiles(resourceOutputs);
         }
     }
 

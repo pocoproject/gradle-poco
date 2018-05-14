@@ -24,7 +24,7 @@ import org.gradle.platform.base.BinaryTasksCollection;
 import java.io.File;
 
 /**
- * A static library binary built by Gradle for a native library.
+ * A semi static library binary built by Gradle for a native library.
  */
 @Incubating
 public interface SemiStaticLibraryBinarySpec extends NativeLibraryBinarySpec {

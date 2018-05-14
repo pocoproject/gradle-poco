@@ -73,6 +73,7 @@ public class BinarySourceTransformations {
                 Task task = tasks.create(taskName, taskConfig.getTaskType());
                 taskConfig.configureTask(task, binary, sourceSetToCompile, serviceRegistry);
 
+                
                 task.dependsOn(sourceSetToCompile);
                 binary.getTasks().add(task);
 

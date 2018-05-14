@@ -265,6 +265,9 @@ model {
             binaries.withType(StaticLibraryBinarySpec) {
                 staticLibraryFile = modPath(staticLibraryFile)
             }
+            binaries.withType(SemiStaticLibraryBinarySpec) {
+                staticLibraryFile = modPath(staticLibraryFile)
+            }
         }
     }
 }
@@ -346,6 +349,9 @@ model {
                 sharedLibraryLinkFile = modPath(sharedLibraryLinkFile)
             }
             binaries.withType(StaticLibraryBinarySpec) {
+                staticLibraryFile = modPath(staticLibraryFile)
+            }
+            binaries.withType(SemiStaticLibraryBinarySpec) {
                 staticLibraryFile = modPath(staticLibraryFile)
             }
         }

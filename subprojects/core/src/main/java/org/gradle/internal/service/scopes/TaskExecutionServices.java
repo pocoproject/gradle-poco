@@ -56,6 +56,7 @@ import org.gradle.api.internal.tasks.execution.ResolveTaskOutputCachingStateExec
 import org.gradle.api.internal.tasks.execution.SkipCachedTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipEmptySourceFilesTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter;
+import org.gradle.api.internal.tasks.execution.SkipSemiStaticExecuter;
 import org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter;
 import org.gradle.api.internal.tasks.execution.SkipUpToDateTaskExecuter;
 import org.gradle.api.internal.tasks.execution.TaskOutputChangesListener;

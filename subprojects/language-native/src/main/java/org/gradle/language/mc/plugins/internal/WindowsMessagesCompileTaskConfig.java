@@ -15,6 +15,10 @@
  */
 package org.gradle.language.mc.plugins.internal;
 
+import java.io.File;
+import java.util.Set;
+import java.util.concurrent.Callable;
+
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
@@ -28,12 +32,9 @@ import org.gradle.language.mc.WindowsMessageSet;
 import org.gradle.language.mc.tasks.WindowsMessageCompile;
 import org.gradle.nativeplatform.PreprocessingTool;
 import org.gradle.nativeplatform.internal.NativeBinarySpecInternal;
+import org.gradle.nativeplatform.internal.SemiStaticLibraryBinarySpecInternal;
 import org.gradle.nativeplatform.internal.StaticLibraryBinarySpecInternal;
 import org.gradle.platform.base.BinarySpec;
-
-import java.io.File;
-import java.util.Set;
-import java.util.concurrent.Callable;
 
 public class WindowsMessagesCompileTaskConfig implements SourceTransformTaskConfig {
     @Override
@@ -75,6 +76,9 @@ public class WindowsMessagesCompileTaskConfig implements SourceTransformTaskConf
         binary.binaryInputs(resourceOutputs);
         if (binary instanceof StaticLibraryBinarySpecInternal) {
             ((StaticLibraryBinarySpecInternal) binary).additionalLinkFiles(resourceOutputs);
+        }
+        if (binary instanceof SemiStaticLibraryBinarySpecInternal) {
+            ((SemiStaticLibraryBinarySpecInternal) binary).additionalLinkFiles(resourceOutputs);
         }
     }
 
