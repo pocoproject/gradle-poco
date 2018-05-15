@@ -16,6 +16,8 @@
 
 package org.gradle.api.internal.tasks.compile.processing;
 
+import org.gradle.api.internal.tasks.compile.incremental.processing.AnnotationProcessingResult;
+
 import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
 import javax.lang.model.element.Element;
@@ -30,27 +32,29 @@ import java.io.IOException;
  * annotation processors don't break the incremental processing contract.
  */
 abstract class IncrementalFiler implements Filer {
-    private final Filer delegate;
-    private final Messager messager;
+    protected final Filer delegate;
+    protected final AnnotationProcessingResult result;
+    protected final Messager messager;
 
-    IncrementalFiler(Filer delegate, Messager messager) {
+    IncrementalFiler(Filer delegate, AnnotationProcessingResult result, Messager messager) {
         this.delegate = delegate;
+        this.result = result;
         this.messager = messager;
     }
 
     @Override
     public final JavaFileObject createSourceFile(CharSequence name, Element... originatingElements) throws IOException {
-        checkOriginatingElements(name, originatingElements, messager);
+        recordGeneratedType(name, originatingElements);
         return delegate.createSourceFile(name, originatingElements);
     }
 
     @Override
     public final JavaFileObject createClassFile(CharSequence name, Element... originatingElements) throws IOException {
-        checkOriginatingElements(name, originatingElements, messager);
+        recordGeneratedType(name, originatingElements);
         return delegate.createClassFile(name, originatingElements);
     }
 
-    protected abstract void checkOriginatingElements(CharSequence name, Element[] originatingElements, Messager messager);
+    protected abstract void recordGeneratedType(CharSequence name, Element[] originatingElements);
 
     @Override
     public final FileObject createResource(JavaFileManager.Location location, CharSequence pkg, CharSequence relativeName, Element... originatingElements) throws IOException {

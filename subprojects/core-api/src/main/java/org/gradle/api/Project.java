@@ -402,7 +402,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      * @param name The name of the property
      * @param value The value of the property
      */
-    void setProperty(String name, Object value) throws MissingPropertyException;
+    void setProperty(String name, @Nullable Object value) throws MissingPropertyException;
 
     /**
      * <p>Returns this project. This method is useful in build files to explicitly access project properties and
@@ -1229,7 +1229,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
 
     /**
      * <p>Returns the {@link Convention} for this project.</p> <p>You can access this property in your build file
-     * using <code>convention</code>. You can also can also access the properties and methods of the convention object
+     * using <code>convention</code>. You can also access the properties and methods of the convention object
      * as if they were properties and methods of this project. See <a href="#properties">here</a> for more details</p>
      *
      * @return The <code>Convention</code>. Never returns null.
@@ -1407,7 +1407,7 @@ public interface Project extends Comparable<Project>, ExtensionAware, PluginAwar
      * @return The value of the property, possibly null or null if not found.
      * @see Project#property(String)
      */
-    @Incubating @Nullable
+    @Nullable
     Object findProperty(String propertyName);
 
     /**

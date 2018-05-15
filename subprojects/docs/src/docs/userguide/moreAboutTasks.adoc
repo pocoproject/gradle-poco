@@ -586,7 +586,15 @@ This means that changes which only touch the implementation of classes do not ma
 When analyzing `@api:org.gradle.api.tasks.Nested[]` task properties for declared input and output sub-properties Gradle uses the type of the actual value.
 Hence it can discover all sub-properties declared by a runtime sub-type.
 
+When adding `@api:org.gradle.api.tasks.Nested[]` to a `@api:org.gradle.api.provider.Provider[]`, the value of the `Provider` is treated as a nested input.
+
 When adding `@api:org.gradle.api.tasks.Nested[]` to an iterable, each element is treated as a separate nested input.
+Each nested input in the iterable is assigned a name, which by default is the dollar sign followed by the index in the iterable, e.g. `$2`.
+If an element of the iterable implements `api:org.gradle.api.Named[]`, then the name is used as property name.
+The ordering of the elements in the iterable is crucial for for reliable up-to-date checks and caching if not all of the elements implement `api:org.gradle.api.Named[]`.
+Multiple elements which have the same name are not allowed.
+
+When adding `@api:org.gradle.api.tasks.Nested[]` to a map, then for each value a nested input is added, using the key as name.
 
 The type and classpath of nested inputs is tracked, too.
 This ensures that changes to the implementation of a nested input causes the build to be out of date.
@@ -764,7 +772,7 @@ You will occasionally want to disable some of this validation, specifically when
 
 Another benefit of defining task inputs and outputs is continuous build. Since Gradle knows what files a task depends on, it can automatically run a task again if any of its inputs change. By activating continuous build when you run Gradle - through the `--continuous` or `-t` options - you will put Gradle into a state in which it continually checks for changes and executes the requested tasks when it encounters such changes.
 
-You can find out more about this feature in <<continuous_build>>.
+You can find out more about this feature in <<sec:continuous_build>>.
 
 
 [[sec:task_input_output_parallelism]]

@@ -16,10 +16,11 @@
 
 package org.gradle.api.internal.tasks.compile;
 
+import org.gradle.api.internal.tasks.compile.incremental.processing.AnnotationProcessingResult;
 import org.gradle.api.internal.tasks.compile.processing.AnnotationProcessorDeclaration;
 import org.gradle.api.internal.tasks.compile.processing.IncrementalAnnotationProcessorType;
-import org.gradle.api.internal.tasks.compile.processing.MultipleOriginProcessor;
-import org.gradle.api.internal.tasks.compile.processing.SingleOriginProcessor;
+import org.gradle.api.internal.tasks.compile.processing.AggregatingProcessor;
+import org.gradle.api.internal.tasks.compile.processing.IsolatingProcessor;
 import org.gradle.internal.classpath.DefaultClassPath;
 import org.gradle.internal.concurrent.CompositeStoppable;
 
@@ -42,14 +43,16 @@ class IncrementalAnnotationProcessingCompileTask implements JavaCompiler.Compila
     private final JavaCompiler.CompilationTask delegate;
     private final Set<AnnotationProcessorDeclaration> processorDeclarations;
     private final List<File> annotationProcessorPath;
+    private final AnnotationProcessingResult result;
 
     private URLClassLoader processorClassloader;
     private boolean called;
 
-    IncrementalAnnotationProcessingCompileTask(JavaCompiler.CompilationTask delegate, Set<AnnotationProcessorDeclaration> processorDeclarations, List<File> annotationProcessorPath) {
+    IncrementalAnnotationProcessingCompileTask(JavaCompiler.CompilationTask delegate, Set<AnnotationProcessorDeclaration> processorDeclarations, List<File> annotationProcessorPath, AnnotationProcessingResult result) {
         this.delegate = delegate;
         this.processorDeclarations = processorDeclarations;
         this.annotationProcessorPath = annotationProcessorPath;
+        this.result = result;
     }
 
     @Override
@@ -94,10 +97,10 @@ class IncrementalAnnotationProcessingCompileTask implements JavaCompiler.Compila
 
     private Processor decorateIfIncremental(Processor processor, IncrementalAnnotationProcessorType type) {
         switch (type) {
-            case SINGLE_ORIGIN:
-                return new SingleOriginProcessor(processor);
-            case MULTIPLE_ORIGIN:
-                return new MultipleOriginProcessor(processor);
+            case ISOLATING:
+                return new IsolatingProcessor(processor, result);
+            case AGGREGATING:
+                return new AggregatingProcessor(processor, result);
             default:
                 return processor;
         }

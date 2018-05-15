@@ -15,7 +15,7 @@
  */
 
 apply {
-    from("gradle/remoteHttpCacheSettings.gradle")
+    from("gradle/shared-with-buildSrc/build-cache-configuration.settings.gradle.kts")
 }
 
 try {
@@ -116,19 +116,13 @@ rootProject.name = "gradle"
 // List of subprojects that have a Groovy DSL build script.
 // The intent is for this list to diminish until it disappears.
 val groovyBuildScriptProjects = listOf(
-    "distributions-dependencies",
     "distributions",
-    "base-services",
-    "base-services-groovy",
     "logging",
     "process-services",
-    "jvm-services",
     "core",
-    "dependency-management",
     "wrapper",
     "cli",
     "launcher",
-    "messaging",
     "resources",
     "resources-http",
     "resources-gcs",
@@ -140,31 +134,20 @@ val groovyBuildScriptProjects = listOf(
     "ide-native",
     "ide-play",
     "osgi",
-    "maven",
     "code-quality",
-    "antlr",
-    "tooling-api",
-    "tooling-api-builders",
     "docs",
     "integ-test",
     "signing",
     "ear",
     "native",
-    "internal-testing",
-    "internal-integ-testing",
-    "internal-performance-testing",
-    "internal-android-performance-testing",
     "performance",
     "build-scan-performance",
     "javascript",
-    "build-comparison",
     "reporting",
     "diagnostics",
     "publish",
-    "ivy",
     "jacoco",
     "build-init",
-    "build-option",
     "platform-base",
     "platform-native",
     "platform-jvm",
@@ -185,10 +168,7 @@ val groovyBuildScriptProjects = listOf(
     "test-kit",
     "soak",
     "smoke-test",
-    "composite-builds",
-    "workers",
     "persistent-cache",
-    "build-cache",
     "core-api",
     "version-control")
 

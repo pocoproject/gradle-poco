@@ -32,6 +32,8 @@ import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.artifacts.VersionConstraint;
 import org.gradle.api.attributes.Attribute;
 import org.gradle.api.attributes.AttributeContainer;
+import org.gradle.api.capabilities.Capability;
+import org.gradle.api.component.ComponentWithCoordinates;
 import org.gradle.api.component.ComponentWithVariants;
 import org.gradle.api.component.SoftwareComponent;
 import org.gradle.api.internal.artifacts.DefaultExcludeRule;
@@ -193,11 +195,15 @@ public class ModuleMetadataFileGenerator {
         }
         if (component instanceof ComponentWithVariants) {
             for (SoftwareComponent childComponent : ((ComponentWithVariants) component).getVariants()) {
-                ComponentData componentData = componentCoordinates.get(childComponent);
-                ModuleVersionIdentifier childCoordinates = componentData == null ? null : componentData.coordinates;
-                if (childCoordinates == null) {
-                    continue;
+                ModuleVersionIdentifier childCoordinates;
+                if (childComponent instanceof ComponentWithCoordinates) {
+                    childCoordinates = ((ComponentWithCoordinates)childComponent).getCoordinates();
+                } else {
+                    ComponentData componentData = componentCoordinates.get(childComponent);
+                    childCoordinates = componentData == null ? null : componentData.coordinates;
                 }
+
+                assert childCoordinates != null;
                 if (childComponent instanceof SoftwareComponentInternal) {
                     for (UsageContext usageContext : ((SoftwareComponentInternal) childComponent).getUsages()) {
                         if (!started) {
@@ -279,6 +285,7 @@ public class ModuleMetadataFileGenerator {
         writeDependencies(variant, jsonWriter);
         writeDependencyConstraints(variant, jsonWriter);
         writeArtifacts(publication, variant, jsonWriter);
+        writeCapabilities(variant, jsonWriter);
 
         jsonWriter.endObject();
     }
@@ -444,6 +451,22 @@ public class ModuleMetadataFileGenerator {
             jsonWriter.endObject();
         }
         jsonWriter.endArray();
+    }
+
+    private void writeCapabilities(UsageContext variant, JsonWriter jsonWriter) throws IOException {
+        Set<? extends Capability> capabilities = variant.getCapabilities();
+        if (!capabilities.isEmpty()) {
+            jsonWriter.name("capabilities");
+            jsonWriter.beginArray();
+            for (Capability capability : capabilities) {
+                jsonWriter.beginObject();
+                jsonWriter.name("group").value(capability.getGroup());
+                jsonWriter.name("name").value(capability.getName());
+                jsonWriter.name("version").value(capability.getVersion());
+                jsonWriter.endObject();
+            }
+            jsonWriter.endArray();
+        }
     }
 
     private static class ComponentData {

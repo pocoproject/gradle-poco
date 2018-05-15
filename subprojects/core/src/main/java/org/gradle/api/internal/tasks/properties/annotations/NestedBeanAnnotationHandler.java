@@ -16,25 +16,19 @@
 
 package org.gradle.api.internal.tasks.properties.annotations;
 
-import com.google.common.annotations.VisibleForTesting;
-import org.codehaus.groovy.runtime.ConvertedClosure;
-import org.gradle.api.internal.tasks.DefaultTaskInputPropertySpec;
 import org.gradle.api.internal.tasks.PropertySpecFactory;
 import org.gradle.api.internal.tasks.TaskValidationContext;
 import org.gradle.api.internal.tasks.ValidatingValue;
 import org.gradle.api.internal.tasks.ValidationAction;
-import org.gradle.api.internal.tasks.properties.AbstractNestedPropertyContext;
-import org.gradle.api.internal.tasks.properties.BeanNode;
-import org.gradle.api.internal.tasks.properties.NestedPropertyContext;
+import org.gradle.api.internal.tasks.properties.BeanPropertyContext;
 import org.gradle.api.internal.tasks.properties.PropertyValue;
 import org.gradle.api.internal.tasks.properties.PropertyVisitor;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.Nested;
 import org.gradle.internal.UncheckedException;
 
 import javax.annotation.Nullable;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Proxy;
 
 import static org.gradle.api.internal.tasks.TaskValidationContext.Severity.ERROR;
 
@@ -46,85 +40,28 @@ public class NestedBeanAnnotationHandler implements PropertyAnnotationHandler {
     }
 
     @Override
-    public void visitPropertyValue(PropertyValue propertyValue, PropertyVisitor visitor, PropertySpecFactory specFactory, NestedPropertyContext<BeanNode> context) {
+    public void visitPropertyValue(PropertyValue propertyValue, PropertyVisitor visitor, PropertySpecFactory specFactory, BeanPropertyContext context) {
         Object nested;
         try {
-            nested = propertyValue.getValue();
+            nested = unpackProvider(propertyValue.getValue());
         } catch (Exception e) {
             visitor.visitInputProperty(specFactory.createInputPropertySpec(propertyValue.getPropertyName(), new InvalidPropertyValue(e)));
             return;
         }
         if (nested != null) {
-            AbstractNestedPropertyContext.collectNestedProperties(
-                new BeanNode(propertyValue.getPropertyName(), nested),
-                new ImplementationDeclaringPropertyContext(context, visitor, specFactory));
+            context.addNested(propertyValue.getPropertyName(), nested);
         } else if (!propertyValue.isOptional()) {
             visitor.visitInputProperty(specFactory.createInputPropertySpec(propertyValue.getPropertyName(), new AbsentPropertyValue()));
         }
     }
 
-    private static class ImplementationDeclaringPropertyContext implements NestedPropertyContext<BeanNode> {
-        private final NestedPropertyContext<BeanNode> delegate;
-        private final PropertyVisitor visitor;
-        private final PropertySpecFactory specFactory;
-
-        public ImplementationDeclaringPropertyContext(NestedPropertyContext<BeanNode> delegate, PropertyVisitor visitor, PropertySpecFactory specFactory) {
-            this.delegate = delegate;
-            this.visitor = visitor;
-            this.specFactory = specFactory;
+    @Nullable
+    private static Object unpackProvider(@Nullable Object value) {
+        // Only unpack one level of Providers, since Provider<Provider<>> is not supported - we don't need two levels of lazyness.
+        if (value instanceof Provider) {
+            return ((Provider<?>) value).get();
         }
-
-        @Override
-        public void addNested(BeanNode node) {
-            visitImplementation(node, visitor, specFactory);
-            delegate.addNested(node);
-        }
-
-        @Override
-        public boolean isIterable(BeanNode node) {
-            return delegate.isIterable(node);
-        }
-    }
-
-    private static void visitImplementation(BeanNode node, PropertyVisitor visitor, PropertySpecFactory specFactory) {
-        // The root bean (Task) implementation is currently tracked separately
-        DefaultTaskInputPropertySpec implementation = specFactory.createInputPropertySpec(node.getQualifiedPropertyName("class"), new ImplementationPropertyValue(getImplementationClass(node.getBean())));
-        implementation.optional(false);
-        visitor.visitInputProperty(implementation);
-    }
-
-    @VisibleForTesting
-    static Class<?> getImplementationClass(Object bean) {
-        // When Groovy coerces a Closure into an SAM type, then it creates a Proxy which is backed by the Closure.
-        // We want to track the implementation of the Closure, since the class name and classloader of the proxy will not change.
-        // Java and Kotlin Lambdas are coerced to SAM types at compile time, so no unpacking is necessary there.
-        if (Proxy.isProxyClass(bean.getClass())) {
-            InvocationHandler invocationHandler = Proxy.getInvocationHandler(bean);
-            if (invocationHandler instanceof ConvertedClosure) {
-                Object delegate = ((ConvertedClosure) invocationHandler).getDelegate();
-                return delegate.getClass();
-            }
-            return invocationHandler.getClass();
-        }
-        return bean.getClass();
-    }
-
-    private static class ImplementationPropertyValue implements ValidatingValue {
-
-        private final Class<?> beanClass;
-
-        public ImplementationPropertyValue(Class<?> beanClass) {
-            this.beanClass = beanClass;
-        }
-
-        @Override
-        public Object call() {
-            return beanClass;
-        }
-
-        @Override
-        public void validate(String propertyName, boolean optional, ValidationAction valueValidator, TaskValidationContext context) {
-        }
+        return value;
     }
 
     private static class InvalidPropertyValue implements ValidatingValue {

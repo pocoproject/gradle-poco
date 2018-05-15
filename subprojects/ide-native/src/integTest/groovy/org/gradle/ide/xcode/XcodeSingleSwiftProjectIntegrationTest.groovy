@@ -56,7 +56,7 @@ apply plugin: 'swift-application'
         assertTargetIsIndexer(project.targets[1], 'App')
 
         project.products.children.size() == 1
-        project.products.children[0].path == exe("build/exe/main/debug/App").absolutePath
+        project.products.children[0].path == exe("build/install/main/debug/lib/App").absolutePath
 
         rootXcodeProject.schemeFiles.size() == 1
         rootXcodeProject.schemeFiles[0].schemeXml.LaunchAction.BuildableProductRunnable.size() == 1
@@ -349,9 +349,9 @@ apply plugin: 'swift-library'
 
         then:
         !resultDebugWithXCTest.error.contains("Scheme Greeter is not currently configured for the test action.")
-        resultDebugWithXCTest.assertOutputContains("Test Case '-[GreeterTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
-        resultDebugWithXCTest.assertOutputContains("Test Case '-[GreeterTest.SumTestSuite testCanAddSumOf42]' passed")
-        resultDebugWithXCTest.assertOutputContains("** TEST SUCCEEDED **")
+        resultDebugWithXCTest.assertHasPostBuildOutput("Test Case '-[GreeterTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
+        resultDebugWithXCTest.assertHasPostBuildOutput("Test Case '-[GreeterTest.SumTestSuite testCanAddSumOf42]' passed")
+        resultDebugWithXCTest.assertHasPostBuildOutput("** TEST SUCCEEDED **")
     }
 
     @Requires(TestPrecondition.XCODE)
@@ -378,9 +378,9 @@ apply plugin: 'xctest'
         then:
         resultTestRunner.assertTasksExecuted(':compileDebugSwift', ':compileTestSwift', ':linkTest', ':installTest',
             ':syncBundleToXcodeBuiltProductDir', ':_xcode__build_GreeterTest___GradleTestRunner_Debug')
-        resultTestRunner.assertOutputContains("Test Case '-[GreeterTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
-        resultTestRunner.assertOutputContains("Test Case '-[GreeterTest.SumTestSuite testCanAddSumOf42]' passed")
-        resultTestRunner.assertOutputContains("** TEST SUCCEEDED **")
+        resultTestRunner.assertHasPostBuildOutput("Test Case '-[GreeterTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
+        resultTestRunner.assertHasPostBuildOutput("Test Case '-[GreeterTest.SumTestSuite testCanAddSumOf42]' passed")
+        resultTestRunner.assertHasPostBuildOutput("** TEST SUCCEEDED **")
     }
 
     @Requires(TestPrecondition.XCODE)
@@ -409,9 +409,9 @@ apply plugin: 'xctest'
         then:
         resultTestRunner.assertTasksExecuted(':compileDebugSwift', ':compileTestSwift', ":relocateMainForTest", ':linkTest', ':installTest',
             ':syncBundleToXcodeBuiltProductDir', ':_xcode__build_AppTest___GradleTestRunner_Debug')
-        resultTestRunner.assertOutputContains("Test Case '-[AppTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
-        resultTestRunner.assertOutputContains("Test Case '-[AppTest.SumTestSuite testCanAddSumOf42]' passed")
-        resultTestRunner.assertOutputContains("** TEST SUCCEEDED **")
+        resultTestRunner.assertHasPostBuildOutput("Test Case '-[AppTest.MultiplyTestSuite testCanMultiplyTotalOf42]' passed")
+        resultTestRunner.assertHasPostBuildOutput("Test Case '-[AppTest.SumTestSuite testCanAddSumOf42]' passed")
+        resultTestRunner.assertHasPostBuildOutput("** TEST SUCCEEDED **")
     }
 
     @Requires(TestPrecondition.XCODE)
@@ -437,8 +437,8 @@ apply plugin: 'swift-application'
             .succeeds()
 
         then:
-        resultDebug.assertTasksExecuted(':compileDebugSwift', ':linkDebug', ':_xcode___App_Debug')
-        resultDebug.assertTasksNotSkipped(':compileDebugSwift', ':linkDebug', ':_xcode___App_Debug')
+        resultDebug.assertTasksExecuted(':compileDebugSwift', ':linkDebug', ':installDebug', ':_xcode___App_Debug')
+        resultDebug.assertTasksNotSkipped(':compileDebugSwift', ':linkDebug', ':installDebug', ':_xcode___App_Debug')
         debugBinary.exec().out == app.expectedOutput
         fixture(debugBinary).assertHasDebugSymbolsFor(app.sourceFileNames)
 
@@ -451,8 +451,8 @@ apply plugin: 'swift-application'
             .succeeds()
 
         then:
-        resultRelease.assertTasksExecuted(':compileReleaseSwift', ':linkRelease', ':_xcode___App_Release')
-        resultRelease.assertTasksNotSkipped(':compileReleaseSwift', ':linkRelease', ':_xcode___App_Release')
+        resultRelease.assertTasksExecuted(':compileReleaseSwift', ':linkRelease', ':stripSymbolsRelease', ':installRelease', ':_xcode___App_Release')
+        resultRelease.assertTasksNotSkipped(':compileReleaseSwift', ':linkRelease', ':stripSymbolsRelease', ':installRelease', ':_xcode___App_Release')
         releaseBinary.exec().out == app.expectedOutput
         fixture(releaseBinary).assertHasDebugSymbolsFor(app.sourceFileNames)
     }
@@ -477,7 +477,7 @@ apply plugin: 'swift-application'
             .withScheme('App')
             .fails()
         then:
-        result.assertOutputContains("Unknown Xcode target 'App', do you need to re-generate Xcode configuration?")
+        result.assertHasDescription("Unknown Xcode target 'App', do you need to re-generate Xcode configuration?")
     }
 
     @Requires(TestPrecondition.XCODE)
@@ -672,12 +672,12 @@ application.module = 'TestApp'
         project.targets.size() == 2
         project.targets.every { it.productName == 'TestApp' }
         project.targets[0].name == 'TestApp'
-        project.targets[0].productReference.path == exe("output/exe/main/debug/TestApp").absolutePath
-        project.targets[0].buildConfigurationList.buildConfigurations[0].buildSettings.CONFIGURATION_BUILD_DIR == file("output/exe/main/debug").absolutePath
-        project.targets[0].buildConfigurationList.buildConfigurations[1].buildSettings.CONFIGURATION_BUILD_DIR == file("output/exe/main/release").absolutePath
+        project.targets[0].productReference.path == exe("output/install/main/debug/lib/TestApp").absolutePath
+        project.targets[0].buildConfigurationList.buildConfigurations[0].buildSettings.CONFIGURATION_BUILD_DIR == file("output/install/main/debug/lib").absolutePath
+        project.targets[0].buildConfigurationList.buildConfigurations[1].buildSettings.CONFIGURATION_BUILD_DIR == file("output/install/main/release/lib").absolutePath
         project.targets[1].name == '[INDEXING ONLY] TestApp'
         project.products.children.size() == 1
-        project.products.children[0].path == exe("output/exe/main/debug/TestApp").absolutePath
+        project.products.children[0].path == exe("output/install/main/debug/lib/TestApp").absolutePath
     }
 
     def "honors changes to library output file locations"() {

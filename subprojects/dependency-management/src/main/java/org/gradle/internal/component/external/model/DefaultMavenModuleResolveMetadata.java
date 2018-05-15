@@ -110,7 +110,7 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
     private ImmutableList<? extends ModuleComponentArtifactMetadata> getArtifactsForConfiguration(String name) {
         ImmutableList<? extends ModuleComponentArtifactMetadata> artifacts;
         if (name.equals("compile") || name.equals("runtime") || name.equals("default") || name.equals("test")) {
-            artifacts = ImmutableList.of(new DefaultModuleComponentArtifactMetadata(getComponentId(), new DefaultIvyArtifactName(getComponentId().getModule(), "jar", "jar")));
+            artifacts = ImmutableList.of(new DefaultModuleComponentArtifactMetadata(getId(), new DefaultIvyArtifactName(getId().getModule(), "jar", "jar")));
         } else {
             artifacts = ImmutableList.of();
         }
@@ -123,16 +123,20 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
 
         for (MavenDependencyDescriptor dependency : dependencies) {
             if (isOptionalConfiguration && includeInOptionalConfiguration(dependency)) {
-                filteredDependencies.add(new OptionalConfigurationDependencyMetadata(config, getComponentId(), dependency));
+                filteredDependencies.add(new OptionalConfigurationDependencyMetadata(config, getId(), dependency));
             } else if (include(dependency, config.getHierarchy())) {
-                filteredDependencies.add(contextualize(config, getComponentId(), dependency));
+                filteredDependencies.add(contextualize(config, getId(), dependency));
             }
         }
         return filteredDependencies.build();
     }
 
     private ModuleDependencyMetadata contextualize(ConfigurationMetadata config, ModuleComponentIdentifier componentId, MavenDependencyDescriptor incoming) {
-        return new ConfigurationDependencyMetadataWrapper(config, componentId, incoming);
+        ConfigurationBoundExternalDependencyMetadata dependency = new ConfigurationBoundExternalDependencyMetadata(config, componentId, incoming);
+        if (improvedPomSupportEnabled) {
+            dependency.alwaysUseAttributeMatching();
+        }
+        return dependency;
     }
 
     private boolean includeInOptionalConfiguration(MavenDependencyDescriptor dependency) {
@@ -237,7 +241,7 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
      *  - Dependencies in the "optional" configuration can have dependency artifacts, even if the dependency is flagged as 'optional'.
      *    (For a standard configuration, any dependency flagged as 'optional' will have no dependency artifacts).
      */
-    private static class OptionalConfigurationDependencyMetadata extends ConfigurationDependencyMetadataWrapper {
+    private static class OptionalConfigurationDependencyMetadata extends ConfigurationBoundExternalDependencyMetadata {
         private final MavenDependencyDescriptor dependencyDescriptor;
 
         public OptionalConfigurationDependencyMetadata(ConfigurationMetadata configuration, ModuleComponentIdentifier componentId, MavenDependencyDescriptor delegate) {

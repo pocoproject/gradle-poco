@@ -16,14 +16,20 @@
 
 package org.gradle.ide.visualstudio.fixtures;
 
+import com.google.common.collect.Lists;
+import org.apache.commons.io.FileUtils;
 import org.gradle.integtests.fixtures.executer.ExecutionFailure;
 import org.gradle.integtests.fixtures.executer.ExecutionResult;
 import org.gradle.integtests.fixtures.executer.OutputScrapingExecutionFailure;
 import org.gradle.integtests.fixtures.executer.OutputScrapingExecutionResult;
+import org.gradle.internal.UncheckedException;
+import org.gradle.nativeplatform.fixtures.AvailableToolChains;
 import org.gradle.nativeplatform.fixtures.msvcpp.VisualStudioLocatorTestFixture;
 import org.gradle.test.fixtures.file.ExecOutput;
 import org.gradle.test.fixtures.file.TestFile;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -42,11 +48,13 @@ public class MSBuildExecutor {
     }
 
     private final List<String> args = new ArrayList<String>();
+    private final AvailableToolChains.InstalledToolChain toolChain;
     private TestFile workingDir;
     private String projectName;
 
-    public MSBuildExecutor(TestFile workingDir) {
+    public MSBuildExecutor(TestFile workingDir, AvailableToolChains.InstalledToolChain toolChain) {
         this.workingDir = workingDir;
+        this.toolChain = toolChain;
     }
 
     public MSBuildExecutor withWorkingDir(TestFile workingDir) {
@@ -79,15 +87,53 @@ public class MSBuildExecutor {
         return this;
     }
 
-    public ExecutionResult succeeds() {
+    private File getOutputsDir() {
+        return workingDir.file("output");
+    }
+
+    private void cleanupOutputDir() {
+        try {
+            FileUtils.deleteDirectory(getOutputsDir());
+            getOutputsDir().mkdir();
+        } catch (IOException e) {
+            throw UncheckedException.throwAsUncheckedException(e);
+        }
+    }
+
+    private List<ExecutionOutput> getOutputFiles() {
+        List<ExecutionOutput> outputFiles = Lists.newArrayList();
+        for (File executionDir : getOutputsDir().listFiles()) {
+            if (executionDir.isDirectory()) {
+                outputFiles.add(new ExecutionOutput(new File(executionDir, "output.txt"), new File(executionDir, "error.txt")));
+            }
+        }
+        return outputFiles;
+    }
+
+    public List<ExecutionResult> succeeds() {
         return succeeds(MSBuildAction.BUILD);
     }
 
-    public ExecutionResult succeeds(MSBuildAction action) {
+    public List<ExecutionResult> succeeds(MSBuildAction action) {
+        cleanupOutputDir();
+        List<ExecutionResult> results = Lists.newArrayList();
+
         withArgument(toTargetArgument(action));
         ExecOutput result = findMSBuild().execute(args, buildEnvironment(workingDir));
+
         System.out.println(result.getOut());
-        return new OutputScrapingExecutionResult(trimLines(result.getOut()), trimLines(result.getError()));
+        for (ExecutionOutput output : getOutputFiles()) {
+            String gradleStdout = fileContents(output.stdout);
+            String gradleStderr = fileContents(output.stderr);
+
+            System.out.println(gradleStdout);
+            System.out.println(gradleStderr);
+
+            results.add(OutputScrapingExecutionResult.from(trimLines(gradleStdout), trimLines(gradleStderr)));
+        }
+        System.out.println(result.getError());
+
+        return results;
     }
 
     public ExecutionFailure fails() {
@@ -95,11 +141,29 @@ public class MSBuildExecutor {
     }
 
     public ExecutionFailure fails(MSBuildAction action) {
+        cleanupOutputDir();
+
         withArgument(toTargetArgument(action));
         ExecOutput result = findMSBuild().execWithFailure(args, buildEnvironment(workingDir));
+
+        List<ExecutionOutput> outputs = getOutputFiles();
+        assert outputs.size() == 1;
+        String gradleStdout = fileContents(outputs.get(0).stdout);
+        String gradleStderr = fileContents(outputs.get(0).stderr);
         System.out.println(result.getOut());
+        System.out.println(gradleStdout);
+        System.out.println(gradleStderr);
         System.out.println(result.getError());
-        return new OutputScrapingExecutionFailure(trimLines(result.getOut()), trimLines(result.getError()));
+
+        return OutputScrapingExecutionFailure.from(trimLines(gradleStdout), trimLines(gradleStderr));
+    }
+
+    private static String fileContents(File file) {
+        try {
+            return FileUtils.readFileToString(file);
+        } catch (IOException e) {
+            throw UncheckedException.throwAsUncheckedException(e);
+        }
     }
 
     private String trimLines(String s) {
@@ -121,6 +185,16 @@ public class MSBuildExecutor {
     }
 
     private TestFile findMSBuild() {
-        return new TestFile(VisualStudioLocatorTestFixture.getMSBuildLocator().getMSBuildInstall());
+        return new TestFile(new MSBuildVersionLocator(VisualStudioLocatorTestFixture.getVswhereLocator()).getMSBuildInstall(toolChain));
+    }
+
+    private static class ExecutionOutput {
+        private final File stdout;
+        private final File stderr;
+
+        public ExecutionOutput(File stdout, File stderr) {
+            this.stdout = stdout;
+            this.stderr = stderr;
+        }
     }
 }

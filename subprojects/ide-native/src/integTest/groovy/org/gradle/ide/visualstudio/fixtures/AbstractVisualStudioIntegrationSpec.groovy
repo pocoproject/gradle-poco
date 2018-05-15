@@ -20,7 +20,9 @@ import org.gradle.ide.fixtures.IdeCommandLineUtil
 import org.gradle.internal.os.OperatingSystem
 import org.gradle.nativeplatform.fixtures.AbstractInstalledToolChainIntegrationSpec
 
-class AbstractVisualStudioIntegrationSpec extends AbstractInstalledToolChainIntegrationSpec {
+abstract class AbstractVisualStudioIntegrationSpec extends AbstractInstalledToolChainIntegrationSpec {
+    final def projectConfigurations = ['debug', 'release'] as Set
+
     protected static String filePath(String... paths) {
         return (paths as List).join(';')
     }
@@ -29,6 +31,44 @@ class AbstractVisualStudioIntegrationSpec extends AbstractInstalledToolChainInte
         executer.requireGradleDistribution().requireIsolatedDaemons()
 
         initScript << IdeCommandLineUtil.generateGradleProbeInitFile('visualStudio', 'msbuild')
+        initScript << """
+            allprojects { p ->
+                p.plugins.withType(VisualStudioPlugin.class) {
+                    p.tasks.withType(GenerateProjectFileTask) {
+                        doFirst {
+                            def relativeToRoot = org.gradle.util.RelativePathUtil.relativePath(visualStudioProject.projectFile.location.parentFile, rootProject.projectDir).replaceAll('/', '\\\\\\\\')
+                            if (relativeToRoot == "") {
+                                relativeToRoot = "."
+                            }
+                            visualStudioProject.projectFile.withXml { xml ->
+                                redirectOutputForAll xml.asNode().PropertyGroup.findAll { it.'@Label' == 'NMakeConfiguration' }, relativeToRoot
+                            }
+                        }
+                    }
+                }
+            }
+    
+            def redirectOutputForAll(nodes, relativeToRoot) {
+                nodes.each { node ->
+                    redirectOutput node.NMakeBuildCommandLine[0], relativeToRoot
+                    redirectOutput node.NMakeCleanCommandLine[0], relativeToRoot
+                    redirectOutput node.NMakeReBuildCommandLine[0], relativeToRoot
+                }
+            }
+
+            def redirectOutput(Node node, String relativeToRoot) {
+                String value = node.value()
+                node.value = '''
+For /f "tokens=1-3 delims=/: " %%a in ("%TIME%") do (if %%a LSS 10 (set timestamp=0%%a%%b%%c) else (set timestamp=%%a%%b%%c))
+set timestamp=%timestamp:~0,6%
+''' + "set outputDir=\${relativeToRoot}\\\\output\\\\%timestamp%" + '''
+md %outputDir%
+set outputLog=%outputDir%\\\\output.txt
+set errorLog=%outputDir%\\\\error.txt
+echo %outputLog%
+''' + value + ' 1>%outputLog% 2>%errorLog%'
+            }
+        """
     }
 
     File getHostGradleWrapperFile() {
@@ -42,7 +82,7 @@ class AbstractVisualStudioIntegrationSpec extends AbstractInstalledToolChainInte
         // Gradle needs to be isolated so the msbuild does not leave behind daemons
         assert executer.isRequiresGradleDistribution()
         assert !executer.usesSharedDaemons()
-        def executer = new MSBuildExecutor(testDirectory)
+        def executer = new MSBuildExecutor(testDirectory, toolChain)
         executer.withArgument('/p:Platform=Win32')
         return executer
     }

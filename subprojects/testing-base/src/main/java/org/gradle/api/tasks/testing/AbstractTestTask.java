@@ -20,7 +20,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
 import groovy.lang.Closure;
-import org.bouncycastle.util.test.Test;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
 import org.gradle.api.Incubating;
@@ -432,6 +431,8 @@ public abstract class AbstractTestTask extends ConventionTask implements Verific
         addTestListener(eventLogger);
         addTestOutputListener(eventLogger);
 
+        TestExecutionSpec executionSpec = createTestExecutionSpec();
+
         File binaryResultsDir = getBinResultsDir();
         getProject().delete(binaryResultsDir);
         getProject().mkdir(binaryResultsDir);
@@ -450,7 +451,7 @@ public abstract class AbstractTestTask extends ConventionTask implements Verific
 
         getTestListenerInternalBroadcaster().add(new TestListenerAdapter(testListenerBroadcaster.getSource(), getTestOutputListenerBroadcaster().getSource()));
 
-        ProgressLogger parentProgressLogger = getProgressLoggerFactory().newOperation(Test.class);
+        ProgressLogger parentProgressLogger = getProgressLoggerFactory().newOperation(AbstractTestTask.class);
         parentProgressLogger.setDescription("Test Execution");
         parentProgressLogger.started();
         TestWorkerProgressListener testWorkerProgressListener = new TestWorkerProgressListener(getProgressLoggerFactory(), parentProgressLogger);
@@ -465,7 +466,7 @@ public abstract class AbstractTestTask extends ConventionTask implements Verific
         TestResultProcessor resultProcessor = new StateTrackingTestResultProcessor(resultProcessorDelegate);
 
         try {
-            testExecuter.execute(createTestExecutionSpec(), resultProcessor);
+            testExecuter.execute(executionSpec, resultProcessor);
         } finally {
             parentProgressLogger.completed();
             testWorkerProgressListener.completeAll();

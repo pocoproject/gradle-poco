@@ -39,15 +39,15 @@ class JUnitPlatformSampleIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         new DefaultTestExecutionResult(sample.dir).testClass('org.gradle.junitplatform.JupiterTest').assertTestCount(5, 0, 0)
-            .assertTestPassed('ok()')
-            .assertTestPassed('repetition 1 of 2')
-            .assertTestPassed('repetition 2 of 2')
-            .assertTestPassed('TEST 1')
-            .assertTestsSkipped('disabled()')
+            .assertTestPassed('ok')
+            .assertTestPassed('repeated()[1]', 'repetition 1 of 2')
+            .assertTestPassed('repeated()[2]', 'repetition 2 of 2')
+            .assertTestPassed('test1(TestInfo)', 'TEST 1')
+            .assertTestSkipped('disabled')
     }
 
-    @UsesSample('testing/junitplatform/engine')
-    def 'engine sample test'() {
+    @UsesSample('testing/junitplatform/mix')
+    def 'mix JUnit3/4/5'() {
         given:
         sample sample
 
@@ -61,6 +61,20 @@ class JUnitPlatformSampleIntegrationTest extends AbstractIntegrationSpec {
             .testClass('org.gradle.junitplatform.JUnit4Test').assertTestCount(1, 0, 0)
         new DefaultTestExecutionResult(sample.dir)
             .testClass('org.gradle.junitplatform.JupiterTest').assertTestCount(1, 0, 0)
+    }
+
+    @UsesSample('testing/junitplatform/engine')
+    def 'engine sample test'() {
+        given:
+        sample sample
+
+        when:
+        succeeds('test')
+
+        then:
+        new DefaultTestExecutionResult(sample.dir)
+            .assertTestClassesExecuted('org.gradle.junitplatform.JUnit4Test')
+            .testClass('org.gradle.junitplatform.JUnit4Test').assertTestCount(1, 0, 0)
     }
 
     @UsesSample('testing/junitplatform/tagging')

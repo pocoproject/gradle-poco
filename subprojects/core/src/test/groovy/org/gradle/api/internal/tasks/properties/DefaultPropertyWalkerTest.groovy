@@ -18,6 +18,7 @@ package org.gradle.api.internal.tasks.properties
 
 import groovy.transform.EqualsAndHashCode
 import org.gradle.api.DefaultTask
+import org.gradle.api.Named
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.TaskInternal
 import org.gradle.api.internal.file.TestFiles
@@ -29,6 +30,7 @@ import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.LocalState
 import org.gradle.api.tasks.Nested
 import org.gradle.api.tasks.OutputDirectory
@@ -49,7 +51,7 @@ class DefaultPropertyWalkerTest extends AbstractProjectBuilderSpec {
         1 * visitor.visitInputProperty({ it.propertyName == 'myProperty' && it.value == 'myValue' })
         1 * visitor.visitInputFileProperty({ it.propertyName == 'inputFile' })
         1 * visitor.visitInputFileProperty({ it.propertyName == 'inputFiles' })
-        1 * visitor.visitInputProperty({ it.propertyName == 'bean.class' && it.value == NestedBean })
+        1 * visitor.visitInputProperty({ it.propertyName == 'bean' && it.value == NestedBean })
         1 * visitor.visitInputProperty({ it.propertyName == 'bean.nestedInput' && it.value == 'nested' })
         1 * visitor.visitInputFileProperty({ it.propertyName == 'bean.inputDir' })
 
@@ -158,6 +160,46 @@ class DefaultPropertyWalkerTest extends AbstractProjectBuilderSpec {
 
         then:
         noExceptionThrown()
+    }
+
+    def "nested iterable beans can have the same names"() {
+        def task = project.tasks.create("myTask", TaskWithNestedObject)
+        task.nested = [new NamedNestedBean('name', 'value1'), new NamedNestedBean('name', 'value2')]
+
+        when:
+        visitProperties(task)
+
+        then:
+        1 * visitor.visitInputProperty({ it.propertyName == 'nested.name$0'})
+        1 * visitor.visitInputProperty({ it.propertyName == 'nested.name$1'})
+    }
+
+    def "providers are unpacked"() {
+        def task = project.tasks.create("myTask", TaskWithNestedObject)
+        task.nested = project.provider { new NestedBean() }
+
+        when:
+        visitProperties(task)
+
+        then:
+        1 * visitor.visitInputProperty({ it.propertyName == "nested" })
+        1 * visitor.visitInputProperty({ it.propertyName == "nested.nestedInput" })
+        1 * visitor.visitInputFileProperty({ it.propertyName == "nested.inputDir" })
+        1 * visitor.visitOutputFileProperty({ it.propertyName == "nested.outputDir" })
+
+        0 * _
+    }
+
+    static class NamedNestedBean implements Named {
+        @Internal
+        final String name
+        @Input
+        final String value
+
+        NamedNestedBean(String name, String value) {
+            this.value = value
+            this.name = name
+        }
     }
 
     static class TaskWithNestedObject extends DefaultTask {

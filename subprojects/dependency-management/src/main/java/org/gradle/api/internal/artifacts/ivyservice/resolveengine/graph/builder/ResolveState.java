@@ -19,6 +19,7 @@ package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder
 import com.google.common.collect.Sets;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.internal.artifacts.ComponentSelectorConverter;
 import org.gradle.api.internal.artifacts.ResolvedConfigurationIdentifier;
@@ -28,6 +29,7 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.Modul
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.specs.Spec;
+import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.id.IdGenerator;
@@ -64,6 +66,7 @@ class ResolveState {
     private final ComponentSelectorConverter componentSelectorConverter;
     private final ImmutableAttributesFactory attributesFactory;
     private final DependencySubstitutionApplicator dependencySubstitutionApplicator;
+    private final VariantNameBuilder variantNameBuilder = new VariantNameBuilder();
 
     public ResolveState(IdGenerator<Long> idGenerator, ComponentResolveResult rootResult, String rootConfigurationName, DependencyToComponentIdResolver idResolver,
                         ComponentMetaDataResolver metaDataResolver, Spec<? super DependencyMetadata> edgeFilter, AttributesSchemaInternal attributesSchema,
@@ -80,8 +83,7 @@ class ResolveState {
         this.componentSelectorConverter = componentSelectorConverter;
         this.attributesFactory = attributesFactory;
         this.dependencySubstitutionApplicator = dependencySubstitutionApplicator;
-        ComponentState rootVersion = getRevision(rootResult.getId());
-        rootVersion.setMetaData(rootResult.getMetaData());
+        ComponentState rootVersion = getRevision(rootResult.getId(), rootResult.getModuleVersionId(), rootResult.getMetadata());
         final ResolvedConfigurationIdentifier id = new ResolvedConfigurationIdentifier(rootVersion.getId(), rootConfigurationName);
         ConfigurationMetadata configurationMetadata = rootVersion.getMetadata().getConfiguration(id.getConfiguration());
         root = new RootNode(idGenerator.generateId(), rootVersion, id, this, configurationMetadata);
@@ -106,14 +108,18 @@ class ResolveState {
     public ModuleResolveState getModule(ModuleIdentifier id) {
         ModuleResolveState module = modules.get(id);
         if (module == null) {
-            module = new ModuleResolveState(idGenerator, id, metaDataResolver);
+            module = new ModuleResolveState(idGenerator, id, metaDataResolver, variantNameBuilder);
             modules.put(id, module);
         }
         return module;
     }
 
-    public ComponentState getRevision(ModuleVersionIdentifier id) {
-        return getModule(id.getModule()).getVersion(id);
+    public ComponentState getRevision(ComponentIdentifier componentIdentifier, ModuleVersionIdentifier id, ComponentResolveMetadata metadata) {
+        ComponentState componentState = getModule(id.getModule()).getVersion(id, componentIdentifier);
+        if (!componentState.alreadyResolved()) {
+            componentState.setMetadata(metadata);
+        }
+        return componentState;
     }
 
     public Collection<NodeState> getNodes() {

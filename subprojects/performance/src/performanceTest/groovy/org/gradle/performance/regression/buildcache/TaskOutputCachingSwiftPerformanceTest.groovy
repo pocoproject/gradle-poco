@@ -17,13 +17,14 @@
 package org.gradle.performance.regression.buildcache
 
 import org.gradle.initialization.ParallelismBuildOptions
+import org.gradle.performance.regression.nativeplatform.NativeBuildPerformanceTest
 import spock.lang.Unroll
 
 class TaskOutputCachingSwiftPerformanceTest extends AbstractTaskOutputCachingPerformanceTest {
 
     def setup() {
         runner.minimumVersion = "4.5"
-        runner.targetVersions = ["4.6-20180129223723+0000"]
+        runner.targetVersions = [NativeBuildPerformanceTest.TARGET_VERSION]
         runner.args += ["--parallel", "--${ParallelismBuildOptions.MaxWorkersOption.LONG_OPTION}=6"]
     }
 
@@ -43,7 +44,6 @@ class TaskOutputCachingSwiftPerformanceTest extends AbstractTaskOutputCachingPer
         where:
         testProject        | task       | maxMemory
         'mediumSwiftMulti' | 'assemble' | '1G'
-        // TODO: Disable this temporarily
-        // 'bigSwiftApp'      | 'assemble' | '1G'
+        'bigSwiftApp'      | 'assemble' | '1G'
     }
 }

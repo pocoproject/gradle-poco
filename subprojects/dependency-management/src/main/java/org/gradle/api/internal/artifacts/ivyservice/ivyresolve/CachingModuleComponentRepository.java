@@ -266,17 +266,17 @@ public class CachingModuleComponentRepository implements ModuleComponentReposito
         }
 
         private void resolveModuleArtifactsFromCache(String contextId, ComponentResolveMetadata component, BuildableArtifactSetResolveResult result, CachingModuleSource cachedModuleSource) {
-            CachedArtifacts cachedModuleArtifacts = moduleArtifactsCache.getCachedArtifacts(delegate, component.getComponentId(), contextId);
+            CachedArtifacts cachedModuleArtifacts = moduleArtifactsCache.getCachedArtifacts(delegate, component.getId(), contextId);
             BigInteger moduleDescriptorHash = cachedModuleSource.getDescriptorHash();
 
             if (cachedModuleArtifacts != null) {
-                if (!cachePolicy.mustRefreshModuleArtifacts(component.getId(), null, cachedModuleArtifacts.getAgeMillis(),
+                if (!cachePolicy.mustRefreshModuleArtifacts(component.getModuleVersionId(), null, cachedModuleArtifacts.getAgeMillis(),
                     cachedModuleSource.isChangingModule(), moduleDescriptorHash.equals(cachedModuleArtifacts.getDescriptorHash()))) {
                     result.resolved(cachedModuleArtifacts.getArtifacts());
                     return;
                 }
 
-                LOGGER.debug("Artifact listing has expired: will perform fresh resolve of '{}' for '{}' in '{}'", contextId, component.getId(), delegate.getName());
+                LOGGER.debug("Artifact listing has expired: will perform fresh resolve of '{}' for '{}' in '{}'", contextId, component.getModuleVersionId(), delegate.getName());
             }
         }
 
@@ -295,36 +295,32 @@ public class CachingModuleComponentRepository implements ModuleComponentReposito
 
         @Override
         public MetadataFetchingCost estimateMetadataFetchingCost(ModuleComponentIdentifier moduleComponentIdentifier) {
-            if (isMetadataAvailableInCacheAndUpToDate(moduleComponentIdentifier)) {
-                return MetadataFetchingCost.FAST;
-            }
-            return delegate.getRemoteAccess().estimateMetadataFetchingCost(moduleComponentIdentifier);
-        }
-
-        private boolean isMetadataAvailableInCacheAndUpToDate(ModuleComponentIdentifier moduleComponentIdentifier) {
             ModuleMetadataCache.CachedMetadata cachedMetadata = moduleMetadataCache.getCachedModuleDescriptor(delegate, moduleComponentIdentifier);
             if (cachedMetadata == null) {
-                return false;
+                return estimateCostViaRemoteAccess(moduleComponentIdentifier);
             }
             if (cachedMetadata.isMissing()) {
                 if (cachePolicy.mustRefreshMissingModule(moduleComponentIdentifier, cachedMetadata.getAgeMillis())) {
-                    return false;
+                    return estimateCostViaRemoteAccess(moduleComponentIdentifier);
                 }
-                return true;
+                return MetadataFetchingCost.CHEAP;
             }
             ModuleComponentResolveMetadata metaData = getProcessedMetadata(cachedMetadata);
             if (metaData.isChanging()) {
                 if (cachePolicy.mustRefreshChangingModule(moduleComponentIdentifier, cachedMetadata.getModuleVersion(), cachedMetadata.getAgeMillis())) {
-                    return false;
+                    return estimateCostViaRemoteAccess(moduleComponentIdentifier);
                 }
             } else {
                 if (cachePolicy.mustRefreshModule(moduleComponentIdentifier, cachedMetadata.getModuleVersion(), cachedMetadata.getAgeMillis())) {
-                    return false;
+                    return estimateCostViaRemoteAccess(moduleComponentIdentifier);
                 }
             }
-            return true;
+            return MetadataFetchingCost.FAST;
         }
 
+        private MetadataFetchingCost estimateCostViaRemoteAccess(ModuleComponentIdentifier moduleComponentIdentifier) {
+            return delegate.getRemoteAccess().estimateMetadataFetchingCost(moduleComponentIdentifier);
+        }
 
         private void resolveArtifactFromCache(ComponentArtifactMetadata artifact, CachingModuleSource moduleSource, BuildableArtifactResolveResult result) {
             CachedArtifact cached = moduleArtifactCache.lookup(artifactCacheKey(artifact.getId()));
@@ -405,7 +401,7 @@ public class CachingModuleComponentRepository implements ModuleComponentReposito
             delegate.getRemoteAccess().resolveArtifactsWithType(component.withSource(moduleSource.getDelegate()), artifactType, result);
 
             if (result.getFailure() == null) {
-                moduleArtifactsCache.cacheArtifacts(delegate, component.getComponentId(), cacheKey(artifactType), moduleSource.getDescriptorHash(), result.getResult());
+                moduleArtifactsCache.cacheArtifacts(delegate, component.getId(), cacheKey(artifactType), moduleSource.getDescriptorHash(), result.getResult());
             }
         }
 
@@ -416,7 +412,7 @@ public class CachingModuleComponentRepository implements ModuleComponentReposito
 
             if (result.getFailure() == null) {
                 FixedComponentArtifacts artifacts = (FixedComponentArtifacts) result.getResult();
-                moduleArtifactsCache.cacheArtifacts(delegate, component.getComponentId(), "component:", moduleSource.getDescriptorHash(), artifacts.getArtifacts());
+                moduleArtifactsCache.cacheArtifacts(delegate, component.getId(), "component:", moduleSource.getDescriptorHash(), artifacts.getArtifacts());
             }
         }
 

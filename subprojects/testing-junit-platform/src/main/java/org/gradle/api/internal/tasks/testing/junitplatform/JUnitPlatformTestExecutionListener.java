@@ -85,27 +85,29 @@ public class JUnitPlatformTestExecutionListener implements TestExecutionListener
 
     @Override
     public void executionFinished(TestIdentifier testIdentifier, TestExecutionResult testExecutionResult) {
-        if (isLeafTestOrFailedContainer(testIdentifier, testExecutionResult)) {
-            if (!isLeafTest(testIdentifier)) {
-                // only leaf methods triggered start events previously
-                // so here we need to add the missing start events
-                adapter.testStarted(testIdentifier.getUniqueId(), getDescriptor(testIdentifier));
-            }
-            switch (testExecutionResult.getStatus()) {
-                case SUCCESSFUL:
-                    adapter.testFinished(testIdentifier.getUniqueId());
-                    break;
-                case FAILED:
-                    adapter.testFailure(testIdentifier.getUniqueId(), getDescriptor(testIdentifier), testExecutionResult.getThrowable().get());
-                    adapter.testFinished(testIdentifier.getUniqueId());
-                    break;
-                case ABORTED:
-                    adapter.testAssumptionFailure(testIdentifier.getUniqueId());
-                    adapter.testFinished(testIdentifier.getUniqueId());
-                    break;
-                default:
-                    throw new AssertionError("Invalid Status: " + testExecutionResult.getStatus());
-            }
+        if (testFailedBeforeTestClassStart(testIdentifier, testExecutionResult)) {
+            executionFailedBeforeTestClassStart(testIdentifier, testExecutionResult);
+        } else {
+            executionFinishedAfterTestClassStart(testIdentifier, testExecutionResult);
+        }
+    }
+
+    private void executionFailedBeforeTestClassStart(TestIdentifier testIdentifier, TestExecutionResult testExecutionResult) {
+        reportTestClassStarted(testIdentifier);
+        reportTestClassFinished(testIdentifier, testExecutionResult.getThrowable().get());
+    }
+
+    private void executionFinishedAfterTestClassStart(TestIdentifier testIdentifier, TestExecutionResult testExecutionResult) {
+        // Generally, there're 2 kinds of identifier:
+        // 1. A container (test engine/class/repeated tests). It is not tracked unless it fails/aborts.
+        // 2. A test "leaf" method. It's always tracked.
+        if (isFailedContainer(testIdentifier, testExecutionResult)) {
+            // only leaf methods triggered start events previously
+            // so here we need to add the missing start events
+            adapter.testStarted(testIdentifier.getUniqueId(), getDescriptor(testIdentifier));
+            testFinished(testIdentifier, testExecutionResult);
+        } else if (isLeafTest(testIdentifier)) {
+            testFinished(testIdentifier, testExecutionResult);
         }
 
         if (isClass(testIdentifier)) {
@@ -113,19 +115,36 @@ public class JUnitPlatformTestExecutionListener implements TestExecutionListener
         }
     }
 
+    private boolean testFailedBeforeTestClassStart(TestIdentifier testIdentifier, TestExecutionResult testExecutionResult) {
+        return isFailedContainer(testIdentifier, testExecutionResult) && currentRunningTestClass.count == 0;
+    }
+
+    private void testFinished(TestIdentifier testIdentifier, TestExecutionResult testExecutionResult) {
+        switch (testExecutionResult.getStatus()) {
+            case SUCCESSFUL:
+                break;
+            case FAILED:
+                adapter.testFailure(testIdentifier.getUniqueId(), getDescriptor(testIdentifier), testExecutionResult.getThrowable().get());
+                break;
+            case ABORTED:
+                adapter.testAssumptionFailure(testIdentifier.getUniqueId());
+                break;
+            default:
+                throw new AssertionError("Invalid Status: " + testExecutionResult.getStatus());
+        }
+        adapter.testFinished(testIdentifier.getUniqueId());
+    }
+
     private void reportTestClassStarted(TestIdentifier testIdentifier) {
-        currentRunningTestClass.start(className(testIdentifier));
+        currentRunningTestClass.start(className(testIdentifier), classDisplayName(testIdentifier));
+    }
+
+    private void reportTestClassFinished(TestIdentifier testIdentifier, Throwable failure) {
+        currentRunningTestClass.end(className(testIdentifier), failure);
     }
 
     private void reportTestClassFinished(TestIdentifier testIdentifier) {
-        currentRunningTestClass.end(className(testIdentifier));
-    }
-
-    private boolean isLeafTestOrFailedContainer(TestIdentifier testIdentifier, TestExecutionResult result) {
-        // Generally, there're 2 kinds of identifier:
-        // 1. A container (test engine/class/repeated tests). It is not tracked unless it fails/aborts.
-        // 2. A test "leaf" method. It's always tracked.
-        return isLeafTest(testIdentifier) || isFailedContainer(testIdentifier, result);
+        currentRunningTestClass.end(className(testIdentifier), null);
     }
 
     private boolean isFailedContainer(TestIdentifier testIdentifier, TestExecutionResult result) {
@@ -134,15 +153,22 @@ public class JUnitPlatformTestExecutionListener implements TestExecutionListener
 
     private TestDescriptorInternal getDescriptor(final TestIdentifier test) {
         if (isMethod(test)) {
-            return new DefaultTestDescriptor(idGenerator.generateId(), className(test), test.getDisplayName());
+            return createDescriptor(test, test.getLegacyReportingName(), test.getDisplayName());
         } else if (isVintageDynamicLeafTest(test)) {
             UniqueId uniqueId = UniqueId.parse(test.getUniqueId());
             return new DefaultTestDescriptor(idGenerator.generateId(), vintageDynamicClassName(uniqueId), vintageDynamicMethodName(uniqueId));
         } else if (isClass(test) || isVintageDynamicTestClass(test)) {
-            return new DefaultTestDescriptor(idGenerator.generateId(), className(test), "classMethod");
+            return createDescriptor(test, "classMethod", "classMethod");
         } else {
-            return new DefaultTestDescriptor(idGenerator.generateId(), className(test), test.getDisplayName());
+            return createDescriptor(test, test.getDisplayName(), test.getDisplayName());
         }
+    }
+
+    private TestDescriptorInternal createDescriptor(TestIdentifier test, String name, String displayName) {
+        TestIdentifier classIdentifier = findClassSource(test);
+        String className = className(classIdentifier);
+        String classDisplayName = classDisplayName(classIdentifier);
+        return new DefaultTestDescriptor(idGenerator.generateId(), className, name, classDisplayName, displayName);
     }
 
     private boolean isMethod(TestIdentifier test) {
@@ -153,42 +179,57 @@ public class JUnitPlatformTestExecutionListener implements TestExecutionListener
         return test.getSource().isPresent() && test.getSource().get() instanceof ClassSource;
     }
 
-    private String className(TestIdentifier testIdentifier) {
+    private TestIdentifier findClassSource(TestIdentifier testIdentifier) {
         // For tests in default method of interface,
         // we might not be able to get the implementation class directly.
         // In this case, we need to retrieve test plan to get the real implementation class.
         if (isClass(testIdentifier)) {
-            return ClassSource.class.cast(testIdentifier.getSource().get()).getClassName();
+            return testIdentifier;
         }
         while (testIdentifier.getParentId().isPresent()) {
             testIdentifier = currentTestPlan.getTestIdentifier(testIdentifier.getParentId().get());
             if (isClass(testIdentifier)) {
-                return ClassSource.class.cast(testIdentifier.getSource().get()).getClassName();
+                return testIdentifier;
             }
         }
+        return null;
+    }
 
-        return "UnknownClass";
+    private String className(TestIdentifier testClassIdentifier) {
+        if (testClassIdentifier != null && testClassIdentifier.getSource().isPresent()) {
+            return ClassSource.class.cast(testClassIdentifier.getSource().get()).getClassName();
+        } else {
+            return "UnknownClass";
+        }
+    }
+
+    private String classDisplayName(TestIdentifier testClassIdentifier) {
+        if (testClassIdentifier != null) {
+            return testClassIdentifier.getDisplayName();
+        } else {
+            return "UnknownClass";
+        }
     }
 
     private class CurrentRunningTestClass {
         private String name;
         private int count;
 
-        private void start(String className) {
+        private void start(String className, String displayName) {
             if (name == null) {
                 name = className;
-                executionListener.testClassStarted(className);
+                executionListener.testClassStarted(className, displayName);
                 count = 1;
             } else if (className.equals(name)) {
                 count++;
             }
         }
 
-        private void end(String className) {
+        private void end(String className, Throwable failure) {
             if (className.equals(name)) {
                 count--;
                 if (count == 0) {
-                    executionListener.testClassFinished(null);
+                    executionListener.testClassFinished(failure);
                     name = null;
                 }
             }

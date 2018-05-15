@@ -24,7 +24,6 @@ import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.artifacts.result.ComponentSelectionReason;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusion;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphEdge;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
 import org.gradle.internal.component.local.model.DslOriginDependencyMetadata;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
@@ -82,19 +81,8 @@ class EdgeState implements DependencyGraphEdge {
     }
 
     @Override
-    public DependencyGraphSelector getSelector() {
+    public SelectorState getSelector() {
         return selector;
-    }
-
-    /**
-     * @return The resolved module version
-     */
-    public ComponentState resolveModuleRevisionId() {
-        if (targetModuleRevision == null) {
-            targetModuleRevision = selector.resolveModuleRevisionId();
-            selector.getSelectedModule().addUnattachedDependency(this);
-        }
-        return targetModuleRevision;
     }
 
     public boolean isTransitive() {
@@ -110,7 +98,7 @@ class EdgeState implements DependencyGraphEdge {
             targetConfiguration.addIncomingEdge(this);
         }
         if (!targetNodes.isEmpty()) {
-            selector.getSelectedModule().removeUnattachedDependency(this);
+            selector.getTargetModule().removeUnattachedDependency(this);
         }
     }
 
@@ -121,7 +109,7 @@ class EdgeState implements DependencyGraphEdge {
         targetNodes.clear();
         targetNodeSelectionFailure = null;
         if (targetModuleRevision != null) {
-            selector.getSelectedModule().removeUnattachedDependency(this);
+            selector.getTargetModule().removeUnattachedDependency(this);
         }
     }
 
@@ -131,10 +119,14 @@ class EdgeState implements DependencyGraphEdge {
         attachToTargetConfigurations();
     }
 
+    public void start(ComponentState selected) {
+        targetModuleRevision = selected;
+    }
+
     private void calculateTargetConfigurations() {
         targetNodes.clear();
         targetNodeSelectionFailure = null;
-        ComponentResolveMetadata targetModuleVersion = targetModuleRevision.getMetaData();
+        ComponentResolveMetadata targetModuleVersion = targetModuleRevision.getMetadata();
         if (targetModuleVersion == null) {
             // Broken version
             return;
@@ -145,7 +137,7 @@ class EdgeState implements DependencyGraphEdge {
         try {
             targetConfigurations = dependencyMetadata.selectConfigurations(attributes, targetModuleVersion, resolveState.getAttributesSchema());
         } catch (Throwable t) {
-//                 Broken selector
+            // Failure to select the target variant/configurations from this component, given the dependency attributes/metadata.
             targetNodeSelectionFailure = new ModuleVersionResolveException(dependencyState.getRequested(), t);
             return;
         }
@@ -210,4 +202,5 @@ class EdgeState implements DependencyGraphEdge {
             }
         });
     }
+
 }

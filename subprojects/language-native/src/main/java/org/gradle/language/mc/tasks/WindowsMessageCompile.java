@@ -31,6 +31,7 @@ import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.changedetection.changes.DiscoveredInputRecorder;
 import org.gradle.api.internal.file.collections.DirectoryFileTreeFactory;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.internal.provider.Providers;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Internal;
@@ -73,7 +74,7 @@ public class WindowsMessageCompile extends DefaultTask {
     public WindowsMessageCompile() {
         includes = getProject().files();
         source = getProject().files();
-        incrementalCompiler = getIncrementalCompilerBuilder().newCompiler(this, source, includes);
+        incrementalCompiler = getIncrementalCompilerBuilder().newCompiler(this, source, includes, Providers.FALSE);
         getInputs().property("outputType", new Callable<String>() {
             @Override
             public String call() throws Exception {

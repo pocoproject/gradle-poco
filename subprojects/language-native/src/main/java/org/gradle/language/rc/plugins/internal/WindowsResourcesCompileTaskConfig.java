@@ -15,10 +15,6 @@
  */
 package org.gradle.language.rc.plugins.internal;
 
-import java.io.File;
-import java.util.LinkedHashSet;
-import java.util.Set;
-
 import org.gradle.api.DefaultTask;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
@@ -35,16 +31,16 @@ import org.gradle.language.rc.WindowsResourceSet;
 import org.gradle.language.rc.tasks.WindowsResourceCompile;
 import org.gradle.nativeplatform.PreprocessingTool;
 import org.gradle.nativeplatform.internal.NativeBinarySpecInternal;
-import org.gradle.nativeplatform.internal.SemiStaticLibraryBinarySpecInternal;
 import org.gradle.nativeplatform.internal.StaticLibraryBinarySpecInternal;
 import org.gradle.nativeplatform.platform.internal.NativePlatformInternal;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
 import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
-import org.gradle.nativeplatform.toolchain.internal.SystemIncludesAwarePlatformToolProvider;
 import org.gradle.nativeplatform.toolchain.internal.ToolType;
 import org.gradle.platform.base.BinarySpec;
 
-import com.google.common.collect.ImmutableSet;
+import java.io.File;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 public class WindowsResourcesCompileTaskConfig implements SourceTransformTaskConfig {
     @Override
@@ -65,8 +61,8 @@ public class WindowsResourcesCompileTaskConfig implements SourceTransformTaskCon
     private void configureResourceCompileTask(WindowsResourceCompile task, final NativeBinarySpecInternal binary, final WindowsResourceSet sourceSet) {
         task.setDescription("Compiles resources of the " + sourceSet + " of " + binary);
 
-        task.setToolChain(binary.getToolChain());
-        task.setTargetPlatform(binary.getTargetPlatform());
+        task.getToolChain().set(binary.getToolChain());
+        task.getTargetPlatform().set(binary.getTargetPlatform());
 
         task.includes(sourceSet.getExportedHeaders().getSourceDirectories());
 
@@ -75,10 +71,7 @@ public class WindowsResourcesCompileTaskConfig implements SourceTransformTaskCon
             @Override
             public Set<File> getFiles() {
                 PlatformToolProvider platformToolProvider = ((NativeToolChainInternal) binary.getToolChain()).select((NativePlatformInternal) binary.getTargetPlatform());
-                if (platformToolProvider instanceof SystemIncludesAwarePlatformToolProvider) {
-                    return new LinkedHashSet<File>(((SystemIncludesAwarePlatformToolProvider) platformToolProvider).getSystemIncludes(ToolType.WINDOW_RESOURCES_COMPILER));
-                }
-                return ImmutableSet.of();
+                return new LinkedHashSet<File>(platformToolProvider.getSystemLibraries(ToolType.WINDOW_RESOURCES_COMPILER).getIncludeDirs());
             }
 
             @Override
@@ -100,9 +93,6 @@ public class WindowsResourcesCompileTaskConfig implements SourceTransformTaskCon
         binary.binaryInputs(resourceOutputs);
         if (binary instanceof StaticLibraryBinarySpecInternal) {
             ((StaticLibraryBinarySpecInternal) binary).additionalLinkFiles(resourceOutputs);
-        }
-        if (binary instanceof SemiStaticLibraryBinarySpecInternal) {
-            ((SemiStaticLibraryBinarySpecInternal) binary).additionalLinkFiles(resourceOutputs);
         }
     }
 
