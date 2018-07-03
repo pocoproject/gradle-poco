@@ -74,19 +74,28 @@ open class IdePlugin : Plugin<Project> {
                 classpath {
                     file.whenMerged(Action<Classpath> {
                         //There are classes in here not designed to be compiled, but just used in our testing
-                        entries.removeAll { (it as AbstractClasspathEntry).path.contains("src/integTest/resources") }
+                        entries.removeAll { it is AbstractClasspathEntry && it.path.contains("src/integTest/resources") }
                         //Workaround for some projects referring to themselves as dependent projects
-                        entries.removeAll { (it as AbstractClasspathEntry).path.contains("$project.name") && it.kind == "src" }
+                        entries.removeAll { it is AbstractClasspathEntry && it.path.contains("$project.name") && it.kind == "src" }
                         // Remove references to libraries in the build folder
-                        entries.removeAll { (it as AbstractClasspathEntry).path.contains("$project.name/build") && it.kind == "lib" }
+                        entries.removeAll { it is AbstractClasspathEntry && it.path.contains("$project.name/build") && it.kind == "lib" }
                         // Remove references to other project's binaries
-                        entries.removeAll { (it as AbstractClasspathEntry).path.contains("/subprojects") && it.kind == "lib" }
-                        // Add needed resources for running gradle as a non daemon java application
-                        entries.add(SourceFolder("build/generated-resources/main", null))
+                        entries.removeAll { it is AbstractClasspathEntry && it.path.contains("/subprojects") && it.kind == "lib" }
                         if (file("build/generated-resources/test").exists()) {
                             entries.add(SourceFolder("build/generated-resources/test", null))
                         }
                     })
+                }
+                jdt {
+                    sourceCompatibility = JavaVersion.VERSION_1_8
+                    targetCompatibility = JavaVersion.VERSION_1_8
+                    javaRuntimeName = "JavaSE-1.8"
+/*
+                    file.withProperties { properties ->
+                        // Eclipse's view of projects treat circular dependencies as errors by default
+                        properties["org.eclipse.jdt.core.circularClasspath"] = "warning"
+                    }
+*/
                 }
             }
         }
