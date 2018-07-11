@@ -17,7 +17,6 @@ package org.gradle.integtests.resolve
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
-import org.gradle.util.ToBeImplemented
 import spock.lang.Issue
 
 /**
@@ -135,7 +134,7 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         resolve.expectGraph {
             root(":", ":test:") {
                 module("org:bar:1.0") {
-                    edge("org:foo:1.0", "org:foo:1.1").byConflictResolution()
+                    edge("org:foo:1.0", "org:foo:1.1").byConflictResolution("between versions 1.0 and 1.1")
                 }
                 edgeFromConstraint("org:foo:1.1", "org:foo:1.1")
             }
@@ -146,7 +145,6 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
      * Test demonstrates a bug in resolution of constraints, when real dependency is evicted via conflict resolution.
      */
     @Issue("gradle/gradle#4610")
-    @ToBeImplemented
     void "dependency constraint should not preserve hard dependency for evicted dependency"() {
         given:
         // "org:foo:1.0" -> "org:baz:1.0" -> "org:baz-transitive:1.0"
@@ -180,11 +178,7 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         run ':resolve'
 
         then:
-        // This is wrong: should not include "baz-transitive"
-        file('lib').assertHasDescendants("bar-1.0.jar", "foo-1.1.jar", "baz-transitive-1.0.jar")
-
-        // Correct assertion:
-//        file('lib').assertHasDescendants("bar-1.0.jar", "foo-1.1.jar")
+        file('lib').assertHasDescendants("bar-1.0.jar", "foo-1.1.jar")
 
         /*
          * Cannot use ResolveTestFixture because the end graph cannot be handled
@@ -235,9 +229,9 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         resolve.expectGraph {
             root(":", ":test:") {
                 module("org:bar:1.0") {
-                    edge("org:foo:[1.0,1.2]", "org:foo:1.1").byReason('tested versions')
+                    edge("org:foo:[1.0,1.2]", "org:foo:1.1").byConstraint('didn\'t match version 1.2 because tested versions')
                 }
-                edgeFromConstraint("org:foo:[1.0,1.1]", "org:foo:1.1").byReason('tested versions')
+                edgeFromConstraint("org:foo:[1.0,1.1]", "org:foo:1.1").byConstraint('didn\'t match version 1.2 because tested versions')
             }
         }
     }
@@ -300,8 +294,8 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         then:
         resolve.expectGraph {
             root(":", ":test:") {
-                edge("org:bar:1.1", "org:foo:1.1").selectedByRule().byConflictResolution()
-                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution()
+                edge("org:bar:1.1", "org:foo:1.1").selectedByRule()
+                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution("between versions 1.0 and 1.1")
             }
         }
     }
@@ -331,7 +325,7 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         then:
         resolve.expectGraph {
             root(":", ":test:") {
-                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution()
+                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution("between versions 1.0 and 1.1")
                 module("org:foo:1.1")
             }
         }
@@ -374,11 +368,11 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         then:
         resolve.expectGraph {
             root(":", ":test:") {
-                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution().byReason('transitive dependency constraint')
+                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution("between versions 1.0 and 1.1").byConstraint('transitive dependency constraint')
                 project(":b", "test:b:") {
                     configuration = "conf"
                     noArtifacts()
-                    module("org:foo:1.1").byReason('transitive dependency constraint')
+                    module("org:foo:1.1").byConstraint('transitive dependency constraint')
                 }
             }
         }
@@ -422,7 +416,7 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         then:
         resolve.expectGraph {
             root(":", ":test:") {
-                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution()
+                edge("org:foo:1.0", "org:foo:1.1").byConflictResolution("between versions 1.0 and 1.1")
                 edge("org:included:1.0", "project :included", "org:included:1.0") {
                     noArtifacts()
                     module("org:foo:1.1:runtime")
@@ -432,7 +426,6 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
     }
 
     @Issue("gradle/gradle#4609")
-    @ToBeImplemented
     def "dependency constraint does not invalidate excludes defined on hard dependency"() {
         given:
         mavenRepo.module("org", "baz", "1.0").publish()
@@ -456,9 +449,7 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
         then:
         resolve.expectGraph {
             root(":", ":test:") {
-                module("org:foo:1.0") {
-                    module("org:baz:1.0") // Should be excluded
-                }
+                module("org:foo:1.0")
             }
         }
     }
@@ -519,6 +510,64 @@ class DependencyConstraintsIntegrationTest extends AbstractIntegrationSpec {
                 module("org:bar:1.0") {
                     edge("org:foo:1.0","org:foo:1.1")
                 }
+            }
+        }
+    }
+
+    void 'dependency updated through constraints has its transitive dependencies'() {
+        given:
+        def foo10 = mavenRepo.module('org', 'foo', '1.0').publish()
+        mavenRepo.module('org', 'bar', '1.0').publish()
+        mavenRepo.module('org', 'bar', '1.1').dependsOn(foo10).publish()
+
+        buildFile << """
+            dependencies {
+                conf 'org:bar:1.0'
+                constraints {
+                    conf 'org:bar:1.1'
+                }
+            }
+        """
+
+        when:
+        run 'checkDeps'
+
+        then:
+        resolve.expectGraph {
+            root(":", ":test:") {
+                module("org:bar:1.1") {
+                    edge('org:foo:1.0', 'org:foo:1.0')
+                }
+                edge('org:bar:1.0', 'org:bar:1.1')
+            }
+        }
+    }
+
+    void 'dependency without version updated through constraints has its transitive dependencies'() {
+        given:
+        def foo10 = mavenRepo.module('org', 'foo', '1.0').publish()
+        mavenRepo.module('org', 'bar', '1.0').publish()
+        mavenRepo.module('org', 'bar', '1.1').dependsOn(foo10).publish()
+
+        buildFile << """
+            dependencies {
+                constraints {
+                    conf 'org:bar:1.1'
+                }
+                conf 'org:bar'
+            }
+        """
+
+        when:
+        run 'checkDeps'
+
+        then:
+        resolve.expectGraph {
+            root(":", ":test:") {
+                module("org:bar:1.1") {
+                    edge('org:foo:1.0', 'org:foo:1.0')
+                }
+                edge('org:bar', 'org:bar:1.1')
             }
         }
     }

@@ -54,6 +54,8 @@ class DependencyInsightReportVariantDetailsIntegrationTest extends AbstractInteg
    variant "$expectedVariant" [
       $expectedAttributes
    ]
+
+project :$expectedProject
 \\--- $configuration"""
 
         where:
@@ -103,8 +105,11 @@ class DependencyInsightReportVariantDetailsIntegrationTest extends AbstractInteg
       Requested attributes not found in the selected variant:
          org.gradle.blah   = something
    ]
+
+org.test:leaf:1.0
 \\--- org.test:a:1.0
-     \\--- compileClasspath"""
+     \\--- compileClasspath
+"""
     }
 
     def "Asking for variant details of 'FAILED' modules doesn't break the report"() {
@@ -165,7 +170,11 @@ org:middle:1.0 FAILED
         then:
         output.contains """
 org:leaf:1.0
-   variant "runtime"
+   variant "runtime" [
+      org.gradle.status = release (not requested)
+   ]
+
+org:leaf:1.0
 \\--- org:top:1.0
      \\--- conf
 """
@@ -200,12 +209,84 @@ org:leaf:1.0
         then:
         output.contains """org:leaf:1.0
    variant "runtime" [
+      org.gradle.status = release (not requested)
       Requested attributes not found in the selected variant:
-         usage = dummy
+         usage             = dummy
    ]
+
+org:leaf:1.0
 \\--- org:top:1.0
      \\--- conf
 """
     }
+
+    def "correctly reports attributes declared on dependencies"() {
+        given:
+        mavenRepo.module('org', 'testA', '1.0').publish()
+        mavenRepo.module('org', 'testB', '1.0').publish()
+
+        buildFile << """
+            def CUSTOM_ATTRIBUTE = Attribute.of('custom', CustomAttributeType)
+            dependencies.attributesSchema.attribute(CUSTOM_ATTRIBUTE)
+            def configValue = objects.named(CustomAttributeType.class, 'conf_value')
+            def dependencyValue = objects.named(CustomAttributeType.class, 'dep_value')
+            
+            repositories {
+                maven { url "${mavenRepo.uri}" }
+            }
+            configurations {
+                conf {
+                    attributes.attribute(CUSTOM_ATTRIBUTE, configValue)
+                }
+            }
+            dependencies {
+                components {
+                    all {
+                        attributes {
+                            attribute(CUSTOM_ATTRIBUTE, dependencyValue)
+                        }
+                    }
+                }
+                conf('org:testA:1.0') {
+                    attributes {
+                        attribute(CUSTOM_ATTRIBUTE, dependencyValue)
+                    }
+                }
+                conf('org:testB:+') {
+                    attributes {
+                        attribute(CUSTOM_ATTRIBUTE, dependencyValue)
+                    }
+                }
+            }
+            
+            interface CustomAttributeType extends Named {}
+        """
+
+        when:
+        run 'dependencyInsight', "--dependency", "test", "--configuration", "conf"
+
+        then:
+        outputContains """
+org:testA:1.0
+   variant "default" [
+      custom            = dep_value
+      org.gradle.status = release (not requested)
+   ]
+
+org:testA:1.0
+\\--- conf
+
+org:testB:1.0
+   variant "default" [
+      custom            = dep_value
+      org.gradle.status = release (not requested)
+   ]
+
+org:testB:+ -> 1.0
+\\--- conf
+"""
+
+    }
+
 
 }

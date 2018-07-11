@@ -162,7 +162,7 @@
                             <a target="_top" class="site-header__navigation-link" href="https://gradle.org/training/" itemprop="url">Training</a>
                         </li>
                         <li class="site-header__navigation-item" itemprop="name">
-                            <a target="_top" class="site-header__navigation-link" href="https://gradle.com/enterprise" itemprop="url">Enterprise</a>
+                            <a target="_top" class="site-header__navigation-link" href="https://gradle.com/enterprise" itemprop="url">Try Gradle Enterprise</a>
                         </li>
                     </ul>
                 </div>
@@ -216,6 +216,7 @@
                         <input id="email" class="email" name="email" type="email" placeholder="name@email.com" pattern="[^@\s]+@[^@\s]+\.[^@\s]+" maxlength="255" required=""/>
                         <button id="submit" class="submit" type="submit">Subscribe</button>
                     </form>
+                    <p class="disclaimer">By entering your email, you agree to our <a href="https://gradle.org/terms/">Terms</a> and <a href="https://gradle.org/privacy/">Privacy Policy</a>, including receipt of emails. You can unsubscribe at any time.</p>
                 </section>
             </nav>
             <div class="site-footer-secondary">
@@ -363,6 +364,10 @@
 
     <xsl:template match='xslthl:value' mode="xslthl">
         <span class="hl-value"><xsl:apply-templates mode="xslthl"/></span>
+    </xsl:template>
+
+    <xsl:template match='xslthl:word' mode="xslthl">
+        <span class="hl-word"><xsl:apply-templates mode="xslthl"/></span>
     </xsl:template>
 
 </xsl:stylesheet>

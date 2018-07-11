@@ -56,6 +56,7 @@ import org.gradle.api.internal.project.ant.DefaultAntLoggingAdapterFactory;
 import org.gradle.api.internal.project.taskfactory.ITaskFactory;
 import org.gradle.api.internal.tasks.DefaultTaskContainerFactory;
 import org.gradle.api.internal.tasks.TaskContainerInternal;
+import org.gradle.api.internal.tasks.TaskStatistics;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.tasks.util.PatternSet;
 import org.gradle.configuration.ConfigurationTargetIdentifier;
@@ -70,6 +71,7 @@ import org.gradle.internal.logging.LoggingManagerInternal;
 import org.gradle.internal.nativeintegration.filesystem.FileSystem;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.reflect.Instantiator;
+import org.gradle.internal.resource.TextResourceLoader;
 import org.gradle.internal.service.DefaultServiceRegistry;
 import org.gradle.internal.service.ServiceRegistration;
 import org.gradle.internal.service.ServiceRegistry;
@@ -115,7 +117,7 @@ public class ProjectScopeServices extends DefaultServiceRegistry {
     protected PluginRegistry createPluginRegistry(PluginRegistry rootRegistry) {
         PluginRegistry parentRegistry;
         if (project.getParent() == null) {
-            parentRegistry = rootRegistry;
+            parentRegistry = rootRegistry.createChild(project.getBaseClassLoaderScope());
         } else {
             parentRegistry = project.getParent().getServices().get(PluginRegistry.class);
         }
@@ -142,8 +144,8 @@ public class ProjectScopeServices extends DefaultServiceRegistry {
         return new DefaultProjectConfigurationActionContainer();
     }
 
-    protected DefaultFileOperations createFileOperations(FileResolver fileResolver, TemporaryFileProvider temporaryFileProvider, Instantiator instantiator, FileLookup fileLookup, DirectoryFileTreeFactory directoryFileTreeFactory, StreamHasher streamHasher, FileHasher fileHasher, ExecFactory execFactory) {
-        return new DefaultFileOperations(fileResolver, project.getTasks(), temporaryFileProvider, instantiator, fileLookup, directoryFileTreeFactory, streamHasher, fileHasher, execFactory);
+    protected DefaultFileOperations createFileOperations(FileResolver fileResolver, TemporaryFileProvider temporaryFileProvider, Instantiator instantiator, FileLookup fileLookup, DirectoryFileTreeFactory directoryFileTreeFactory, StreamHasher streamHasher, FileHasher fileHasher, ExecFactory execFactory, TextResourceLoader textResourceLoader) {
+        return new DefaultFileOperations(fileResolver, project.getTasks(), temporaryFileProvider, instantiator, fileLookup, directoryFileTreeFactory, streamHasher, fileHasher, execFactory, textResourceLoader);
     }
 
     protected ExecFactory decorateExecFactory(ExecFactory execFactory) {
@@ -167,7 +169,7 @@ public class ProjectScopeServices extends DefaultServiceRegistry {
     }
 
     protected PluginManagerInternal createPluginManager(Instantiator instantiator, InstantiatorFactory instantiatorFactory, BuildOperationExecutor buildOperationExecutor) {
-        PluginTarget target = new RuleBasedPluginTarget<ProjectInternal>(
+        PluginTarget target = new RuleBasedPluginTarget(
             project,
             get(ModelRuleExtractor.class),
             get(ModelRuleSourceDetector.class)
@@ -179,8 +181,8 @@ public class ProjectScopeServices extends DefaultServiceRegistry {
         return parentFactory.createChild(project, get(InstantiatorFactory.class).injectAndDecorate(this));
     }
 
-    protected Factory<TaskContainerInternal> createTaskContainerInternal() {
-        return new DefaultTaskContainerFactory(get(ModelRegistry.class), get(Instantiator.class), get(ITaskFactory.class), project, get(ProjectAccessListener.class));
+    protected Factory<TaskContainerInternal> createTaskContainerInternal(TaskStatistics taskStatistics, BuildOperationExecutor buildOperationExecutor) {
+        return new DefaultTaskContainerFactory(get(ModelRegistry.class), get(Instantiator.class), get(ITaskFactory.class), project, get(ProjectAccessListener.class), taskStatistics, buildOperationExecutor);
     }
 
     protected SoftwareComponentContainer createSoftwareComponentContainer() {

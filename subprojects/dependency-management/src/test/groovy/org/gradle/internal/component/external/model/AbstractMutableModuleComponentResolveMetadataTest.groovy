@@ -20,8 +20,10 @@ import com.google.common.collect.ImmutableListMultimap
 import org.gradle.api.artifacts.VersionConstraint
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.attributes.Attribute
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.DefaultModuleVersionIdentifier
 import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
+import org.gradle.api.internal.attributes.ImmutableAttributes
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.internal.component.external.descriptor.Configuration
 import org.gradle.internal.component.model.ComponentResolveMetadata
@@ -34,7 +36,7 @@ import static org.gradle.internal.component.external.model.AbstractMutableModule
 import static org.gradle.internal.component.external.model.DefaultModuleComponentSelector.newSelector
 
 abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specification {
-    def id = DefaultModuleComponentIdentifier.newId("group", "module", "version")
+    def id = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId("group", "module"), "version")
     def configurations = []
     def dependencies = []
 
@@ -51,7 +53,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
     }
 
     def "can replace identifiers"() {
-        def newId = DefaultModuleComponentIdentifier.newId("group", "module", "version")
+        def newId = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId("group", "module"), "version")
         def metadata = getMetadata()
 
         given:
@@ -156,7 +158,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
     }
 
     def "can attach variants with files"() {
-        def id = DefaultModuleComponentIdentifier.newId("group", "module", "version")
+        def id = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId("group", "module"), "version")
         def metadata = createMetadata(id)
 
         given:
@@ -226,15 +228,15 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
     }
 
     def "can attach variants with dependencies"() {
-        def id = DefaultModuleComponentIdentifier.newId("group", "module", "version")
+        def id = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId("group", "module"), "version")
         def metadata = createMetadata(id)
 
         given:
         def v1 = metadata.addVariant("api", attributes(usage: "compile"),)
-        v1.addDependency("g1", "m1", v("v1"), [], null)
-        v1.addDependency("g2", "m2", v("v2"), [], "v2 is tested")
+        v1.addDependency("g1", "m1", v("v1"), [], null, ImmutableAttributes.EMPTY)
+        v1.addDependency("g2", "m2", v("v2"), [], "v2 is tested", ImmutableAttributes.EMPTY)
         def v2 = metadata.addVariant("runtime", attributes(usage: "runtime"),)
-        v2.addDependency("g1", "m1", v("v1"), [], null)
+        v2.addDependency("g1", "m1", v("v1"), [], null, ImmutableAttributes.EMPTY)
 
         expect:
         metadata.variants.size() == 2
@@ -273,7 +275,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
     }
 
     def "variants are attached as consumable configurations used for variant aware selection"() {
-        def id = DefaultModuleComponentIdentifier.newId("group", "module", "version")
+        def id = DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId("group", "module"), "version")
         def metadata = createMetadata(id)
 
         def attributes1 = attributes(usage: "compile")
@@ -282,15 +284,15 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
         def v1 = metadata.addVariant("api", attributes1,)
         v1.addFile("f1.jar", "f1.jar")
         v1.addFile("f2.jar", "f2-1.2.jar")
-        v1.addDependency("g1", "m1", v("v1"), [], null)
+        v1.addDependency("g1", "m1", v("v1"), [], null, ImmutableAttributes.EMPTY)
         def v2 = metadata.addVariant("runtime", attributes2,)
         v2.addFile("f2", "f2-version.zip")
-        v2.addDependency("g2", "m2", v("v2"), [], null)
-        v2.addDependency("g3", "m3", v("v3"), [], null)
+        v2.addDependency("g2", "m2", v("v2"), [], null, ImmutableAttributes.EMPTY)
+        v2.addDependency("g3", "m3", v("v3"), [], null, ImmutableAttributes.EMPTY)
 
         expect:
         def immutable = metadata.asImmutable()
-        def variantsForTraversal = immutable.getVariantsForGraphTraversal()
+        def variantsForTraversal = immutable.getVariantsForGraphTraversal().orNull()
         variantsForTraversal.size() == 2
         variantsForTraversal[0].name == 'api'
         variantsForTraversal[0].dependencies.size() == 1
@@ -339,7 +341,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
     def dependency(String org, String module, String version, List<String> confs = []) {
         def builder = ImmutableListMultimap.builder()
         confs.each { builder.put(it, it) }
-        def dependency = new IvyDependencyDescriptor(newSelector(org, module, v(version)), builder.build())
+        def dependency = new IvyDependencyDescriptor(newSelector(DefaultModuleIdentifier.newId(org, module), v(version)), builder.build())
         dependencies.add(dependency)
         return dependency
     }

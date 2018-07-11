@@ -18,6 +18,7 @@ package org.gradle.jvm.internal;
 
 import org.gradle.api.artifacts.ResolutionStrategy;
 import org.gradle.api.artifacts.ResolveException;
+import org.gradle.api.artifacts.component.BuildIdentifier;
 import org.gradle.api.artifacts.component.ComponentArtifactIdentifier;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.type.ArtifactTypeContainer;
@@ -39,6 +40,7 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.Dependen
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphNode;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphVisitor;
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.RootGraphNode;
 import org.gradle.api.internal.artifacts.repositories.ResolutionAwareRepository;
 import org.gradle.api.internal.artifacts.transform.VariantSelector;
 import org.gradle.api.internal.artifacts.type.ArtifactTypeRegistry;
@@ -48,7 +50,7 @@ import org.gradle.api.internal.file.AbstractFileCollection;
 import org.gradle.api.internal.tasks.TaskDependencies;
 import org.gradle.api.specs.Specs;
 import org.gradle.api.tasks.TaskDependency;
-import org.gradle.initialization.BuildIdentity;
+import org.gradle.internal.DisplayName;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.component.local.model.LocalFileDependencyMetadata;
 import org.gradle.internal.component.model.DependencyMetadata;
@@ -73,7 +75,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
     private final ResolveContext resolveContext;
     private final AttributesSchemaInternal attributesSchema;
     private final BuildOperationExecutor buildOperationExecutor;
-    private final BuildIdentity thisBuild;
+    private final BuildIdentifier thisBuild;
 
     private final String descriptor;
     private ResolveResult resolveResult;
@@ -86,7 +88,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
         ResolveContext resolveContext,
         AttributesSchemaInternal attributesSchema,
         BuildOperationExecutor buildOperationExecutor,
-        BuildIdentity thisBuild) {
+        BuildIdentifier thisBuild) {
         this.binary = binarySpec;
         this.descriptor = descriptor;
         this.dependencyResolver = dependencyResolver;
@@ -109,7 +111,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
         ParallelResolveArtifactSet artifacts = ParallelResolveArtifactSet.wrap(resolveResult.artifactsResults.getArtifacts(), buildOperationExecutor);
         artifacts.visit(new ArtifactVisitor() {
             @Override
-            public void visitArtifact(String variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
+            public void visitArtifact(DisplayName variantName, AttributeContainer variantAttributes, ResolvableArtifact artifact) {
                 result.add(artifact.getFile());
             }
 
@@ -129,7 +131,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
             }
 
             @Override
-            public void visitFile(ComponentArtifactIdentifier artifactIdentifier, String variantName, AttributeContainer variantAttributes, File file) {
+            public void visitFile(ComponentArtifactIdentifier artifactIdentifier, DisplayName variantName, AttributeContainer variantAttributes, File file) {
                 result.add(file);
             }
         });
@@ -197,11 +199,11 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
 
     class ResolveResult implements DependencyGraphVisitor, DependencyArtifactsVisitor {
         public final List<Throwable> notFound = new LinkedList<Throwable>();
-        public DefaultResolvedArtifactsBuilder artifactsBuilder = new DefaultResolvedArtifactsBuilder(thisBuild.getCurrentBuild(), true, ResolutionStrategy.SortOrder.DEFAULT);
+        public DefaultResolvedArtifactsBuilder artifactsBuilder = new DefaultResolvedArtifactsBuilder(thisBuild, true, ResolutionStrategy.SortOrder.DEFAULT);
         public SelectedArtifactResults artifactsResults;
 
         @Override
-        public void start(DependencyGraphNode root) {
+        public void start(RootGraphNode root) {
         }
 
         @Override
@@ -228,7 +230,7 @@ public class DependencyResolvingClasspath extends AbstractFileCollection {
         }
 
         @Override
-        public void startArtifacts(DependencyGraphNode root) {
+        public void startArtifacts(RootGraphNode root) {
         }
 
         @Override

@@ -27,7 +27,7 @@ import spock.lang.IgnoreIf
 
 class SigningSamplesSpec extends AbstractIntegrationSpec {
     @Rule
-    public final Sample mavenSample = new Sample(temporaryFolder)
+    public final Sample sampleProject = new Sample(temporaryFolder)
 
     void setup() {
         using m2
@@ -36,7 +36,7 @@ class SigningSamplesSpec extends AbstractIntegrationSpec {
     @UsesSample('signing/maven')
     def "upload attaches signatures"() {
         given:
-        sample mavenSample
+        sample sampleProject
 
         when:
         run "uploadArchives"
@@ -49,7 +49,7 @@ class SigningSamplesSpec extends AbstractIntegrationSpec {
     @IgnoreIf({ GradleContextualExecuter.parallel })
     def "conditional signing"() {
         given:
-        sample mavenSample
+        sample sampleProject
 
         when:
         run "uploadArchives"
@@ -69,7 +69,7 @@ class SigningSamplesSpec extends AbstractIntegrationSpec {
         def symlink = GpgCmdFixture.setupGpgCmd(file('signing/gnupg-signatory'))
 
         when:
-        sample mavenSample
+        sample sampleProject
 
         and:
         run "signArchives"
@@ -81,7 +81,40 @@ class SigningSamplesSpec extends AbstractIntegrationSpec {
         GpgCmdFixture.cleanupGpgCmd(symlink)
     }
 
+    @UsesSample('signing/maven-publish')
+    def "publish attaches signatures"() {
+        given:
+        sample sampleProject
+
+        and:
+        def artifactId = "my-library"
+        def version = "1.0"
+        def fileRepo = maven(sampleProject.dir.file("build/repos/releases"))
+        def module = fileRepo.module("com.example", artifactId, version)
+
+        when:
+        succeeds "publish"
+
+        then:
+        module.assertPublished()
+        def expectedFileNames = ["${artifactId}-${version}.jar", "${artifactId}-${version}-sources.jar", "${artifactId}-${version}-javadoc.jar", "${artifactId}-${version}.pom"]
+        module.assertArtifactsPublished(expectedFileNames.collect { [it, "${it}.asc"] }.flatten())
+
+        and:
+        module.parsedPom.name == "My Library"
+        module.parsedPom.description == "A concise description of my library"
+        module.parsedPom.url == "http://www.example.com/library"
+        module.parsedPom.licenses[0].name.text() == "The Apache License, Version 2.0"
+        module.parsedPom.licenses[0].url.text() == "http://www.apache.org/licenses/LICENSE-2.0.txt"
+        module.parsedPom.developers[0].id.text() == "johnd"
+        module.parsedPom.developers[0].name.text() == "John Doe"
+        module.parsedPom.developers[0].email.text() == "john.doe@example.com"
+        module.parsedPom.scm.connection.text() == 'scm:git:git://example.com/my-library.git'
+        module.parsedPom.scm.developerConnection.text() == 'scm:git:ssh://example.com/my-library.git'
+        module.parsedPom.scm.url.text() == 'http://example.com/my-library/'
+    }
+
     MavenFileRepository getRepo() {
-        return maven(mavenSample.dir.file("build/repo"))
+        return maven(sampleProject.dir.file("build/repo"))
     }
 }

@@ -55,12 +55,13 @@ class NodeState implements DependencyGraphNode {
 
     private final Long resultId;
     private final ComponentState component;
-    private final List<EdgeState> incomingEdges = Lists.newLinkedList();
-    private final List<EdgeState> outgoingEdges = Lists.newLinkedList();
+    private final List<EdgeState> incomingEdges = Lists.newArrayList();
+    private final List<EdgeState> outgoingEdges = Lists.newArrayList();
     private final ResolvedConfigurationIdentifier id;
 
     private final ConfigurationMetadata metaData;
     private final ResolveState resolveState;
+    private final boolean isTransitive;
     private ModuleExclusion previousTraversalExclusions;
 
     NodeState(Long resultId, ResolvedConfigurationIdentifier id, ComponentState component, ResolveState resolveState, ConfigurationMetadata md) {
@@ -69,6 +70,7 @@ class NodeState implements DependencyGraphNode {
         this.component = component;
         this.resolveState = resolveState;
         this.metaData = md;
+        this.isTransitive = metaData.isTransitive();
         component.addConfiguration(this);
     }
 
@@ -130,7 +132,7 @@ class NodeState implements DependencyGraphNode {
     }
 
     public boolean isTransitive() {
-        return metaData.isTransitive();
+        return isTransitive;
     }
 
     /**
@@ -207,6 +209,7 @@ class NodeState implements DependencyGraphNode {
                     EdgeState dependencyEdge = new EdgeState(this, dependencyState, resolutionFilter, resolveState);
                     outgoingEdges.add(dependencyEdge);
                     discoveredEdges.add(dependencyEdge);
+                    dependencyEdge.getSelector().use();
                 }
             }
             previousTraversalExclusions = resolutionFilter;
@@ -300,9 +303,12 @@ class NodeState implements DependencyGraphNode {
         return moduleExclusions.intersect(edgeExclusions, nodeExclusions);
     }
 
-    public void removeOutgoingEdges() {
-        for (EdgeState outgoingDependency : outgoingEdges) {
-            outgoingDependency.removeFromTargetConfigurations();
+    private void removeOutgoingEdges() {
+        if (!outgoingEdges.isEmpty()) {
+            for (EdgeState outgoingDependency : outgoingEdges) {
+                outgoingDependency.removeFromTargetConfigurations();
+                outgoingDependency.getSelector().release();
+            }
         }
         outgoingEdges.clear();
         previousTraversalExclusions = null;
@@ -316,17 +322,18 @@ class NodeState implements DependencyGraphNode {
             resolveState.onMoreSelected(this);
         } else {
             if (!incomingEdges.isEmpty()) {
-                restartIncomingEdges(selected);
+                restartIncomingEdges();
             }
         }
     }
 
-    private void restartIncomingEdges(ComponentState selected) {
+    private void restartIncomingEdges() {
         if (incomingEdges.size() == 1) {
-            incomingEdges.iterator().next().restart(selected);
+            EdgeState singleEdge = incomingEdges.iterator().next();
+            singleEdge.restart();
         } else {
             for (EdgeState dependency : new ArrayList<EdgeState>(incomingEdges)) {
-                dependency.restart(selected);
+                dependency.restart();
             }
         }
         incomingEdges.clear();

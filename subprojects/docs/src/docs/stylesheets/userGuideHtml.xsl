@@ -147,7 +147,7 @@
                             <li><a class="nav-dropdown" data-toggle="collapse" href="#best-practices" aria-expanded="false" aria-controls="best-practices">Best Practices</a>
                                 <ul id="best-practices">
                                     <li><a href="/userguide/authoring_maintainable_build_scripts.html">Authoring Maintainable Build Scripts</a></li>
-                                    <li><a href="/userguide/organizing_build_logic.html">Organizing Build Logic</a></li>
+                                    <li><a href="/userguide/organizing_gradle_projects.html">Organizing Gradle Projects</a></li>
                                     <li><a href="https://guides.gradle.org/performance/">Optimizing Build Performance</a></li>
                                     <li><a href="https://guides.gradle.org/using-build-cache/">Using the Build Cache</a></li>
                                 </ul>
@@ -182,6 +182,7 @@
                                     <li><a href="/userguide/inspecting_dependencies.html">Inspecting Dependencies</a></li>
                                     <li><a href="/userguide/managing_dependency_configurations.html">Managing Dependency Configurations</a></li>
                                     <li><a href="/userguide/managing_transitive_dependencies.html">Managing Transitive Dependencies</a></li>
+                                    <li><a href="/userguide/dependency_locking.html">Dependency Locking</a></li>
                                     <li><a href="/userguide/troubleshooting_dependency_resolution.html">Troubleshooting Dependency Resolution</a></li>
                                     <li><p></p></li>
                                     <li><a href="/userguide/customizing_dependency_resolution_behavior.html">Customizing Dependency Resolution Behavior</a></li>
@@ -191,12 +192,13 @@
                             </li>
                             <li><a class="nav-dropdown" data-toggle="collapse" href="#publishing-artifacts" aria-expanded="false" aria-controls="publishing-artifacts">Publishing Artifacts</a>
                                 <ul id="publishing-artifacts">
-                                    <li><a href="/userguide/distribution_plugin.html">Distribution Plugin</a></li>
-                                    <li><a href="/userguide/maven_plugin.html">Maven Plugin</a></li>
+                                    <li><a href="/userguide/publishing_overview.html">Overview</a></li>
                                     <li><a href="/userguide/publishing_maven.html">Maven Publish Plugin</a></li>
                                     <li><a href="/userguide/publishing_ivy.html">Ivy Publish Plugin</a></li>
-                                    <li><a href="/userguide/artifact_management.html">Publishing Artifacts Overview</a></li>
                                     <li><a href="/userguide/signing_plugin.html">Signing Plugin</a></li>
+                                    <li><a href="/userguide/distribution_plugin.html">Distribution Plugin</a></li>
+                                    <li><a href="/userguide/artifact_management.html">Legacy Publishing</a></li>
+                                    <li><a href="/userguide/maven_plugin.html">Old Maven Plugin</a></li>
                                 </ul>
                             </li>
                             <li><a class="nav-dropdown" data-toggle="collapse" href="#sample-gradle-builds" aria-expanded="false" aria-controls="sample-gradle-builds">Sample Gradle Builds</a>
@@ -268,6 +270,7 @@
                             <li><a class="nav-dropdown" data-toggle="collapse" href="#ci-integration" aria-expanded="false" aria-controls="ci-integration">Continuous Integration</a>
                                 <ul id="ci-integration">
                                     <li><a href="https://guides.gradle.org/executing-gradle-builds-on-jenkins">Using Gradle with Jenkins</a></li>
+                                    <li><a href="https://guides.gradle.org/executing-gradle-builds-on-teamcity">Using Gradle with TeamCity</a></li>
                                     <li><a href="https://guides.gradle.org/executing-gradle-builds-on-travisci">Using Gradle with Travis CI</a></li>
                                 </ul>
                             </li>
@@ -291,7 +294,7 @@
                                 </ul>
                             </li>
                             <li><a href="https://guides.gradle.org/using-the-worker-api/">Developing Parallel Tasks</a></li>
-                            <li><a href="/userguide/lazy_configuration.html">Lazy Task Configuration</a></li>
+                            <li><a href="/userguide/lazy_configuration.html">Lazy Configuration</a></li>
                             <li><a href="/userguide/java_gradle_plugin.html">Plugin Development Plugin</a></li>
                             <li><a href="/userguide/custom_plugins.html">Writing Custom Plugins</a></li>
                         </ul>

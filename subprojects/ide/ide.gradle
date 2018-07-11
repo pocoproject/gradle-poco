@@ -27,13 +27,19 @@ dependencies {
     compile project(':plugins')
     compile project(':ear')
     compile project(':toolingApi')
-    compile project(':compositeBuilds')
     compile libraries.slf4j_api.coordinates
     compile libraries.inject.coordinates
 
     testCompile testLibraries.xmlunit
     testCompile 'nl.jqno.equalsverifier:equalsverifier:2.1.6'
     testCompile project(':dependencyManagement')
+
+    testFixturesCompile project(':internalTesting')
+    testFixturesCompile project(':internalIntegTesting')
+}
+
+gradlebuildJava {
+    moduleType = ModuleType.PLUGIN
 }
 
 gradlebuildJava {
@@ -45,6 +51,7 @@ testFixtures {
     from(':dependencyManagement')
 }
 
+import org.gradle.gradlebuild.testing.integrationtests.cleanup.WhenNotEmpty
 testFilesCleanup {
-    errorWhenNotEmpty = false
+    policy = WhenNotEmpty.REPORT
 }

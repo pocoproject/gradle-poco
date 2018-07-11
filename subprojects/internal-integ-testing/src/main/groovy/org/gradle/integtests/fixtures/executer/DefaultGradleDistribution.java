@@ -87,8 +87,12 @@ public class DefaultGradleDistribution implements GradleDistribution {
             return javaVersion.compareTo(JavaVersion.VERSION_1_6) >= 0 && javaVersion.compareTo(JavaVersion.VERSION_1_8) <= 0;
         }
 
-        // 3.x works on Java 7 - 8
-        return javaVersion.compareTo(JavaVersion.VERSION_1_7) >= 0 && javaVersion.compareTo(JavaVersion.VERSION_1_8) <= 0;
+        // 3.x - 4.6 works on Java 7 - 8
+        if(isSameOrOlder("4.6")) {
+            return javaVersion.compareTo(JavaVersion.VERSION_1_7) >= 0 && javaVersion.compareTo(JavaVersion.VERSION_1_8) <= 0;
+        }
+
+        return javaVersion.compareTo(JavaVersion.VERSION_1_7) >= 0 && javaVersion.compareTo(JavaVersion.VERSION_1_10) <= 0;
     }
 
     public boolean worksWith(OperatingSystem os) {
@@ -145,7 +149,9 @@ public class DefaultGradleDistribution implements GradleDistribution {
     }
 
     public VersionNumber getArtifactCacheLayoutVersion() {
-        if (isSameOrNewer("4.7-rc-1")) {
+        if (isSameOrNewer("4.8-rc-1")) {
+            return VersionNumber.parse("2.58");
+        } else if (isSameOrNewer("4.7-rc-1")) {
             return VersionNumber.parse("2.56");
         } else if (isSameOrNewer("4.6-rc-1")) {
             return VersionNumber.parse("2.53");

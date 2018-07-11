@@ -47,13 +47,15 @@ import static org.gradle.util.Matchers.normalizedLineSeparators
  * Plan is to bring features over as needed.
  */
 @CleanupTestDirectory
+@SuppressWarnings("IntegrationTestFixtures")
 class AbstractIntegrationSpec extends Specification {
 
     @Rule
     final TestNameTestDirectoryProvider temporaryFolder = new TestNameTestDirectoryProvider()
 
     GradleDistribution distribution = new UnderDevelopmentGradleDistribution(getBuildContext())
-    GradleExecuter executer = new GradleContextualExecuter(distribution, temporaryFolder, getBuildContext())
+    GradleExecuter executer = createExecuter()
+
     BuildTestFixture buildTestFixture = new BuildTestFixture(temporaryFolder)
 
     IntegrationTestBuildContext getBuildContext() {
@@ -69,6 +71,10 @@ class AbstractIntegrationSpec extends Specification {
 
     def cleanup() {
         executer.cleanup()
+    }
+
+    GradleContextualExecuter createExecuter() {
+        new GradleContextualExecuter(distribution, temporaryFolder, getBuildContext())
     }
 
     protected TestFile getBuildFile() {
@@ -371,6 +377,16 @@ class AbstractIntegrationSpec extends Specification {
     void outputContains(String string) {
         assertHasResult()
         result.assertOutputContains(string.trim())
+    }
+
+    void postBuildOutputContains(String string) {
+        assertHasResult()
+        result.assertHasPostBuildOutput(string.trim())
+    }
+
+    void outputDoesNotContain(String string) {
+        assertHasResult()
+        result.assertNotOutput(string.trim())
     }
 
     static String jcenterRepository() {

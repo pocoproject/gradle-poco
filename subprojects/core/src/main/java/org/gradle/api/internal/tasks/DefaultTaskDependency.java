@@ -25,7 +25,6 @@ import org.gradle.api.Task;
 import org.gradle.api.internal.provider.ProviderInternal;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.TaskDependency;
-import org.gradle.api.tasks.TaskReference;
 import org.gradle.internal.typeconversion.UnsupportedNotationException;
 
 import javax.annotation.Nullable;
@@ -123,15 +122,15 @@ public class DefaultTaskDependency extends AbstractTaskDependency {
                 if (callableResult != null) {
                     queue.addFirst(callableResult);
                 }
-            } else if (resolver != null && dependency instanceof TaskReference) {
-                context.add(resolver.resolveTask((TaskReference) dependency));
+            } else if (dependency instanceof TaskReferenceInternal) {
+                context.add(((TaskReferenceInternal) dependency).resolveTask());
             } else if (resolver != null && dependency instanceof CharSequence) {
                 context.add(resolver.resolveTask(dependency.toString()));
             } else if (dependency instanceof TaskDependencyContainer) {
                 ((TaskDependencyContainer) dependency).visitDependencies(context);
             } else if (dependency instanceof ProviderInternal) {
                 ProviderInternal providerInternal = (ProviderInternal) dependency;
-                if (providerInternal.getType() == null || providerInternal.getType().equals(Provider.class)) {
+                if (providerInternal.getType() == null || providerInternal.getType().equals(Provider.class) || Task.class.isAssignableFrom(providerInternal.getType())) {
                     queue.addFirst(providerInternal.get());
                     continue;
                 }

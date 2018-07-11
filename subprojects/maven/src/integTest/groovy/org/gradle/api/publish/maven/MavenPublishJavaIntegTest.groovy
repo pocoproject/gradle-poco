@@ -18,10 +18,12 @@ package org.gradle.api.publish.maven
 
 import org.gradle.integtests.fixtures.publish.maven.AbstractMavenPublishIntegTest
 import org.gradle.test.fixtures.maven.MavenDependencyExclusion
+import org.gradle.test.fixtures.maven.MavenJavaModule
+import spock.lang.Issue
 import spock.lang.Unroll
 
 class MavenPublishJavaIntegTest extends AbstractMavenPublishIntegTest {
-    def javaLibrary = javaLibrary(mavenRepo.module("org.gradle.test", "publishTest", "1.9"))
+    MavenJavaModule javaLibrary = javaLibrary(mavenRepo.module("org.gradle.test", "publishTest", "1.9"))
 
     def "can publish java-library with no dependencies"() {
         createBuildScripts("""
@@ -646,6 +648,174 @@ class MavenPublishJavaIntegTest extends AbstractMavenPublishIntegTest {
             capability('org', 'bar', '1.0')
             noMoreCapabilities()
         }
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/5034, https://github.com/gradle/gradle/issues/5035")
+    void "configuration exclusions are published in generated POM and Gradle metadata"() {
+        given:
+        createBuildScripts("""
+            configurations.apiElements {
+                exclude group: "foo", module: "bar"
+            }
+
+            configurations.runtimeElements {
+                exclude group: "baz", module: "qux"
+            }
+
+            dependencies {
+                api "org.test:a:1.0"
+                implementation "org.test:b:2.0"
+                api project(':subproject')
+            }
+
+            publishing {
+                publications {
+                    maven(MavenPublication) {
+                        from components.java
+                    }
+                }
+            }
+        """)
+        settingsFile << """
+            include "subproject"
+        """
+        file('subproject/build.gradle') << """
+            apply plugin: 'java'
+            group = 'org.gradle.test'
+            version = '1.2'
+        """
+
+        when:
+        run "publish"
+
+        then:
+        javaLibrary.assertPublished()
+        javaLibrary.assertApiDependencies("org.test:a:1.0", "org.gradle.test:subproject:1.2")
+        javaLibrary.parsedPom.scopes.compile.hasDependencyExclusion("org.test:a:1.0", new MavenDependencyExclusion("foo", "bar"))
+        javaLibrary.parsedPom.scopes.compile.hasDependencyExclusion("org.gradle.test:subproject:1.2", new MavenDependencyExclusion("foo", "bar"))
+        javaLibrary.assertRuntimeDependencies("org.test:b:2.0")
+        javaLibrary.parsedPom.scopes.runtime.hasDependencyExclusion("org.test:b:2.0", new MavenDependencyExclusion("baz", "qux"))
+
+        and:
+        javaLibrary.parsedModuleMetadata.variant('api') {
+            dependency('org.test:a:1.0') {
+                hasExclude('foo', 'bar')
+                noMoreExcludes()
+            }
+            dependency('org.gradle.test:subproject:1.2') {
+                hasExclude('foo', 'bar')
+                noMoreExcludes()
+            }
+        }
+        javaLibrary.parsedModuleMetadata.variant('runtime') {
+            dependency('org.test:a:1.0') {
+                hasExclude('baz', 'qux')
+                noMoreExcludes()
+            }
+        }
+    }
+
+    def "can publish java-library with dependencies/constraints with attributes"() {
+        requiresExternalDependencies = true
+        given:
+        settingsFile << "include 'utils'\n"
+        file("utils/build.gradle") << '''
+            def attr1 = Attribute.of('custom', String)
+            version = '1.0'
+            configurations {
+                one {
+                    attributes.attribute(attr1, 'magnificient')
+                }
+                two {
+                    attributes.attribute(attr1, 'bazinga')
+                }
+            }
+        '''
+        createBuildScripts("""
+            def attr1 = Attribute.of('custom', String)
+            def attr2 = Attribute.of('nice', Boolean)
+
+            dependencies {
+                api("org.test:bar:1.0") {
+                    attributes {
+                        attribute(attr1, 'hello')
+                    }
+                }
+                
+                api(project(':utils')) {
+                    attributes {
+                        attribute(attr1, 'bazinga')
+                    }
+                }
+                
+                constraints {
+                    implementation("org.test:bar:1.1") {
+                        attributes {
+                            attribute(attr1, 'world')
+                            attribute(attr2, true)
+                        }
+                    }
+                }
+            }
+            
+            publishing {
+                publications {
+                    maven(MavenPublication) {
+                        from components.java
+                    }
+                }
+            }
+""")
+
+        when:
+        run "publish"
+
+        then:
+        javaLibrary.assertPublished()
+
+        and:
+        javaLibrary.parsedModuleMetadata.variant('api') {
+            dependency('org.test:bar:1.0') {
+                hasAttribute('custom', 'hello')
+            }
+            dependency('publishTest:utils:1.0') {
+                hasAttribute('custom', 'bazinga')
+            }
+            noMoreDependencies()
+        }
+
+        javaLibrary.parsedModuleMetadata.variant('runtime') {
+            dependency('org.test:bar:1.0') {
+                hasAttribute('custom', 'hello')
+            }
+            dependency('publishTest:utils:1.0') {
+                hasAttribute('custom', 'bazinga')
+            }
+            constraint('org.test:bar:1.1') {
+                hasAttributes(custom: 'world', nice: true)
+            }
+            noMoreDependencies()
+        }
+    }
+
+    @Issue("gradle/gradle#5450")
+    def "doesn't fail with NPE if no component is attached to a publication"() {
+        createBuildScripts("""
+        publishing {
+            publications {
+                java(MavenPublication) {
+                    artifact jar
+                }
+            }
+        }
+        """)
+
+        when:
+        run "generateMetadataFileForJavaPublication"
+
+        then:
+        skipped(':generateMetadataFileForJavaPublication')
+        outputContains "Maven publication 'java' isn't attached to a component. Gradle metadata only supports publications with software components (e.g. from component.java)"
     }
 
     def createBuildScripts(def append) {

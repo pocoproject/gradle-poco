@@ -15,33 +15,29 @@
  */
 package org.gradle.gradlebuild.profiling.buildscan
 
-import org.gradle.gradlebuild.BuildEnvironment.isCiServer
+import com.gradle.scan.plugin.BuildScanExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.internal.GradleInternal
 import org.gradle.api.plugins.quality.Checkstyle
 import org.gradle.api.plugins.quality.CodeNarc
 import org.gradle.api.reporting.Reporting
+import org.gradle.gradlebuild.BuildEnvironment.isCiServer
 import org.gradle.internal.classloader.ClassLoaderHierarchyHasher
-
-import com.gradle.scan.plugin.BuildScanExtension
-
+import org.gradle.kotlin.dsl.*
 import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
-
 import kotlin.concurrent.thread
-
-import java.util.concurrent.CountDownLatch
-
-import org.gradle.kotlin.dsl.*
 
 
 open class BuildScanPlugin : Plugin<Project> {
 
+    private
+    lateinit var buildScan: BuildScanExtension
+
     override fun apply(project: Project): Unit = project.run {
-        apply {
-            plugin("com.gradle.build-scan")
-        }
+        apply(plugin = "com.gradle.build-scan")
+        buildScan = the()
 
         extractCiOrLocalData()
         extractVcsData()
@@ -52,6 +48,11 @@ open class BuildScanPlugin : Plugin<Project> {
 
         extractCheckstyleAndCodenarcData()
         extractBuildCacheData()
+    }
+
+    private
+    fun buildScan(configure: BuildScanExtension.() -> Unit) {
+        buildScan.apply(configure)
     }
 
     private
@@ -77,7 +78,8 @@ open class BuildScanPlugin : Plugin<Project> {
                         codenarcPackage.getElementsByTag("File").flatMap { file ->
                             file.getElementsByTag("Violation").map { violation ->
                                 val filePath = rootProject.relativePath(file.attr("name"))
-                                "$filePath:${violation.attr("lineNumber")} \u2192 ${violation.getElementsByTag("Message").first().text()}"
+                                val message = violation.getElementsByTag("Message").first() ?: violation.getElementsByTag("SourceLine").first()
+                                "$filePath:${violation.attr("lineNumber")} \u2192 ${message.text()}"
                             }
                         }
                     }
@@ -106,47 +108,46 @@ open class BuildScanPlugin : Plugin<Project> {
     private
     fun Project.extractVcsData() {
 
-        fun Project.run(vararg args: String): String {
-            val process = ProcessBuilder(args.toList())
-                .directory(rootDir)
-                .start()
-            assert(process.waitFor() == 0)
-            return process.inputStream.bufferedReader().use { it.readText().trim() }
-        }
-
-        fun execAsync(action: () -> Unit) {
-            val latch = CountDownLatch(1)
-            thread(start = true) {
-                try {
-                    action()
-                } catch (e: Exception) {
-                    rootProject.logger.warn("Build scan user data async exec failed", e)
-                } finally {
-                    latch.countDown()
-                }
+        fun fork(action: () -> Unit) = thread {
+            try {
+                action()
+            } catch (e: Exception) {
+                rootProject.logger.warn("Build scan user data async exec failed", e)
             }
         }
 
-        execAsync {
-            val commitId = run("git", "rev-parse", "--verify", "HEAD")
-            setCommitId(commitId)
-            val status = run("git", "status", "--porcelain")
-            if (status.isNotEmpty()) {
-                buildScan {
-                    tag("dirty")
-                    value("Git Status", status)
-                }
-            }
-        }
+        val threads = listOf(
 
-        execAsync {
-            val branchName = run("git", "rev-parse", "--abbrev-ref", "HEAD")
-            if (branchName.isNotEmpty() && branchName != "HEAD") {
-                buildScan {
-                    tag(branchName)
-                    value("Git Branch Name", branchName)
+            fork {
+                system("git", "rev-parse", "--verify", "HEAD").let { commitId ->
+                    setCommitId(commitId)
                 }
-            }
+            },
+
+            fork {
+                system("git", "status", "--porcelain").let { status ->
+                    if (status.isNotEmpty()) {
+                        buildScan {
+                            tag("dirty")
+                            value("Git Status", status)
+                        }
+                    }
+                }
+            },
+
+            fork {
+                system("git", "rev-parse", "--abbrev-ref", "HEAD").let { branchName ->
+                    if (branchName.isNotEmpty() && branchName != "HEAD") {
+                        buildScan {
+                            tag(branchName)
+                            value("Git Branch Name", branchName)
+                        }
+                    }
+                }
+            })
+
+        buildScan.buildFinished {
+            awaitAll(threads)
         }
     }
 
@@ -159,7 +160,7 @@ open class BuildScanPlugin : Plugin<Project> {
                 .split(",")
 
             buildScan.buildFinished {
-                allprojects.flatMap { it.tasks }
+                allprojects.flatMap { gradle.taskGraph.allTasks }
                     .filter { it.state.executed && it.path in tasksToInvestigate }
                     .forEach { task ->
                         val hasher = (gradle as GradleInternal).services.get(ClassLoaderHierarchyHasher::class.java)
@@ -199,9 +200,17 @@ open class BuildScanPlugin : Plugin<Project> {
 }
 
 
-fun Project.buildScan(configure: BuildScanExtension.() -> Unit): Unit =
-    configure(configure)
+private
+fun Project.system(vararg args: String): String =
+    ProcessBuilder(args.toList())
+        .directory(rootDir)
+        .start()
+        .run {
+            assert(waitFor() == 0)
+            inputStream.bufferedReader().use { it.readText().trim() }
+        }
 
 
-val Project.buildScan
-    get() = the<BuildScanExtension>()
+private
+fun awaitAll(threads: Iterable<Thread>) =
+    threads.forEach(Thread::join)

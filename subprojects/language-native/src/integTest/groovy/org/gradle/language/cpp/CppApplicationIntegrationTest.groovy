@@ -16,6 +16,8 @@
 
 package org.gradle.language.cpp
 
+import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
+import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.CppApp
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibraries
 import org.gradle.nativeplatform.fixtures.app.CppAppWithLibrariesWithApiDependencies
@@ -494,7 +496,7 @@ class CppApplicationIntegrationTest extends AbstractCppIntegrationTest implement
         expect:
         fails ":app:assemble"
 
-        failure.assertHasCause """Unable to find a matching configuration of project :hello: Configuration 'cppApiElements':
+        failure.assertHasCause """Unable to find a matching variant of project :hello: Variant 'cppApiElements':
   - Required org.gradle.native.debuggable 'true' but no value provided.
   - Required org.gradle.native.operatingSystem '${currentOsFamilyName}' but no value provided.
   - Required org.gradle.native.optimized 'false' but no value provided.
@@ -930,5 +932,33 @@ class CppApplicationIntegrationTest extends AbstractCppIntegrationTest implement
         installation("build/install/main/debug").exec().out == app.expectedOutput
         sharedLibrary("build/install/main/debug/lib/lib1").file.assertExists()
         sharedLibrary("build/install/main/debug/lib/lib2").file.assertExists()
+    }
+
+    @RequiresInstalledToolChain(ToolChainRequirement.GCC_COMPATIBLE)
+    def "system headers are not evaluated when compiler warnings are enabled"() {
+        settingsFile << "rootProject.name = 'app'"
+        def app = new CppCompilerDetectingTestApp()
+
+        given:
+        app.writeSources(file('src/main'))
+
+        and:
+        buildFile << """
+            apply plugin: 'cpp-application'
+            
+            application {
+                binaries.configureEach {
+                    compileTask.get().compilerArgs.add("-Wall")
+                    compileTask.get().compilerArgs.add("-Werror")
+                }
+            }
+         """
+
+        expect:
+        succeeds "assemble"
+        result.assertTasksExecuted(tasks.debug.allToInstall, ':assemble')
+
+        executable("build/exe/main/debug/app").assertExists()
+        installation("build/install/main/debug").exec().out == app.expectedOutput(toolChain)
     }
 }

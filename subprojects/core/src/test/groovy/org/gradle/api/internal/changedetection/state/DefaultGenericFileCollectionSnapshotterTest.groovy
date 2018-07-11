@@ -15,13 +15,13 @@
  */
 package org.gradle.api.internal.changedetection.state
 
-import com.google.common.collect.Iterators
 import org.gradle.api.file.FileCollection
 import org.gradle.api.internal.cache.StringInterner
 import org.gradle.api.internal.changedetection.rules.ChangeType
+import org.gradle.api.internal.changedetection.rules.CollectingTaskStateChangeVisitor
 import org.gradle.api.internal.changedetection.rules.FileChange
 import org.gradle.api.internal.file.TestFiles
-import org.gradle.api.internal.file.collections.SimpleFileCollection
+import org.gradle.api.internal.file.collections.ImmutableFileCollection
 import org.gradle.internal.hash.TestFileHasher
 import org.gradle.normalization.internal.InputNormalizationStrategy
 import org.gradle.test.fixtures.file.TestFile
@@ -34,26 +34,12 @@ import static InputPathNormalizationStrategy.ABSOLUTE
 
 class DefaultGenericFileCollectionSnapshotterTest extends Specification {
     def stringInterner = new StringInterner()
-    def fileSystemMirror = new DefaultFileSystemMirror([])
+    def fileSystemMirror = new DefaultFileSystemMirror(Stub(WellKnownFileLocations))
     def snapshotter = new DefaultGenericFileCollectionSnapshotter(stringInterner, TestFiles.directoryFileTreeFactory(), new DefaultFileSystemSnapshotter(new TestFileHasher(), stringInterner, TestFiles.fileSystem(), TestFiles.directoryFileTreeFactory(), fileSystemMirror))
     def listener = Mock(ChangeListener)
     def normalizationStrategy = InputNormalizationStrategy.NOT_CONFIGURED
     @Rule
     public final TestNameTestDirectoryProvider tmpDir = new TestNameTestDirectoryProvider()
-
-    def getFilesReturnsOnlyTheFilesWhichExisted() {
-        given:
-        TestFile file = tmpDir.createFile('file1')
-        TestFile dir = tmpDir.createDir('dir')
-        TestFile file2 = dir.createFile('file2')
-        TestFile noExist = tmpDir.file('file3')
-
-        when:
-        def snapshot = snapshotter.snapshot(files(file, dir, noExist), ABSOLUTE, normalizationStrategy)
-
-        then:
-        snapshot.files as List == [file, file2]
-    }
 
     def "retains order of files in the snapshot"() {
         given:
@@ -65,7 +51,7 @@ class DefaultGenericFileCollectionSnapshotterTest extends Specification {
         def snapshot = snapshotter.snapshot(files(file, file2, file3), ABSOLUTE, normalizationStrategy)
 
         then:
-        snapshot.files == [file, file2, file3]
+        snapshot.elements == [file, file2, file3]
     }
 
     def getElementsReturnsAllFilesRegardlessOfWhetherTheyExistedOrNot() {
@@ -135,7 +121,9 @@ class DefaultGenericFileCollectionSnapshotterTest extends Specification {
         def snapshot = snapshotter.snapshot(files(file1, file2), ABSOLUTE, normalizationStrategy)
         file2.createFile()
         def target = snapshotter.snapshot(files(file1, file2, file3, file4), ABSOLUTE, normalizationStrategy)
-        Iterators.size(target.iterateContentChangesSince(snapshot, "TYPE", false)) == 0
+        def visitor = new CollectingTaskStateChangeVisitor()
+        target.visitChangesSince(snapshot, "TYPE", false, visitor)
+        visitor.changes.empty
 
         then:
         0 * _
@@ -299,13 +287,13 @@ class DefaultGenericFileCollectionSnapshotterTest extends Specification {
         changes(newSnapshot, snapshot, listener)
 
         then:
-        snapshot.files.empty
+        snapshot.elements.empty
         1 * listener.added(file.path)
         0 * listener._
     }
 
-    private void changes(FileCollectionSnapshot newSnapshot, FileCollectionSnapshot oldSnapshot, ChangeListener<String> listener) {
-        newSnapshot.iterateContentChangesSince(oldSnapshot, "TYPE", true).each { FileChange change ->
+    private static void changes(FileCollectionSnapshot newSnapshot, FileCollectionSnapshot oldSnapshot, ChangeListener<String> listener) {
+        newSnapshot.visitChangesSince(oldSnapshot, "TYPE", true) { FileChange change ->
             switch (change.type) {
                 case ChangeType.ADDED:
                     listener.added(change.path)
@@ -317,11 +305,11 @@ class DefaultGenericFileCollectionSnapshotterTest extends Specification {
                     listener.removed(change.path)
                     break
             }
+            return true
         }
     }
 
     private static FileCollection files(File... files) {
-        new SimpleFileCollection(files)
+        ImmutableFileCollection.of(files)
     }
-
 }

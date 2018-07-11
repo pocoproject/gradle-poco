@@ -24,6 +24,7 @@ import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.artifacts.DependencyConstraint;
 import org.gradle.api.artifacts.DependencySet;
+import org.gradle.api.artifacts.ExcludeRule;
 import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.artifacts.PublishArtifact;
 import org.gradle.api.attributes.AttributeContainer;
@@ -73,8 +74,8 @@ public class JavaLibrary implements SoftwareComponentInternal {
         this.configurations = configurations;
         this.objectFactory = objectFactory;
         this.attributesFactory = attributesFactory;
-        this.runtimeUsage = new RuntimeUsageContext(Usage.JAVA_RUNTIME);
-        this.compileUsage = new CompileUsageContext(Usage.JAVA_API);
+        this.runtimeUsage = createRuntimeUsageContext();
+        this.compileUsage = createCompileUsageContext();
         if (artifact != null) {
             this.artifacts.add(artifact);
         }
@@ -132,24 +133,38 @@ public class JavaLibrary implements SoftwareComponentInternal {
         }
     }
 
-    private class RuntimeUsageContext extends AbstractUsageContext {
+    private UsageContext createRuntimeUsageContext() {
+        return new ConfigurationUsageContext(Usage.JAVA_RUNTIME, "runtime", RUNTIME_ELEMENTS_CONFIGURATION_NAME);
+    }
+
+    private UsageContext createCompileUsageContext() {
+        return new ConfigurationUsageContext(Usage.JAVA_API, "api", API_ELEMENTS_CONFIGURATION_NAME);
+    }
+
+    private class ConfigurationUsageContext extends AbstractUsageContext {
+        private final String name;
+        private final String configurationName;
         private DomainObjectSet<ModuleDependency> dependencies;
         private DomainObjectSet<DependencyConstraint> dependencyConstraints;
         private Set<? extends Capability> capabilities;
+        private Set<ExcludeRule> excludeRules;
 
-        RuntimeUsageContext(String usageName) {
+
+        ConfigurationUsageContext(String usageName, String name, String configurationName) {
             super(usageName);
+            this.name = name;
+            this.configurationName = configurationName;
         }
 
         @Override
         public String getName() {
-            return "runtime";
+            return name;
         }
 
         @Override
         public Set<ModuleDependency> getDependencies() {
             if (dependencies == null) {
-                dependencies = configurations.getByName(RUNTIME_ELEMENTS_CONFIGURATION_NAME).getIncoming().getDependencies().withType(ModuleDependency.class);
+                dependencies = getConfiguration().getIncoming().getDependencies().withType(ModuleDependency.class);
             }
             return dependencies;
         }
@@ -157,7 +172,7 @@ public class JavaLibrary implements SoftwareComponentInternal {
         @Override
         public Set<? extends DependencyConstraint> getDependencyConstraints() {
             if (dependencyConstraints == null) {
-                dependencyConstraints = configurations.getByName(RUNTIME_ELEMENTS_CONFIGURATION_NAME).getIncoming().getDependencyConstraints();
+                dependencyConstraints = getConfiguration().getIncoming().getDependencyConstraints();
             }
             return dependencyConstraints;
         }
@@ -165,42 +180,23 @@ public class JavaLibrary implements SoftwareComponentInternal {
         @Override
         public Set<? extends Capability> getCapabilities() {
             if (capabilities == null) {
-                this.capabilities = ImmutableSet.copyOf(Configurations.collectCapabilities(configurations.getByName(RUNTIME_ELEMENTS_CONFIGURATION_NAME),
+                this.capabilities = ImmutableSet.copyOf(Configurations.collectCapabilities(getConfiguration(),
                     Sets.<Capability>newHashSet(),
                     Sets.<Configuration>newHashSet()));
             }
             return capabilities;
         }
-    }
-
-    private class CompileUsageContext extends AbstractUsageContext {
-        private DomainObjectSet<ModuleDependency> dependencies;
-        private DomainObjectSet<DependencyConstraint> dependencyConstraints;
-        private Set<? extends Capability> capabilities;
-
-        CompileUsageContext(String usageName) {
-            super(usageName);
-        }
 
         @Override
-        public String getName() {
-            return "api";
-        }
-
-        @Override
-        public Set<ModuleDependency> getDependencies() {
-            if (dependencies == null) {
-                dependencies = configurations.getByName(API_ELEMENTS_CONFIGURATION_NAME).getIncoming().getDependencies().withType(ModuleDependency.class);
+        public Set<ExcludeRule> getGlobalExcludes() {
+            if (excludeRules == null) {
+                this.excludeRules = ImmutableSet.copyOf(getConfiguration().getExcludeRules());
             }
-            return dependencies;
+            return excludeRules;
         }
 
-        @Override
-        public Set<? extends DependencyConstraint> getDependencyConstraints() {
-            if (dependencyConstraints == null) {
-                dependencyConstraints = configurations.getByName(API_ELEMENTS_CONFIGURATION_NAME).getIncoming().getDependencyConstraints();
-            }
-            return dependencyConstraints;
+        private Configuration getConfiguration() {
+            return configurations.getByName(configurationName);
         }
 
         @Override
@@ -239,6 +235,11 @@ public class JavaLibrary implements SoftwareComponentInternal {
 
         @Override
         public Set<? extends Capability> getCapabilities() {
+            return Collections.emptySet();
+        }
+
+        @Override
+        public Set<ExcludeRule> getGlobalExcludes() {
             return Collections.emptySet();
         }
     }

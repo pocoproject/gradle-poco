@@ -51,10 +51,6 @@ include 'a', 'b'
     def useJar() {
         buildFile << """
             allprojects {
-                tasks.withType(JavaCompile) {
-                    // Use forking to work around javac's jar cache
-                    options.fork = true
-                }
                 jar {
                     from emptyDirs
                 }
@@ -326,11 +322,13 @@ public class ToolImpl {
                 }
             }
         """
-        def sourceFile = file("a/src/main/java/ToolImpl.java")
-        sourceFile << """ 
+        def sourceFile = file("a/src/main/java/org/ToolImpl.java")
+        sourceFile << """                  
+            package org;
             public class ToolImpl { void m() { } }
         """
-        file("b/src/main/java/Main.java") << """
+        file("b/src/main/java/org/Main.java") << """
+            package org;    
             public class Main { void go(ToolImpl t) { t.m(); } }
         """
 
@@ -344,6 +342,7 @@ public class ToolImpl {
         when:
         // change to interface
         sourceFile.text = """
+            package org;    
             public interface ToolImpl { void m(); }
 """
 
@@ -355,6 +354,7 @@ public class ToolImpl {
         when:
         // change to visibility
         sourceFile.text = """
+            package org;    
             interface ToolImpl { void m(); }
 """
 
@@ -366,6 +366,7 @@ public class ToolImpl {
         when:
         // change to interfaces
         sourceFile.text = """
+            package org;    
             interface ToolImpl extends Runnable { void m(); }
 """
 
@@ -786,7 +787,6 @@ public class ToolImpl {
                     processor project(':b')
                 }
                 compileJava.options.annotationProcessorPath = configurations.processor
-                compileJava.options.fork = true
                 task run(type: JavaExec) {
                     main = 'TestApp'
                     classpath = sourceSets.main.runtimeClasspath

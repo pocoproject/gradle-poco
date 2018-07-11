@@ -50,6 +50,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static java.util.Collections.emptyList;
+
 /**
  * <p>{@code StartParameter} defines the configuration used by a Gradle instance to execute a build. The properties of {@code StartParameter} generally correspond to the command-line options of
  * Gradle.
@@ -75,7 +77,7 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     private Map<String, String> projectProperties = new HashMap<String, String>();
     private Map<String, String> systemPropertiesArgs = new HashMap<String, String>();
     private File gradleUserHomeDir;
-    private File gradleHomeDir;
+    protected File gradleHomeDir;
     private File settingsFile;
     private boolean useEmptySettings;
     private File buildFile;
@@ -96,6 +98,8 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     private boolean buildScan;
     private boolean noBuildScan;
     private boolean interactive;
+    private boolean writeDependencyLocks;
+    private List<String> lockedDependenciesToUpdate = emptyList();
 
     /**
      * {@inheritDoc}
@@ -219,7 +223,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
         p.searchUpwards = searchUpwards;
         p.projectProperties = new HashMap<String, String>(projectProperties);
         p.systemPropertiesArgs = new HashMap<String, String>(systemPropertiesArgs);
-        p.gradleHomeDir = gradleHomeDir;
         p.initScripts = new ArrayList<File>(initScripts);
         p.includedBuilds = new ArrayList<File>(includedBuilds);
         p.dryRun = dryRun;
@@ -239,6 +242,7 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
 
     protected StartParameter prepareNewBuild(StartParameter p) {
         p.gradleUserHomeDir = gradleUserHomeDir;
+        p.gradleHomeDir = gradleHomeDir;
         p.setLogLevel(getLogLevel());
         p.setConsoleOutput(getConsoleOutput());
         p.setShowStacktrace(getShowStacktrace());
@@ -255,6 +259,8 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
         p.setMaxWorkerCount(getMaxWorkerCount());
         p.systemPropertiesArgs = new HashMap<String, String>(systemPropertiesArgs);
         p.interactive = interactive;
+        p.writeDependencyLocks = writeDependencyLocks;
+        p.lockedDependenciesToUpdate = new ArrayList<String>(lockedDependenciesToUpdate);
         return p;
     }
 
@@ -294,9 +300,9 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     /**
      * Specifies that an empty settings script should be used.
      *
-     * This means that even if a settings file exists in the conventional location, or has been previously specified by {@link #setSettingsFile(java.io.File)}, it will not be used.
+     * This means that even if a settings file exists in the conventional location, or has been previously specified by {@link #setSettingsFile(File)}, it will not be used.
      *
-     * If {@link #setSettingsFile(java.io.File)} is called after this, it will supersede calling this method.
+     * If {@link #setSettingsFile(File)} is called after this, it will supersede calling this method.
      *
      * @return this
      */
@@ -337,7 +343,7 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      */
     public void setTaskNames(@Nullable Iterable<String> taskNames) {
         if (taskNames == null) {
-            this.taskRequests = Collections.emptyList();
+            this.taskRequests = emptyList();
         } else {
             this.taskRequests = Arrays.<TaskExecutionRequest>asList(new DefaultTaskExecutionRequest(taskNames));
         }
@@ -764,6 +770,7 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
             + ", maxWorkerCount=" + getMaxWorkerCount()
             + ", buildCacheEnabled=" + buildCacheEnabled
             + ", interactive=" + interactive
+            + ", writeDependencyLocks=" + writeDependencyLocks
             + '}';
     }
 
@@ -862,5 +869,52 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     @Incubating
     public void setInteractive(boolean interactive) {
         this.interactive = interactive;
+    }
+
+    /**
+     * Specifies whether dependency resolution needs to be persisted for locking
+     *
+     * @since 4.8
+     */
+    @Incubating
+    public void setWriteDependencyLocks(boolean writeDependencyLocks) {
+        this.writeDependencyLocks = writeDependencyLocks;
+    }
+
+    /**
+     * Returns true when dependency resolution is to be persisted for locking
+     *
+     * @since 4.8
+     */
+    @Incubating
+    public boolean isWriteDependencyLocks() {
+        return writeDependencyLocks;
+    }
+
+    /**
+     * Indicates that specified dependencies are to be allowed to update their version.
+     * Implicitly activates dependency locking persistence.
+     *
+     * @param lockedDependenciesToUpdate the modules to update
+     * @see #isWriteDependencyLocks()
+     *
+     * @since 4.8
+     */
+    @Incubating
+    public void setLockedDependenciesToUpdate(List<String> lockedDependenciesToUpdate) {
+        this.lockedDependenciesToUpdate = Lists.newArrayList(lockedDependenciesToUpdate);
+        this.writeDependencyLocks = true;
+    }
+
+    /**
+     * Returns the list of modules that are to be allowed to update their version compared to the lockfile.
+     *
+     * @return a list of modules allowed to have a version update
+     *
+     * @since 4.8
+     */
+    @Incubating
+    public List<String> getLockedDependenciesToUpdate() {
+        return lockedDependenciesToUpdate;
     }
 }

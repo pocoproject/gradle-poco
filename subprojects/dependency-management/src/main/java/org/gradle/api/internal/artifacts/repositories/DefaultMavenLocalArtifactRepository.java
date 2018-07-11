@@ -31,10 +31,12 @@ import org.gradle.api.internal.artifacts.repositories.resolver.ExternalResourceA
 import org.gradle.api.internal.artifacts.repositories.resolver.MavenResolver;
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport;
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransportFactory;
+import org.gradle.api.internal.changedetection.state.isolation.IsolatableFactory;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
 import org.gradle.internal.component.external.model.MutableMavenModuleResolveMetadata;
+import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.resolve.result.DefaultResourceAwareResolveResult;
 import org.gradle.internal.resource.local.FileResourceRepository;
 import org.gradle.internal.resource.local.FileStore;
@@ -58,8 +60,9 @@ public class DefaultMavenLocalArtifactRepository extends DefaultMavenArtifactRep
                                                ImmutableModuleIdentifierFactory moduleIdentifierFactory,
                                                FileResourceRepository fileResourceRepository,
                                                FeaturePreviews featurePreviews,
-                                               MavenMutableModuleMetadataFactory metadataFactory) {
-        super(fileResolver, transportFactory, locallyAvailableResourceFinder, instantiatorFactory, artifactFileStore, pomParser, metadataParser, authenticationContainer, moduleIdentifierFactory, null, fileResourceRepository, featurePreviews, metadataFactory);
+                                               MavenMutableModuleMetadataFactory metadataFactory,
+                                               IsolatableFactory isolatableFactory) {
+        super(fileResolver, transportFactory, locallyAvailableResourceFinder, instantiatorFactory, artifactFileStore, pomParser, metadataParser, authenticationContainer, moduleIdentifierFactory, null, fileResourceRepository, featurePreviews, metadataFactory, isolatableFactory);
         this.moduleIdentifierFactory = moduleIdentifierFactory;
     }
 
@@ -71,6 +74,7 @@ public class DefaultMavenLocalArtifactRepository extends DefaultMavenArtifactRep
 
         RepositoryTransport transport = getTransport(rootUri.getScheme());
         MavenMetadataLoader mavenMetadataLoader = new MavenMetadataLoader(transport.getResourceAccessor(), getResourcesFileStore());
+        Instantiator injector = createInjectorForMetadataSuppliers(transport, getInstantiatorFactory(), getUrl(), getResourcesFileStore());
         MavenResolver resolver = new MavenResolver(
             getName(),
             rootUri,
@@ -80,7 +84,9 @@ public class DefaultMavenLocalArtifactRepository extends DefaultMavenArtifactRep
             moduleIdentifierFactory,
             createMetadataSources(mavenMetadataLoader),
             MavenMetadataArtifactProvider.INSTANCE,
-            mavenMetadataLoader);
+            mavenMetadataLoader,
+            null,
+            null, injector);
         for (URI repoUrl : getArtifactUrls()) {
             resolver.addArtifactLocation(repoUrl);
         }

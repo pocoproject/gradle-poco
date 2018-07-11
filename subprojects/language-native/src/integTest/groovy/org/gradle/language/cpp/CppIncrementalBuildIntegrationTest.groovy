@@ -508,7 +508,9 @@ class CppIncrementalBuildIntegrationTest extends AbstractInstalledToolChainInteg
         """
 
         then:
+        executer.withArgument("-i")
         succeeds installApp
+        output.contains("Cannot locate header file for '#include $include' in source file 'main.cpp'. Assuming changed.")
         install.exec().out == "hello"
 
         when:
@@ -527,12 +529,12 @@ class CppIncrementalBuildIntegrationTest extends AbstractInstalledToolChainInteg
         and:
         executedAndNotSkipped appDebug.compile
         skipped libraryDebug.compile
-        output.contains("Cannot locate header file for '#include $include' in source file 'main.cpp'. Assuming changed.")
         unresolvedHeadersDetected(appDebug.compile)
 
         when:
-        disableTransitiveUnresolvedHeaderDetection()
-        headerFile.text = "changed again"
+        headerFile.delete()
+        appObjects.snapshot()
+        libObjects.snapshot()
 
         executer.withArgument("-i")
         appObjects.snapshot()
@@ -548,8 +550,13 @@ class CppIncrementalBuildIntegrationTest extends AbstractInstalledToolChainInteg
         and:
         executedAndNotSkipped appDebug.compile
         skipped libraryDebug.compile
-        output.contains("Cannot locate header file for '#include $include' in source file 'main.cpp'. Assuming changed.")
         unresolvedHeadersDetected(appDebug.compile)
+
+        when:
+        succeeds installApp
+
+        then:
+        nonSkippedTasks.empty
 
         when:
         file("app/src/main/headers/some-dir").mkdirs()
@@ -568,7 +575,9 @@ class CppIncrementalBuildIntegrationTest extends AbstractInstalledToolChainInteg
         nonSkippedTasks.empty
 
         when:
-        headerFile.delete()
+        disableTransitiveUnresolvedHeaderDetection()
+        headerFile.text = "changed again"
+
         appObjects.snapshot()
         libObjects.snapshot()
 
@@ -576,18 +585,12 @@ class CppIncrementalBuildIntegrationTest extends AbstractInstalledToolChainInteg
         succeeds installApp
 
         and:
-        executedAndNotSkipped appDebug.compile
-        skipped libraryDebug.compile
-
-        and:
-        appObjects.recompiledFiles(appSourceFile)
+        appObjects.noneRecompiled()
         libObjects.noneRecompiled()
 
-        when:
-        succeeds installApp
-
-        then:
-        nonSkippedTasks.empty
+        and:
+        skipped appDebug.compile
+        skipped libraryDebug.compile
 
         where:
         include             | text
@@ -680,7 +683,7 @@ class CppIncrementalBuildIntegrationTest extends AbstractInstalledToolChainInteg
         libObjects.snapshot()
 
         and:
-        headerFile.text = "changed 2"
+        headerFile.text = "changed 3"
 
         then:
         succeeds installApp
@@ -1365,6 +1368,67 @@ class CppIncrementalBuildIntegrationTest extends AbstractInstalledToolChainInteg
         and:
         appObjects.recompiledFiles(appSourceFile)
         libObjects.noneRecompiled()
+    }
+
+    def "recompiles when system headers change"() {
+        when:
+        appSourceFile.insertBefore('#include <lib.h>', '#include <common.h>')
+        appSourceFile.replace('"world"', 'TARGET')
+
+        def systemHeaderInOtherDir = file("app/src/main/system/common.h")
+        systemHeaderInOtherDir << """
+            #pragma once
+            #define TARGET "world"
+        """
+
+        buildFile << """
+            project(':app') {
+                tasks.withType(CppCompile) {
+                    systemIncludes.from("src/main/system")
+                }
+            }
+        """
+
+        then:
+        succeeds installApp
+        install.exec().out == "hello world"
+
+        when:
+        succeeds installApp
+
+        then:
+        install.exec().out == "hello world"
+
+        and:
+        nonSkippedTasks.empty
+
+        when:
+        systemHeaderInOtherDir.replace('"world"', '"universe"')
+
+        and:
+        appObjects.snapshot()
+        libObjects.snapshot()
+
+        then:
+        succeeds installApp
+        install.exec().out == "hello universe"
+
+        and:
+        executedAndNotSkipped appDebug.compile
+        skipped libraryDebug.compile
+
+        and:
+        appObjects.recompiledFiles(appSourceFile)
+        libObjects.noneRecompiled()
+
+        when:
+        succeeds installApp
+
+        then:
+        install.exec().out == "hello universe"
+
+        and:
+        nonSkippedTasks.empty
     }
 
     private boolean unresolvedHeadersDetected(String taskPath) {

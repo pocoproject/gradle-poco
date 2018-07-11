@@ -20,18 +20,20 @@ import org.gradle.api.InvalidUserDataException
 import org.gradle.api.artifacts.component.BuildIdentifier
 import org.gradle.api.artifacts.component.ModuleComponentSelector
 import org.gradle.api.artifacts.component.ProjectComponentSelector
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
 import org.gradle.api.internal.project.ProjectInternal
-import org.gradle.initialization.BuildIdentity
+import org.gradle.internal.build.BuildState
 import org.gradle.internal.component.external.model.DefaultModuleComponentSelector
 import org.gradle.internal.service.DefaultServiceRegistry
 import org.gradle.internal.typeconversion.UnsupportedNotationException
+import org.gradle.util.Path
 import spock.lang.Specification
 
 import static org.gradle.api.internal.artifacts.dsl.ComponentSelectorParsers.multiParser
 import static org.gradle.api.internal.artifacts.dsl.ComponentSelectorParsers.parser
 
-public class ComponentSelectorParsersTest extends Specification {
+class ComponentSelectorParsersTest extends Specification {
 
     def "understands group:name:version notation"() {
         when:
@@ -59,7 +61,8 @@ public class ComponentSelectorParsersTest extends Specification {
     }
 
     def "allows exact type on input"() {
-        def id = DefaultModuleComponentSelector.newSelector("org.foo", "bar", new DefaultMutableVersionConstraint("2.0"))
+        def module = DefaultModuleIdentifier.newId("org.foo", "bar")
+        def id = DefaultModuleComponentSelector.newSelector(module, new DefaultMutableVersionConstraint("2.0"))
 
         when:
         def v = multiParser().parseNotation(id) as List
@@ -75,7 +78,8 @@ public class ComponentSelectorParsersTest extends Specification {
     }
 
     def "allows list of objects on input"() {
-        def id = DefaultModuleComponentSelector.newSelector("org.foo", "bar", new DefaultMutableVersionConstraint("2.0"))
+        def module = DefaultModuleIdentifier.newId("org.foo", "bar")
+        def id = DefaultModuleComponentSelector.newSelector(module, new DefaultMutableVersionConstraint("2.0"))
 
         when:
         def v = multiParser().parseNotation([id, ["hey:man:1.0"], [group:'i', name:'like', version:'maps']]) as List
@@ -105,12 +109,14 @@ public class ComponentSelectorParsersTest extends Specification {
         when:
         def buildId = Stub(BuildIdentifier)
         buildId.name >> "build"
-        def buildIdentity = Stub(BuildIdentity)
-        buildIdentity.currentBuild >> buildId
+        def currentBuild = Stub(BuildState)
+        currentBuild.buildIdentifier >> buildId
         def services = new DefaultServiceRegistry()
-        services.add(BuildIdentity, buildIdentity)
+        services.add(BuildState, currentBuild)
         def project = Mock(ProjectInternal) {
-            getPath() >> ":bar"
+            getIdentityPath() >> Path.path(":id:bar")
+            getProjectPath() >> Path.path(":bar")
+            getName() >> "name"
             getServices() >> services
         }
         def v = multiParser().parseNotation(project) as List

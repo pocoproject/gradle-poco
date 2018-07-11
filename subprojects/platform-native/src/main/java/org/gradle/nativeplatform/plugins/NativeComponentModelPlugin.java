@@ -364,21 +364,6 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
         }
 
         @BinaryTasks
-        public void semiStaticLibraryTasks(ModelMap<Task> tasks, final SemiStaticLibraryBinarySpecInternal binary) {
-            String taskName = binary.getNamingScheme().getTaskName("create");
-            tasks.create(taskName, CreateSemiStaticLibrary.class, new Action<CreateSemiStaticLibrary>() {
-                @Override
-                public void execute(CreateSemiStaticLibrary task) {
-                    task.setDescription("Creates " + binary.getDisplayName());
-                    task.setToolChain(binary.getToolChain());
-                    task.setTargetPlatform(binary.getTargetPlatform());
-                    task.setOutputFile(binary.getSemiStaticLibraryFile());
-                    task.setStaticLibArgs(binary.getStaticLibArchiver().getArgs());
-                }
-            });
-        }
-
-        @BinaryTasks
         public void executableTasks(ModelMap<Task> tasks, final NativeExecutableBinarySpecInternal executableBinary) {
             NativeComponents.createExecutableTask(executableBinary, executableBinary.getExecutable().getFile());
         }

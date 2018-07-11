@@ -18,16 +18,14 @@ package org.gradle.api.internal.changedetection.state;
 
 import com.google.common.base.Function;
 import com.google.common.base.Objects;
-import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.gradle.api.internal.cache.StringInterner;
-import org.gradle.api.internal.changedetection.rules.TaskStateChange;
+import org.gradle.api.internal.changedetection.rules.TaskStateChangeVisitor;
 import org.gradle.caching.internal.BuildCacheHasher;
 import org.gradle.caching.internal.DefaultBuildCacheHasher;
 import org.gradle.internal.Factories;
 import org.gradle.internal.Factory;
-import org.gradle.internal.file.FileType;
 import org.gradle.internal.hash.HashCode;
 import org.gradle.internal.serialize.AbstractSerializer;
 import org.gradle.internal.serialize.Decoder;
@@ -36,7 +34,6 @@ import org.gradle.internal.serialize.HashCodeSerializer;
 
 import javax.annotation.Nullable;
 import java.io.File;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -48,12 +45,6 @@ public class DefaultFileCollectionSnapshot implements FileCollectionSnapshot {
         @Override
         public List<File> create() {
             return doGetElements();
-        }
-    });
-    private final Factory<List<File>> cachedFilesFactory = Factories.softReferenceCache(new Factory<List<File>>() {
-        @Override
-        public List<File> create() {
-            return doGetFiles();
         }
     });
     private HashCode hashCode;
@@ -84,16 +75,11 @@ public class DefaultFileCollectionSnapshot implements FileCollectionSnapshot {
     }
 
     @Override
-    public boolean isEmpty() {
-        return snapshots.isEmpty();
-    }
-
-    @Override
-    public Iterator<TaskStateChange> iterateContentChangesSince(FileCollectionSnapshot oldSnapshot, String fileType, boolean includeAdded) {
+    public boolean visitChangesSince(FileCollectionSnapshot oldSnapshot, String title, boolean includeAdded, TaskStateChangeVisitor visitor) {
         if (includeAdded && hashCode != null && getHash().equals(oldSnapshot.getHash())) {
-            return Iterators.emptyIterator();
+            return true;
         }
-        return compareStrategy.iterateContentChangesSince(snapshots, oldSnapshot.getSnapshots(), fileType, pathIsAbsolute, includeAdded);
+        return compareStrategy.accept(visitor, snapshots, oldSnapshot.getSnapshots(), title, pathIsAbsolute, includeAdded);
     }
 
     @Override
@@ -125,23 +111,8 @@ public class DefaultFileCollectionSnapshot implements FileCollectionSnapshot {
     }
 
     @Override
-    public List<File> getFiles() {
-        return cachedFilesFactory.create();
-    }
-
-    @Override
     public String toString() {
         return compareStrategy + (pathIsAbsolute ? " with absolute paths" : "") + ": " + snapshots;
-    }
-
-    private List<File> doGetFiles() {
-        List<File> files = Lists.newArrayList();
-        for (Map.Entry<String, NormalizedFileSnapshot> entry : snapshots.entrySet()) {
-            if (entry.getValue().getSnapshot().getType() == FileType.RegularFile) {
-                files.add(new File(entry.getKey()));
-            }
-        }
-        return files;
     }
 
     public static class SerializerImpl extends AbstractSerializer<DefaultFileCollectionSnapshot> {

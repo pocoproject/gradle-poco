@@ -21,7 +21,6 @@ import org.gradle.api.Incubating;
 import org.gradle.api.JavaVersion;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.FileTree;
-import org.gradle.api.internal.changedetection.changes.IncrementalTaskInputsInternal;
 import org.gradle.api.internal.tasks.JavaToolChainFactory;
 import org.gradle.api.internal.tasks.compile.CleaningJavaCompiler;
 import org.gradle.api.internal.tasks.compile.CompilerForkUtils;
@@ -119,9 +118,8 @@ public class JavaCompile extends AbstractCompile {
         Compiler<JavaCompileSpec> incrementalCompiler = getIncrementalCompilerFactory().makeIncremental(
             createCompiler(spec),
             getPath(),
-            (IncrementalTaskInputsInternal) inputs,
-            source,
-            getEffectiveAnnotationProcessorPath()
+            inputs,
+            getSource()
         );
         performCompilation(spec, incrementalCompiler);
     }
@@ -136,8 +134,10 @@ public class JavaCompile extends AbstractCompile {
         throw new UnsupportedOperationException();
     }
 
+    @Override
     protected void compile() {
         DefaultJavaCompileSpec spec = createSpec();
+        spec.setSourceFiles(getSource());
         performCompilation(spec, createCompiler(spec));
     }
 
@@ -159,7 +159,6 @@ public class JavaCompile extends AbstractCompile {
 
     private DefaultJavaCompileSpec createSpec() {
         final DefaultJavaCompileSpec spec = new DefaultJavaCompileSpecFactory(compileOptions).create();
-        spec.setSource(getSource());
         spec.setDestinationDir(getDestinationDir());
         spec.setWorkingDir(getProject().getProjectDir());
         spec.setTempDir(getTemporaryDir());

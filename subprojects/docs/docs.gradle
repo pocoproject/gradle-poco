@@ -47,8 +47,6 @@ plugins {
 
 repositories {
     javaScript.googleApis()
-
-    maven { url 'https://repo.gradle.org/gradle/gradle-build-internal' }
 }
 
 configurations {
@@ -93,6 +91,7 @@ gradlebuildJava {
 
 ext {
     srcDocsDir = file('src/docs')
+    releaseFeaturesFile = file("$srcDocsDir/release/release-features.txt")
     userguideSrcDir = new File(srcDocsDir, 'userguide')
     asciidocSanitizeStylesheet = file("$srcDocsDir/stylesheets/asciidocSanitize.xsl")
     asciidocOutputDir = new File(buildDir, 'asciidoc/userguide')
@@ -118,6 +117,7 @@ outputs.docs = files(docsDir) {
 
 tasks.withType(CacheableAsciidoctorTask) {
     backends = ['docbook']
+
     separateOutputDirs = false
     options doctype: 'book'
     inputs.file asciidocSanitizeStylesheet withPropertyName "sanitizerStylesheet" withPathSensitivity PathSensitivity.NONE
@@ -137,9 +137,11 @@ tasks.withType(CacheableAsciidoctorTask) {
         }
     }
 
-    attributes website: 'http://www.gradle.org',
+    attributes 'source-highlighter': 'prettify',
+               website: 'http://www.gradle.org',
                javaApi: 'https://docs.oracle.com/javase/7/docs/api',
-               antManual: 'https://ant.apache.org/manual'
+               antManual: 'https://ant.apache.org/manual',
+               gradleVersion: version
 
     doLast {
         outputDir.eachFileMatch(~/.*.xml/) { File file ->
@@ -182,7 +184,7 @@ tasks.withType(AssembleDslDocTask) {
 
 task configureCss {
     doLast {
-        def tokens = fileTree(dir: "src/docs/css/images", include: "*.*").files.collectEntries {
+        def tokens = fileTree(dir: "src/docs/css/images", include: "*.*").collectEntries {
             [it.name, it.bytes.encodeBase64().toString()]
         }
 
@@ -228,6 +230,7 @@ task userguideStyleSheets(type: Copy) {
     File stylesheetsDir = new File(srcDocsDir, 'stylesheets')
     into new File(buildDir, 'stylesheets')
     from(stylesheetsDir) {
+        include '**/*.xml'
         include '*.xsl'
     }
     from(cssFiles)
@@ -458,11 +461,7 @@ task editReleaseNotes() {
     }
 }
 
-task releaseNotesMarkdown(type: PegDown) {
-    group = "release notes"
-    markdownFile = file("src/docs/release/notes.md")
-    destination = new File(buildDir, "release-notes-raw/release-notes.html")
-}
+task releaseNotesMarkdown(type: PegDown, group: "release notes", constructorArgs: [file("src/docs/release/notes.md"), new File(buildDir, "release-notes-raw/release-notes.html")])
 
 task releaseNotes(type: Copy) {
     group = "release notes"
@@ -491,7 +490,7 @@ tasks.addRule("view«Doc Task Name» - Opens entry point") { String taskName ->
 }
 
 task copyReleaseFeatures(type: Copy) {
-    from 'src/docs/release/release-features.txt'
+    from releaseFeaturesFile
     into generatedResourcesDir
 }
 
@@ -504,6 +503,7 @@ test {
     inputs.property "systemProperties", [:]
     systemProperty "org.gradle.docs.releasenotes.source", releaseNotesMarkdown.markdownFile
     systemProperty "org.gradle.docs.releasenotes.rendered", new File(releaseNotes.destinationDir, releaseNotes.fileName)
+    systemProperty "org.gradle.docs.releasefeatures", releaseFeaturesFile
 }
 
 task docs {

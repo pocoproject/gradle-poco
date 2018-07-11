@@ -42,7 +42,12 @@ public class SourceSetUtil {
                 return sourceSet.getCompileClasspath().plus(target.files(sourceSet.getJava().getOutputDir()));
             }
         });
-        configureOutputDirectoryForSourceSet(sourceSet, sourceDirectorySet, compile, target);
+        compile.setDestinationDir(target.provider(new Callable<File>() {
+            @Override
+            public File call() throws Exception {
+                return sourceDirectorySet.getOutputDir();
+            }
+        }));
     }
 
     public static void configureForSourceSet(final SourceSet sourceSet, final SourceDirectorySet sourceDirectorySet, AbstractCompile compile, CompileOptions options, final Project target) {
@@ -64,7 +69,7 @@ public class SourceSetUtil {
         });
     }
 
-    public static void configureOutputDirectoryForSourceSet(final SourceSet sourceSet, final SourceDirectorySet sourceDirectorySet, AbstractCompile compile, final Project target) {
+    public static void configureOutputDirectoryForSourceSet(final SourceSet sourceSet, final SourceDirectorySet sourceDirectorySet, final Project target) {
         final String sourceSetChildPath = "classes/" + sourceDirectorySet.getName() + "/" + sourceSet.getName();
         sourceDirectorySet.setOutputDir(target.provider(new Callable<File>() {
             @Override
@@ -83,12 +88,5 @@ public class SourceSetUtil {
                 return sourceDirectorySet.getOutputDir();
             }
         });
-
-        compile.setDestinationDir(target.provider(new Callable<File>() {
-            @Override
-            public File call() throws Exception {
-                return sourceDirectorySet.getOutputDir();
-            }
-        }));
     }
 }
