@@ -289,11 +289,6 @@ abstract class AbstractMutableModuleComponentResolveMetadata implements MutableM
         }
 
         @Override
-        public void addCapability(String group, String name, String version) {
-            capabilities.add(new ImmutableCapability(group, name, version));
-        }
-
-        @Override
         public void addFile(String name, String uri) {
             files.add(new FileImpl(name, uri));
         }

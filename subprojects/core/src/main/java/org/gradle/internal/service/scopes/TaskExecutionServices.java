@@ -15,11 +15,7 @@
  */
 package org.gradle.internal.service.scopes;
 
-import static org.gradle.cache.internal.filelock.LockOptionsBuilder.mode;
-
-import java.util.Collections;
-import java.util.List;
-
+import com.google.common.collect.ImmutableList;
 import org.gradle.StartParameter;
 import org.gradle.api.execution.TaskActionListener;
 import org.gradle.api.execution.internal.TaskInputsListener;
@@ -55,7 +51,6 @@ import org.gradle.api.internal.tasks.execution.ResolveTaskOutputCachingStateExec
 import org.gradle.api.internal.tasks.execution.SkipCachedTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipEmptySourceFilesTaskExecuter;
 import org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter;
-import org.gradle.api.internal.tasks.execution.SkipSemiStaticExecuter;
 import org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter;
 import org.gradle.api.internal.tasks.execution.SkipUpToDateTaskExecuter;
 import org.gradle.api.internal.tasks.execution.TaskOutputChangesListener;
@@ -92,7 +87,10 @@ import org.gradle.internal.work.AsyncWorkTracker;
 import org.gradle.internal.work.WorkerLeaseService;
 import org.gradle.util.GradleVersion;
 
-import com.google.common.collect.ImmutableList;
+import java.util.Collections;
+import java.util.List;
+
+import static org.gradle.cache.internal.filelock.LockOptionsBuilder.mode;
 
 public class TaskExecutionServices {
 

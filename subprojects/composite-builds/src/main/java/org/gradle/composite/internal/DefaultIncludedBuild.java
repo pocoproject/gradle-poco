@@ -42,7 +42,6 @@ import org.gradle.internal.build.AbstractBuildState;
 import org.gradle.internal.build.BuildState;
 import org.gradle.internal.build.IncludedBuildState;
 import org.gradle.internal.component.local.model.DefaultLocalComponentMetadata;
-import org.gradle.internal.component.local.model.DefaultProjectComponentIdentifier;
 import org.gradle.internal.concurrent.Stoppable;
 import org.gradle.internal.work.WorkerLeaseRegistry;
 import org.gradle.internal.work.WorkerLeaseService;
@@ -186,11 +185,6 @@ public class DefaultIncludedBuild extends AbstractBuildState implements Included
         // Need to use a 'foreign' build id to make BuildIdentifier.isCurrentBuild and BuildIdentifier.name work in dependency results
         DefaultProjectComponentIdentifier original = (DefaultProjectComponentIdentifier) identifier;
         return new DefaultProjectComponentIdentifier(new ForeignBuildIdentifier(buildIdentifier.getName(), getName()), original.getIdentityPath(), original.projectPath(), original.getProjectName());
-    }
-
-    public ProjectComponentIdentifier idForProjectInThisBuild(String projectPath) {
-        // Need to use a 'foreign' build id to make BuildIdentifier.isCurrentBuild work in the root build
-        return new DefaultProjectComponentIdentifier(new ForeignBuildIdentifier(getName()), projectPath);
     }
 
     @Override

@@ -13,21 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.gradle.plugins.jsoup
 
-import org.gradle.api.Plugin
-import org.gradle.api.Project
-import org.gradle.api.tasks.Copy
+package org.gradle.api.internal.artifacts;
 
-import org.gradle.kotlin.dsl.*
+/**
+ * A build that is not the current build. This type exists only to provide an answer to {@link #isCurrentBuild()}, which should not exist.
+ */
+public class ForeignBuildIdentifier extends DefaultBuildIdentifier {
+    private final String legacyName;
 
+    public ForeignBuildIdentifier(String name, String legacyName) {
+        super(name);
+        this.legacyName = legacyName;
+    }
 
-class JsoupPlugin : Plugin<Project> {
+    @Override
+    public String getName() {
+        return legacyName;
+    }
 
-    // TODO Is this used anywhere?
-    override fun apply(project: Project): Unit = project.run {
-        tasks.withType<Copy> {
-            extensions.create<JsoupCopyExtension>("jsoup", this)
-        }
+    @Override
+    public boolean isCurrentBuild() {
+        return false;
     }
 }

@@ -76,34 +76,4 @@ class DefaultComponentIdentifierFactoryTest extends Specification {
         and:
         componentIdentifier == new DefaultProjectComponentIdentifier(buildId, selector.identityPath, selector.projectPath(), selector.projectName)
     }
-
-    def "can create component identifier for project dependency in same build"() {
-        given:
-        BuildIdentifier buildId = new DefaultBuildIdentifier("build")
-        ProjectComponentSelector selector = new DefaultProjectComponentSelector("build", ":a")
-
-        when:
-        ComponentIdentifier componentIdentifier = componentIdentifierFactory.createProjectComponentIdentifier(selector)
-
-        then:
-        buildIdentity.getCurrentBuild() >> buildId
-
-        and:
-        componentIdentifier == new DefaultProjectComponentIdentifier(buildId, ':a')
-    }
-
-    def "can create component identifier for project dependency in different build"() {
-        given:
-        BuildIdentifier buildId = new DefaultBuildIdentifier("other")
-        ProjectComponentSelector selector = new DefaultProjectComponentSelector("build", ":a")
-
-        when:
-        ComponentIdentifier componentIdentifier = componentIdentifierFactory.createProjectComponentIdentifier(selector)
-
-        then:
-        buildIdentity.getCurrentBuild() >> buildId
-
-        and:
-        componentIdentifier == new DefaultProjectComponentIdentifier(new ForeignBuildIdentifier("build"), ':a')
-    }
 }

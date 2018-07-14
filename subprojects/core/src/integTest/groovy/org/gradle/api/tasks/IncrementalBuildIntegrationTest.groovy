@@ -1255,40 +1255,6 @@ task generate(type: TransformerTask) {
         output.contains('Adding file trees which are not directory trees as output files has been deprecated and is scheduled to be removed in Gradle 5.0')
     }
 
-    def "using non-directory fileTrees as outputs is deprecated"() {
-        given:
-
-        buildScript """       
-            task myTask {
-                inputs.file file('input.txt')
-                outputs.files({
-                    def outputFile = new File('build/output.zip')
-                    outputFile.exists() ? zipTree(outputFile) : files(outputFile)
-                }).optional()
-                doLast {
-                    file('build').mkdirs()
-                    ant.zip(baseDir: ".", destFile: file('build/output.zip'), includes: 'input.txt')
-                }
-            }
-        """.stripIndent()
-
-        file('input.txt').text = 'input file'
-
-        when:
-        succeeds 'myTask'
-
-        then:
-        nonSkippedTasks.contains(':myTask')
-
-        when:
-        executer.expectDeprecationWarning()
-        succeeds('myTask')
-
-        then:
-        skippedTasks.contains(':myTask')
-        output.contains('Adding file trees which are not directory trees as output files has been deprecated and is scheduled to be removed in Gradle 5.0')
-    }
-
     def "task with no actions is skipped even if it has inputs"() {
         buildFile << """
             task taskWithInputs(type: TaskWithInputs) {

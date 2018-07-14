@@ -16,11 +16,11 @@
 
 package org.gradle.internal.component.local.model;
 
-import java.util.List;
-import java.util.Set;
-
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.LocalOriginDependencyMetadata;
+
+import java.util.List;
+import java.util.Set;
 
 public interface LocalConfigurationMetadata extends ConfigurationMetadata {
 

@@ -96,9 +96,6 @@ public class ProgressStartEventSerializer implements Serializer<ProgressStartEve
         } else {
             flags |= CATEGORY_NAME;
         }
-        if (event.isBuildOperationStart()) {
-            flags |= BUILD_OPERATION_START;
-        }
 
         encoder.writeSmallInt(flags);
 
@@ -152,9 +149,7 @@ public class ProgressStartEventSerializer implements Serializer<ProgressStartEve
         String description = decoder.readString();
 
         String loggingHeader = null;
-        if ((flags & LOGGING_HEADER_IS_SHORT_DESCRIPTION) != 0) {
-            loggingHeader = shortDescription;
-        } else if ((flags & LOGGING_HEADER) != 0) {
+        if ((flags & LOGGING_HEADER) != 0) {
             loggingHeader = decoder.readString();
         } else if ((flags & LOGGING_HEADER_IS_SUB_DESCRIPTION) != 0) {
             int length = decoder.readSmallInt();

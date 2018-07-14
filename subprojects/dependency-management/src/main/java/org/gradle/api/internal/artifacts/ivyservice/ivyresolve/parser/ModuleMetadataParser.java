@@ -167,9 +167,6 @@ public class ModuleMetadataParser {
         for (VariantCapability capability : capabilities) {
             variant.addCapability(capability.group, capability.name, capability.version);
         }
-        for (VariantCapability capability : capabilities) {
-            variant.addCapability(capability.group, capability.name, capability.version);
-        }
     }
 
     private List<ModuleDependency> consumeVariantLocation(JsonReader reader) throws IOException {
@@ -418,18 +415,6 @@ public class ModuleMetadataParser {
             this.versionConstraint = versionConstraint;
             this.reason = reason;
             this.attributes = attributes;
-        }
-    }
-
-    private static class VariantCapability {
-        final String group;
-        final String name;
-        final String version;
-
-        private VariantCapability(String group, String name, String version) {
-            this.group = group;
-            this.name = name;
-            this.version = version;
         }
     }
 

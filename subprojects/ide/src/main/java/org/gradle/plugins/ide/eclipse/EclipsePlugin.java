@@ -176,8 +176,6 @@ public class EclipsePlugin extends IdePlugin {
                 projectModel.getNatures().add(projectModel.getNatures().indexOf("org.eclipse.jdt.core.javanature"), "org.scala-ide.sdt.core.scalanature");
             }
 
-                artifactRegistry.registerIdeArtifact(new EclipseProjectMetadata(projectModel, project.getProjectDir(), task));
-            }
         });
 
         artifactRegistry.registerIdeProject(new EclipseProjectMetadata(projectModel, project.getProjectDir(), task));

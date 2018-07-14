@@ -25,7 +25,6 @@ import org.gradle.internal.classpath.ClassPath
 import org.gradle.internal.event.ListenerManager
 import org.gradle.internal.logging.progress.ProgressLoggerFactory
 import org.gradle.internal.logging.services.LoggingServiceRegistry
-import org.gradle.internal.progress.BuildProgressLogger
 import org.gradle.internal.service.DefaultServiceRegistry
 import org.gradle.internal.service.scopes.BuildSessionScopeServices
 import org.gradle.internal.service.scopes.BuildTreeScopeServices

@@ -107,7 +107,9 @@ in the next major Gradle version (Gradle 5.0). See the User guide section on the
 
 The following are the newly deprecated items in this Gradle release. If you have concerns about a deprecation, please raise it via the [Gradle Forums](https://discuss.gradle.org).
 
-* `Task.deleteAllActions()` is deprecated without replacement.
+<!--
+### Example deprecation
+-->
 
 ## Potential breaking changes
 

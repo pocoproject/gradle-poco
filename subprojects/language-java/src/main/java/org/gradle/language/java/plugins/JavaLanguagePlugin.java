@@ -28,7 +28,6 @@ import org.gradle.api.internal.artifacts.ArtifactDependencyResolver;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.repositories.ResolutionAwareRepository;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
-import org.gradle.initialization.BuildIdentity;
 import org.gradle.internal.Transformers;
 import org.gradle.internal.build.BuildState;
 import org.gradle.internal.operations.BuildOperationExecutor;

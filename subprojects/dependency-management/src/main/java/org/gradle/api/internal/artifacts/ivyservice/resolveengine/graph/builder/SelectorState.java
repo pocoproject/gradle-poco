@@ -72,7 +72,6 @@ class SelectorState implements DependencyGraphSelector, ResolvableSelectorState 
 
     private ComponentIdResolveResult idResolveResult;
     private ModuleVersionResolveException failure;
-    private ComponentSelectionReasonInternal failureSelectionReason;
     private ModuleResolveState targetModule;
     private boolean resolved;
     private boolean forced;

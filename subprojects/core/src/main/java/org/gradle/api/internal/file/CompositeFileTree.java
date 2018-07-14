@@ -111,7 +111,7 @@ public abstract class CompositeFileTree extends CompositeFileCollection implemen
 
         @Override
         public String getDisplayName() {
-        	return CompositeFileTree.this.getDisplayName();
+            return CompositeFileTree.this.getDisplayName();
         }
 
         @Override
@@ -125,7 +125,7 @@ public abstract class CompositeFileTree extends CompositeFileCollection implemen
 
         @Override
         public void visitDependencies(TaskDependencyResolveContext context) {
-        	CompositeFileTree.this.visitDependencies(context);
+            CompositeFileTree.this.visitDependencies(context);
         }
     }
 }

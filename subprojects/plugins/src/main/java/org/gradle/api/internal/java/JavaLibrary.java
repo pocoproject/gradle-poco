@@ -198,16 +198,6 @@ public class JavaLibrary implements SoftwareComponentInternal {
         private Configuration getConfiguration() {
             return configurations.getByName(configurationName);
         }
-
-        @Override
-        public Set<? extends Capability> getCapabilities() {
-            if (capabilities == null) {
-                this.capabilities = ImmutableSet.copyOf(Configurations.collectCapabilities(configurations.getByName(API_ELEMENTS_CONFIGURATION_NAME),
-                    Sets.<Capability>newHashSet(),
-                    Sets.<Configuration>newHashSet()));
-            }
-            return capabilities;
-        }
     }
 
     private class BackwardsCompatibilityUsageContext extends AbstractUsageContext {

@@ -223,7 +223,6 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
             return createChildInstance(buildDefinition, build, parent, buildTreeScopeServices, ImmutableList.of(buildTreeScopeServices, sessionScopeServices, new Stoppable() {
                 @Override
                 public void stop() {
-
                     userHomeDirServiceRegistry.release(userHomeServices);
                 }
             }));

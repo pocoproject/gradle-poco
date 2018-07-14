@@ -292,9 +292,6 @@ class ModuleVersionSpec {
                     capabilities = variant.capabilities.collect {
                         new CapabilitySpec(group: it.group, name: it.name, version:it.version)
                     }
-                    capabilities = variant.capabilities.collect {
-                        new CapabilitySpec(group: it.group, name: it.name, version:it.version)
-                    }
                 }
             }
         }
