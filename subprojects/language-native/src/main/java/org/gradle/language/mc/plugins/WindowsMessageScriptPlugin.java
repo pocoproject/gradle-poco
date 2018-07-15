@@ -31,6 +31,7 @@ import org.gradle.model.Mutate;
 import org.gradle.model.RuleSource;
 import org.gradle.nativeplatform.NativeBinarySpec;
 import org.gradle.nativeplatform.internal.DefaultPreprocessingTool;
+import org.gradle.nativeplatform.toolchain.internal.ToolType;
 import org.gradle.platform.base.BinarySpec;
 import org.gradle.platform.base.ComponentType;
 import org.gradle.platform.base.TypeBuilder;
@@ -91,6 +92,11 @@ public class WindowsMessageScriptPlugin implements Plugin<Project> {
 
         private boolean shouldProcessMessages(NativeBinarySpec binary) {
             return binary.getTargetPlatform().getOperatingSystem().isWindows();
+        }
+
+        @Override
+        public ToolType getToolType() {
+            return ToolType.WINDOW_MESSAGE_COMPILER;
         }
     }
 }

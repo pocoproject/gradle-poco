@@ -29,5 +29,5 @@ import org.gradle.language.nativeplatform.ComponentWithStaticLibrary;
  * @since 4.5
  */
 @Incubating
-public interface CppSemiStaticLibrary extends CppBinary, ComponentWithStaticLibrary, ComponentWithLinkUsage, ComponentWithRuntimeUsage, ComponentWithOutputs, PublishableComponent {	
+public interface CppSemiStaticLibrary extends CppBinary, ComponentWithStaticLibrary, ComponentWithLinkUsage, ComponentWithRuntimeUsage, ComponentWithOutputs, PublishableComponent {
 }

@@ -17,7 +17,6 @@ package org.gradle.internal.logging.format;
 
 import org.gradle.internal.logging.events.StyledTextOutputEvent;
 
-import javax.annotation.Nullable;
 import java.util.List;
 
 public interface LogHeaderFormatter {
