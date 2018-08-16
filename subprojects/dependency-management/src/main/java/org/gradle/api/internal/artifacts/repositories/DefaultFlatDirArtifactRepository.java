@@ -17,8 +17,11 @@ package org.gradle.api.internal.artifacts.repositories;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.Lists;
+import org.gradle.api.Action;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.repositories.FlatDirectoryArtifactRepository;
+import org.gradle.api.artifacts.repositories.RepositoryResourceAccessor;
+import org.gradle.api.internal.InstantiatorFactory;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ModuleVersionPublisher;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ConfiguredModuleComponentRepository;
@@ -29,15 +32,22 @@ import org.gradle.api.internal.artifacts.repositories.metadata.IvyMetadataArtifa
 import org.gradle.api.internal.artifacts.repositories.metadata.IvyMutableModuleMetadataFactory;
 import org.gradle.api.internal.artifacts.repositories.metadata.MetadataSource;
 import org.gradle.api.internal.artifacts.repositories.resolver.IvyResolver;
+import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport;
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransportFactory;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.authentication.Authentication;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
+import org.gradle.internal.resolve.caching.ImplicitInputRecorder;
+import org.gradle.internal.resolve.caching.ImplicitInputsCapturingInstantiator;
+import org.gradle.internal.resolve.caching.ImplicitInputsProvidingService;
 import org.gradle.internal.resource.local.FileStore;
 import org.gradle.internal.resource.local.LocallyAvailableResourceFinder;
 
+import javax.annotation.Nullable;
 import java.io.File;
+import java.io.InputStream;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -52,19 +62,22 @@ public class DefaultFlatDirArtifactRepository extends AbstractArtifactRepository
     private final FileStore<ModuleComponentArtifactIdentifier> artifactFileStore;
     private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
     private final IvyMutableModuleMetadataFactory metadataFactory;
+    private final InstantiatorFactory instantiatorFactory;
 
     public DefaultFlatDirArtifactRepository(FileResolver fileResolver,
                                             RepositoryTransportFactory transportFactory,
                                             LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> locallyAvailableResourceFinder,
                                             FileStore<ModuleComponentArtifactIdentifier> artifactFileStore,
                                             ImmutableModuleIdentifierFactory moduleIdentifierFactory,
-                                            IvyMutableModuleMetadataFactory metadataFactory) {
+                                            IvyMutableModuleMetadataFactory metadataFactory,
+                                            InstantiatorFactory instantiatorFactory) {
         this.fileResolver = fileResolver;
         this.transportFactory = transportFactory;
         this.locallyAvailableResourceFinder = locallyAvailableResourceFinder;
         this.artifactFileStore = artifactFileStore;
         this.moduleIdentifierFactory = moduleIdentifierFactory;
         this.metadataFactory = metadataFactory;
+        this.instantiatorFactory = instantiatorFactory;
     }
 
     @Override
@@ -104,13 +117,20 @@ public class DefaultFlatDirArtifactRepository extends AbstractArtifactRepository
         return createRealResolver();
     }
 
+    @Override
+    protected RepositoryResourceAccessor createRepositoryAccessor(RepositoryTransport transport, URI rootUri, FileStore<String> externalResourcesFileStore) {
+        return new NoOpRepositoryResourceAccessor();
+    }
+
     private IvyResolver createRealResolver() {
         Set<File> dirs = getDirs();
         if (dirs.isEmpty()) {
             throw new InvalidUserDataException("You must specify at least one directory for a flat directory repository.");
         }
 
-        IvyResolver resolver = new IvyResolver(getName(), transportFactory.createTransport("file", getName(), Collections.<Authentication>emptyList()), locallyAvailableResourceFinder, false, artifactFileStore, moduleIdentifierFactory, null, createMetadataSources(), IvyMetadataArtifactProvider.INSTANCE);
+        RepositoryTransport transport = transportFactory.createTransport("file", getName(), Collections.<Authentication>emptyList());
+        ImplicitInputsCapturingInstantiator injector = createInjectorForMetadataSuppliers(transport, instantiatorFactory, null, null);
+        IvyResolver resolver = new IvyResolver(getName(), transport, locallyAvailableResourceFinder, false, artifactFileStore, moduleIdentifierFactory, null, null, createMetadataSources(), IvyMetadataArtifactProvider.INSTANCE, injector);
         for (File root : dirs) {
             resolver.addArtifactLocation(root.toURI(), "/[artifact]-[revision](-[classifier]).[ext]");
             resolver.addArtifactLocation(root.toURI(), "/[artifact](-[classifier]).[ext]");
@@ -121,5 +141,24 @@ public class DefaultFlatDirArtifactRepository extends AbstractArtifactRepository
     private ImmutableMetadataSources createMetadataSources() {
         MetadataSource artifactMetadataSource = new DefaultArtifactMetadataSource(metadataFactory);
         return new DefaultImmutableMetadataSources(Collections.<MetadataSource<?>>singletonList(artifactMetadataSource));
+    }
+
+    private static class NoOpRepositoryResourceAccessor implements RepositoryResourceAccessor, ImplicitInputsProvidingService<String, Long, RepositoryResourceAccessor> {
+        @Override
+        public void withResource(String relativePath, Action<? super InputStream> action) {
+            // No-op
+        }
+
+        @Override
+        public RepositoryResourceAccessor withImplicitInputRecorder(ImplicitInputRecorder registrar) {
+            // Service calls have no effect, no need to register them
+            return this;
+        }
+
+        @Override
+        public boolean isUpToDate(String s, @Nullable Long oldValue) {
+            // Nothing accessible, always up to date
+            return true;
+        }
     }
 }

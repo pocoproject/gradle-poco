@@ -16,7 +16,15 @@
 
 package org.gradle.ide.visualstudio.internal;
 
-import com.google.common.collect.Lists;
+import static org.gradle.util.CollectionUtils.collect;
+import static org.gradle.util.CollectionUtils.filter;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
 import org.apache.commons.lang.StringUtils;
 import org.gradle.api.Buildable;
 import org.gradle.api.DomainObjectSet;
@@ -36,6 +44,7 @@ import org.gradle.nativeplatform.NativeBinarySpec;
 import org.gradle.nativeplatform.NativeDependencySet;
 import org.gradle.nativeplatform.NativeExecutableBinarySpec;
 import org.gradle.nativeplatform.PreprocessingTool;
+import org.gradle.nativeplatform.SemiStaticLibraryBinarySpec;
 import org.gradle.nativeplatform.SharedLibraryBinarySpec;
 import org.gradle.nativeplatform.StaticLibraryBinarySpec;
 import org.gradle.nativeplatform.internal.NativeBinarySpecInternal;
@@ -44,14 +53,7 @@ import org.gradle.nativeplatform.test.NativeTestSuiteBinarySpec;
 import org.gradle.nativeplatform.toolchain.internal.MacroArgsConverter;
 import org.gradle.util.VersionNumber;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-
-import static org.gradle.util.CollectionUtils.collect;
-import static org.gradle.util.CollectionUtils.filter;
+import com.google.common.collect.Lists;
 
 public class NativeSpecVisualStudioTargetBinary implements VisualStudioTargetBinary {
     private final NativeBinarySpecInternal binary;
@@ -156,6 +158,7 @@ public class NativeSpecVisualStudioTargetBinary implements VisualStudioTargetBin
     public ProjectType getProjectType() {
         return binary instanceof SharedLibraryBinarySpec ? ProjectType.DLL
             : binary instanceof StaticLibraryBinarySpec ? ProjectType.LIB
+            : binary instanceof SemiStaticLibraryBinarySpec ? ProjectType.LIB
             : binary instanceof NativeExecutableBinarySpec ? ProjectType.EXE
             : binary instanceof NativeTestSuiteBinarySpec ? ProjectType.EXE
             : ProjectType.NONE;

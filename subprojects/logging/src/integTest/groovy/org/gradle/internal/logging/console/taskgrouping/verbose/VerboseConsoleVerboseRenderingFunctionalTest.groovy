@@ -25,6 +25,7 @@ import static org.gradle.api.logging.configuration.ConsoleOutput.Verbose
 class VerboseConsoleVerboseRenderingFunctionalTest extends AbstractConsoleVerboseRenderingFunctionalTest {
     ConsoleOutput consoleType = Verbose
 
+    @SuppressWarnings("IntegrationTestFixtures")
     def 'verbose task header has no blank line above it'() {
         given:
         buildFile << '''
@@ -39,7 +40,7 @@ task upToDate{
         succeeds('upToDate')
 
         then:
-        result.output.contains("> Task :upToDate")
-        !result.output.contains("${SystemProperties.instance.lineSeparator}> Task :upToDate")
+        result.normalizedOutput.contains("> Task :upToDate")
+        !result.normalizedOutput.contains("${SystemProperties.instance.lineSeparator}> Task :upToDate")
     }
 }

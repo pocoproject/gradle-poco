@@ -16,12 +16,11 @@
 
 package org.gradle.api.internal.changedetection.state;
 
-import org.gradle.api.internal.changedetection.rules.TaskStateChange;
+import org.gradle.api.internal.changedetection.rules.TaskStateChangeVisitor;
 import org.gradle.internal.hash.HashCode;
 
 import java.io.File;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.Map;
 
 /**
@@ -29,12 +28,10 @@ import java.util.Map;
  */
 public interface FileCollectionSnapshot extends Snapshot {
 
-    boolean isEmpty();
-
     /**
-     * Returns an iterator over the changes to file contents since the given snapshot, subject to the given filters.
+     * Visits the changes to file contents since the given snapshot, subject to the given filters.
      */
-    Iterator<TaskStateChange> iterateContentChangesSince(FileCollectionSnapshot oldSnapshot, String title, boolean includeAdded);
+    boolean visitChangesSince(FileCollectionSnapshot oldSnapshot, String title, boolean includeAdded, TaskStateChangeVisitor visitor);
 
     /**
      * Returns the combined hash of the contents of this {@link FileCollectionSnapshot}.
@@ -45,11 +42,6 @@ public interface FileCollectionSnapshot extends Snapshot {
      * Returns the elements of this snapshot, including regular files, directories and missing files
      */
     Collection<File> getElements();
-
-    /**
-     * Returns the regular files that make up this snapshot.
-     */
-    Collection<File> getFiles();
 
     Map<String, NormalizedFileSnapshot> getSnapshots();
 

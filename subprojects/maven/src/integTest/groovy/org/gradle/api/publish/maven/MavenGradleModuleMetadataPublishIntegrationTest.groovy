@@ -35,6 +35,7 @@ class TestUsage implements org.gradle.api.internal.component.UsageContext {
     Set dependencyConstraints = []
     Set artifacts = []
     Set capabilities = []
+    Set globalExcludes = []
     AttributeContainer attributes
 }
 
@@ -420,6 +421,69 @@ class TestCapability implements Capability {
         module.parsedModuleMetadata.variant('api') {
             capability('org.test', 'test', '1')
             noMoreCapabilities()
+            noMoreDependencies()
+        }
+    }
+
+    def "publishes dependency/constraint attributes"() {
+        settingsFile << "rootProject.name = 'root'"
+        buildFile << """
+            apply plugin: 'maven-publish'
+
+            group = 'group'
+            version = '1.0'
+
+            def comp = new TestComponent()
+            def attr1 = Attribute.of('custom', String)
+            def attr2 = Attribute.of('nice', Boolean)
+            
+            comp.usages.add(new TestUsage(
+                    name: 'api',
+                    usage: objects.named(Usage, 'api'), 
+                    dependencies: configurations.implementation.allDependencies.withType(ModuleDependency),
+                    dependencyConstraints: configurations.implementation.allDependencyConstraints,
+                    attributes: configurations.implementation.attributes))
+
+            dependencies {
+                implementation("org:foo:1.0") {
+                   attributes {
+                      attribute(attr1, 'foo')
+                   }
+                }
+                constraints {                
+                    implementation("org:bar:2.0") {
+                        attributes {
+                           attribute(attr2, true)
+                        }
+                    }
+                }
+            }
+
+            publishing {
+                repositories {
+                    maven { url "${mavenRepo.uri}" }
+                }
+                publications {
+                    maven(MavenPublication) {
+                        from comp
+                    }
+                }
+            }
+        """
+
+        when:
+        succeeds 'publish'
+
+        then:
+        def module = mavenRepo.module('group', 'root', '1.0')
+        module.assertPublished()
+        module.parsedModuleMetadata.variant('api') {
+            dependency('org:foo:1.0') {
+                hasAttribute('custom', 'foo')
+            }
+            constraint('org:bar:2.0') {
+                hasAttribute('nice', true)
+            }
             noMoreDependencies()
         }
     }

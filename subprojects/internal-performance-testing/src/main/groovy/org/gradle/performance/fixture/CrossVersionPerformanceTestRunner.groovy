@@ -247,16 +247,11 @@ class CrossVersionPerformanceTestRunner extends PerformanceTestSpec {
             }
         builder.workingDirectory = workingDir
         def spec = builder.build()
-        def profiler = experimentRunner.profiler
-        if (profiler) {
-            profiler.scenarioUnderTest = testId
-            profiler.versionUnderTest = dist.version.version
-        }
         experimentRunner.run(spec, results)
     }
 
     def resolveGradleOpts() {
-        PerformanceTestJvmOptions.customizeJvmOptions(this.gradleOpts)
+        PerformanceTestJvmOptions.normalizeJvmOptions(this.gradleOpts)
     }
 
     void addBuildExperimentListener(BuildExperimentListener buildExperimentListener) {

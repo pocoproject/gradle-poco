@@ -18,13 +18,7 @@ apply {
     from("gradle/shared-with-buildSrc/build-cache-configuration.settings.gradle.kts")
 }
 
-try {
-    settings.withGroovyBuilder {
-        "enableFeaturePreview"("IMPROVED_POM_SUPPORT")
-    }
-} catch (e: Exception ){
-    // Ignore - indicates this is run with Gradle < 4.6
-}
+enableFeaturePreview("IMPROVED_POM_SUPPORT")
 
 include("distributionsDependencies")
 include("distributions")
@@ -134,7 +128,6 @@ val groovyBuildScriptProjects = listOf(
     "ide-native",
     "ide-play",
     "osgi",
-    "code-quality",
     "docs",
     "integ-test",
     "signing",

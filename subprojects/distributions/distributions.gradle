@@ -23,7 +23,7 @@ import org.gradle.gradlebuild.unittestandcompile.ModuleType
 configurations.all {
     artifacts.clear()
 }
-tasks.remove(jar)
+//tasks.remove(jar)
 
 tasks.withType(AbstractArchiveTask) {
     baseName "gradle"
@@ -142,7 +142,7 @@ artifacts {
     dists allZip, binZip, srcZip
 }
 
-integTestTasks.all {
+integTestTasks.configureEach {
     binaryDistributions.distributionsRequired = true
     systemProperty 'org.gradle.public.api.includes', PublicApi.includes.join(':')
     systemProperty 'org.gradle.public.api.excludes', PublicApi.excludes.join(':')

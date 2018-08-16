@@ -19,7 +19,6 @@ package org.gradle.buildinit.tasks.internal;
 import org.gradle.api.Action;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
-import org.gradle.api.execution.TaskExecutionGraph;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.wrapper.Wrapper;
@@ -62,25 +61,6 @@ public class TaskConfiguration {
                 }
             }
         });
-
-        project.getGradle().getTaskGraph().whenReady(new Action<TaskExecutionGraph>() {
-            @Override
-            public void execute(TaskExecutionGraph taskGraph) {
-                if (reasonToSkip(project) == null && taskGraph.hasTask(init)) {
-                    wrapperTaskOf(project)
-                        .setDistributionType(
-                            wrapperDistributionTypeFor(init.getDsl()));
-                }
-            }
-        });
-    }
-
-    private static Wrapper wrapperTaskOf(Project project) {
-        return (Wrapper) project.getTasks().getByName("wrapper");
-    }
-
-    private static Wrapper.DistributionType wrapperDistributionTypeFor(String dsl) {
-        return BuildInitDsl.fromName(dsl).getWrapperDistributionType();
     }
 
     private static String reasonToSkip(Project project) {
@@ -112,17 +92,9 @@ public class TaskConfiguration {
         wrapper.setDescription("Generates Gradle wrapper files.");
     }
 
-    public static void createInitTask(Project project) {
-        configureInit(project.getTasks().create(INIT_BUILD_TASK_NAME, InitBuild.class));
-    }
-
-    public static void createWrapperTask(Project project) {
-        configureWrapper(project.getTasks().create("wrapper", Wrapper.class));
-    }
-
     public static void addInitPlaceholder(final ProjectInternal projectInternal) {
         if (projectInternal.getParent() == null) {
-            projectInternal.getTasks().addPlaceholderAction("init", InitBuild.class, new InitBuildAction());
+            projectInternal.getTasks().addPlaceholderAction(INIT_BUILD_TASK_NAME, InitBuild.class, new InitBuildAction());
         }
     }
 

@@ -1,3 +1,5 @@
+import java.io.File
+
 /*
  * Copyright 2018 the original author or authors.
  *
@@ -40,7 +42,7 @@ fun Project.configureCheckstyle(codeQualityConfigDir: File) {
 
         plugins.withType<GroovyBasePlugin> {
             java.sourceSets.all {
-                tasks.create<Checkstyle>(getTaskName("checkstyle", "groovy")) {
+                tasks.register(getTaskName("checkstyle", "groovy"), Checkstyle::class.java) {
                     configFile = checkStyleConfigDir.resolve("checkstyle-groovy.xml")
                     source(allGroovy)
                     classpath = compileClasspath
@@ -48,6 +50,14 @@ fun Project.configureCheckstyle(codeQualityConfigDir: File) {
                 }
             }
         }
+    }
+}
+
+fun getIntegrationTestFixturesRule(): Class<*>? {
+    try {
+        return Class.forName("org.gradle.gradlebuild.buildquality.codenarc.IntegrationTestFixturesRule", false, this.javaClass.classLoader)
+    } catch (e: Throwable) {
+        return null
     }
 }
 
@@ -59,17 +69,13 @@ fun Project.configureCodenarc(codeQualityConfigDir: File) {
     dependencies {
         "codenarc"("org.codenarc:CodeNarc:1.0")
         components {
-            withModule("org.codenarc:CodeNarc") {
-                allVariants {
-                    withDependencies {
-                        removeAll { it.group == "org.codehaus.groovy" }
-                        add("org.codehaus.groovy:groovy-all") {
-                            version { prefer("2.4.12") }
-                            because("We use groovy-all everywhere")
-                        }
-                    }
-                }
-            }
+            withModule("org.codenarc:CodeNarc", CodeNarcRule::class.java)
+        }
+        val ruleClass = getIntegrationTestFixturesRule()
+        if (ruleClass != null) {
+            "codenarc"(files(ruleClass.protectionDomain!!.codeSource!!.location))
+            "codenarc"(embeddedKotlin("stdlib"))
+            "codenarc"(embeddedKotlin("runtime"))
         }
     }
 
@@ -77,22 +83,26 @@ fun Project.configureCodenarc(codeQualityConfigDir: File) {
         configFile = codeQualityConfigDir.resolve("codenarc.xml")
     }
 
-    tasks.withType<CodeNarc> {
+    tasks.withType(CodeNarc::class.java).configureEach {
         reports.xml.isEnabled = true
+        if (name.contains("IntegTest")) {
+            configFile = codeQualityConfigDir.resolve("codenarc-integtests.xml")
+        }
     }
 }
 
 
-fun Project.configureCodeQualityTasks() =
+fun Project.configureCodeQualityTasks() {
+    val codeQualityTasks = tasks.matching { it is CodeNarc || it is Checkstyle }
     tasks {
-        val codeQualityTasks = matching { it is CodeNarc || it is Checkstyle }
         "codeQuality" {
             dependsOn(codeQualityTasks)
         }
-        withType<Test> {
-            shouldRunAfter(codeQualityTasks)
-        }
     }
+    tasks.withType(Test::class.java).configureEach {
+        shouldRunAfter(codeQualityTasks)
+    }
+}
 
 
 val Project.java
@@ -100,3 +110,18 @@ val Project.java
 
 val SourceSet.allGroovy: SourceDirectorySet
     get() = withConvention(GroovySourceSet::class) { allGroovy }
+
+open class CodeNarcRule : ComponentMetadataRule {
+    override fun execute(context: ComponentMetadataContext) {
+        context.details.allVariants {
+            withDependencies {
+                removeAll { it.group == "org.codehaus.groovy" }
+                add("org.codehaus.groovy:groovy-all") {
+                    version { prefer("2.4.12") }
+                    because("We use groovy-all everywhere")
+                }
+            }
+        }
+
+    }
+}

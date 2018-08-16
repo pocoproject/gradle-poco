@@ -29,6 +29,8 @@ import org.gradle.api.file.ProjectLayout;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.file.RegularFileVar;
+import org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection;
+import org.gradle.api.internal.file.collections.ImmutableFileCollection;
 import org.gradle.api.internal.file.collections.MinimalFileSet;
 import org.gradle.api.internal.provider.AbstractCombiningProvider;
 import org.gradle.api.internal.provider.AbstractMappingProvider;
@@ -49,9 +51,11 @@ public class DefaultProjectLayout implements ProjectLayout, TaskFileVarFactory {
     private final FixedDirectory projectDir;
     private final DefaultDirectoryVar buildDir;
     private final TaskResolver taskResolver;
+    private final FileResolver fileResolver;
 
     public DefaultProjectLayout(File projectDir, FileResolver resolver, TaskResolver taskResolver) {
         this.taskResolver = taskResolver;
+        this.fileResolver = resolver;
         this.projectDir = new FixedDirectory(projectDir, resolver);
         this.buildDir = new DefaultDirectoryVar(resolver, Project.DEFAULT_BUILD_DIR_NAME);
     }
@@ -154,6 +158,16 @@ public class DefaultProjectLayout implements ProjectLayout, TaskFileVarFactory {
                 return new FixedFile(projectDir.fileResolver.resolve(file));
             }
         };
+    }
+
+    @Override
+    public FileCollection files(Object... paths) {
+        return ImmutableFileCollection.usingResolver(fileResolver, paths);
+    }
+
+    @Override
+    public ConfigurableFileCollection configurableFiles(Object... files) {
+        return new DefaultConfigurableFileCollection(fileResolver, taskResolver, files);
     }
 
     /**
@@ -328,6 +342,11 @@ public class DefaultProjectLayout implements ProjectLayout, TaskFileVarFactory {
             File dir = resolver.resolve(valueProvider);
             return new FixedDirectory(dir, resolver.newResolver(dir));
         }
+
+        @Override
+        public String toString() {
+            return String.format("provider(%s, %s)", getType(), valueProvider);
+        }
     }
 
     private static class DefaultDirectoryVar extends DefaultPropertyState<Directory> implements DirectoryVar, TaskDependencyContainer {
@@ -434,6 +453,11 @@ public class DefaultProjectLayout implements ProjectLayout, TaskFileVarFactory {
         @Override
         public void visitDependencies(TaskDependencyResolveContext context) {
             context.add(producer);
+        }
+
+        @Override
+        public String toString() {
+            return String.format("buildable(%s, %s)", producer.getPath(), super.toString());
         }
     }
 

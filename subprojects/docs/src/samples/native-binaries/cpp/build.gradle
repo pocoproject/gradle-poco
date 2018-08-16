@@ -54,17 +54,6 @@ model {
         withType(SharedLibraryBinarySpec) {
             if (toolChain in VisualCpp) {
                 cppCompiler.define "DLL_EXPORT"
-                cppCompiler.args "/MD"
-            }
-        }
-        withType(StaticLibraryBinarySpec) {
-            if (toolChain in VisualCpp) {
-                cppCompiler.args "/MT"
-            }
-        }
-        withType(SemiStaticLibraryBinarySpec) {
-            if (toolChain in VisualCpp) {
-                cppCompiler.args "/MD"
             }
         }
     }

@@ -21,9 +21,12 @@ import org.apache.ivy.core.module.id.ModuleRevisionId
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier
 import org.gradle.api.artifacts.component.ModuleComponentSelector
 import org.gradle.api.internal.artifacts.DefaultImmutableModuleIdentifierFactory
+import org.gradle.api.internal.artifacts.DefaultModuleIdentifier
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.DefaultVersionComparator
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.DefaultVersionSelectorScheme
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionParser
 import org.gradle.api.internal.artifacts.repositories.metadata.MavenMutableModuleMetadataFactory
 import org.gradle.api.internal.file.TestFiles
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
@@ -44,7 +47,7 @@ abstract class AbstractGradlePomModuleDescriptorParserTest extends Specification
     final ImmutableModuleIdentifierFactory moduleIdentifierFactory = new DefaultImmutableModuleIdentifierFactory()
     final MavenMutableModuleMetadataFactory mavenMetadataFactory = new MavenMutableModuleMetadataFactory(moduleIdentifierFactory, TestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
     final FileResourceRepository fileRepository = TestFiles.fileRepository()
-    final GradlePomModuleDescriptorParser parser = new GradlePomModuleDescriptorParser(new DefaultVersionSelectorScheme(), moduleIdentifierFactory, fileRepository, mavenMetadataFactory)
+    final GradlePomModuleDescriptorParser parser = new GradlePomModuleDescriptorParser(new DefaultVersionSelectorScheme(new DefaultVersionComparator(), new VersionParser()), moduleIdentifierFactory, fileRepository, mavenMetadataFactory)
     final parseContext = Mock(DescriptorParseContext)
     TestFile pomFile
     MutableMavenModuleResolveMetadata metadata
@@ -78,11 +81,11 @@ abstract class AbstractGradlePomModuleDescriptorParserTest extends Specification
     }
 
     protected static ModuleComponentIdentifier componentId(String group, String name, String version) {
-        DefaultModuleComponentIdentifier.newId(group, name, version)
+        DefaultModuleComponentIdentifier.newId(DefaultModuleIdentifier.newId(group, name), version)
     }
 
     protected static ModuleComponentSelector moduleId(String group, String name, String version) {
-        DefaultModuleComponentSelector.newSelector(group, name, new DefaultMutableVersionConstraint(version))
+        DefaultModuleComponentSelector.newSelector(DefaultModuleIdentifier.newId(group, name), new DefaultMutableVersionConstraint(version))
     }
 
     protected ArtifactRevisionId artifactId(ModuleRevisionId moduleId, String name, String type, String ext) {

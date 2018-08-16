@@ -25,6 +25,7 @@ import org.gradle.api.NamedDomainObjectSet;
 import org.gradle.api.Namer;
 import org.gradle.api.Rule;
 import org.gradle.api.UnknownDomainObjectException;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
 import org.gradle.internal.metaobject.MethodAccess;
 import org.gradle.internal.metaobject.MethodMixIn;
@@ -101,6 +102,11 @@ public class TypedDomainObjectContainerWrapper<U> implements NamedDomainObjectCo
         return delegate.add(e);
     }
 
+    @Override
+    public void addLater(Provider<? extends U> provider) {
+        delegate.addLater(provider);
+    }
+
     public boolean addAll(Collection<? extends U> c) {
         return delegate.addAll(c);
     }
@@ -161,6 +167,11 @@ public class TypedDomainObjectContainerWrapper<U> implements NamedDomainObjectCo
 
     public void all(Closure action) {
         delegate.all(action);
+    }
+
+    @Override
+    public void configureEach(Action<? super U> action) {
+        delegate.configureEach(action);
     }
 
     public Action<? super U> whenObjectAdded(Action<? super U> action) {

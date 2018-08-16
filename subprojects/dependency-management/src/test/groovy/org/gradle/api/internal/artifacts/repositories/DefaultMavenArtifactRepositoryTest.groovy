@@ -16,6 +16,10 @@
 package org.gradle.api.internal.artifacts.repositories
 
 import org.gradle.api.InvalidUserDataException
+import org.gradle.api.artifacts.ComponentMetadataListerDetails
+import org.gradle.api.artifacts.ComponentMetadataSupplier
+import org.gradle.api.artifacts.ComponentMetadataSupplierDetails
+import org.gradle.api.artifacts.ComponentMetadataVersionLister
 import org.gradle.api.artifacts.repositories.AuthenticationContainer
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MetaDataParser
@@ -24,6 +28,7 @@ import org.gradle.api.internal.artifacts.repositories.metadata.MavenMutableModul
 import org.gradle.api.internal.artifacts.repositories.resolver.MavenResolver
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransportFactory
+import org.gradle.api.internal.changedetection.state.isolation.IsolatableFactory
 import org.gradle.api.internal.file.FileResolver
 import org.gradle.api.internal.filestore.ivy.ArtifactIdentifierFileStore
 import org.gradle.internal.resource.ExternalResourceRepository
@@ -32,6 +37,8 @@ import org.gradle.internal.resource.local.FileResourceRepository
 import org.gradle.internal.resource.local.LocallyAvailableResourceFinder
 import org.gradle.util.TestUtil
 import spock.lang.Specification
+
+import javax.inject.Inject
 
 class DefaultMavenArtifactRepositoryTest extends Specification {
     final FileResolver resolver = Mock()
@@ -45,9 +52,10 @@ class DefaultMavenArtifactRepositoryTest extends Specification {
     final AuthenticationContainer authenticationContainer = Stub()
     final ImmutableModuleIdentifierFactory moduleIdentifierFactory = Stub()
     final MavenMutableModuleMetadataFactory mavenMetadataFactory = new MavenMutableModuleMetadataFactory(moduleIdentifierFactory, TestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
+    final IsolatableFactory isolatableFactory = TestUtil.valueSnapshotter()
 
     final DefaultMavenArtifactRepository repository = new DefaultMavenArtifactRepository(
-        resolver, transportFactory, locallyAvailableResourceFinder, TestUtil.instantiatorFactory(), artifactIdentifierFileStore, pomParser, metadataParser, authenticationContainer, moduleIdentifierFactory, externalResourceFileStore, Mock(FileResourceRepository), TestUtil.featurePreviews(), mavenMetadataFactory)
+        resolver, transportFactory, locallyAvailableResourceFinder, TestUtil.instantiatorFactory(), artifactIdentifierFileStore, pomParser, metadataParser, authenticationContainer, moduleIdentifierFactory, externalResourceFileStore, Mock(FileResourceRepository), TestUtil.featurePreviews(), mavenMetadataFactory, TestUtil.valueSnapshotter())
 
     def "creates local repository"() {
         given:
@@ -157,6 +165,123 @@ class DefaultMavenArtifactRepositoryTest extends Specification {
         then:
         repo instanceof MavenResolver
         repo.root == uri
+    }
+
+    def "can set a custom metadata rule"() {
+        repository.name = 'name'
+        repository.url = 'http://host'
+        resolver.resolveUri('http://host') >> new URI('http://host/')
+        transportFactory.createTransport('http', 'name', _) >> transport()
+
+        given:
+        repository.setMetadataSupplier(CustomMetadataSupplier)
+
+        when:
+        def resolver = repository.createResolver()
+        def supplier = resolver.componentMetadataSupplier
+
+        then:
+        supplier.rules.configurableRules[0].ruleClass == CustomMetadataSupplier
+        supplier.rules.configurableRules[0].ruleParams.isolate() == [] as Object[]
+    }
+
+    def "can inject configuration into a custom metadata rule"() {
+        repository.name = 'name'
+        repository.url = 'http://host'
+        resolver.resolveUri('http://host') >> new URI('http://host/')
+        transportFactory.createTransport('http', 'name', _) >> transport()
+
+        given:
+        repository.setMetadataSupplier(CustomMetadataSupplierWithParams) { it.params("a", 12, [1, 2, 3]) }
+
+        when:
+        def resolver = repository.createResolver()
+        def supplier = resolver.getComponentMetadataSupplier()
+
+        then:
+        supplier.rules.configurableRules[0].ruleClass == CustomMetadataSupplierWithParams
+        supplier.rules.configurableRules[0].ruleParams.isolate() == ["a", 12, [1, 2, 3]] as Object[]
+    }
+
+    def "can set a custom version lister"() {
+        repository.name = 'name'
+        repository.url = 'http://host'
+        resolver.resolveUri('http://host') >> new URI('http://host/')
+        transportFactory.createTransport('http', 'name', _) >> transport()
+
+        given:
+        repository.setComponentVersionsLister(CustomVersionLister)
+
+        when:
+        def lister = repository.createResolver().providedVersionLister
+
+        then:
+        lister.rules.configurableRules[0].ruleClass == CustomVersionLister
+        lister.rules.configurableRules[0].ruleParams.isolate() == [] as Object[]
+    }
+
+    def "can inject configuration into a custom version lister"() {
+        repository.name = 'name'
+        repository.url = 'http://host'
+        resolver.resolveUri('http://host') >> new URI('http://host/')
+        transportFactory.createTransport('http', 'name', _) >> transport()
+
+        given:
+        repository.setComponentVersionsLister(CustomVersionListerWithParams) { it.params("a", 12, [1, 2, 3]) }
+
+        when:
+        def lister = repository.createResolver().providedVersionLister
+
+        then:
+        lister.rules.configurableRules[0].ruleClass == CustomVersionListerWithParams
+        lister.rules.configurableRules[0].ruleParams.isolate() == ["a", 12, [1, 2, 3]] as Object[]
+    }
+
+    static class CustomVersionLister implements ComponentMetadataVersionLister {
+
+        @Override
+        void execute(ComponentMetadataListerDetails details) {
+        }
+    }
+
+    static class CustomVersionListerWithParams implements ComponentMetadataVersionLister {
+        String s
+        Number n
+        List<Integer> v
+
+        @Inject
+        CustomVersionListerWithParams(String s, Number n, List<Integer> v) {
+            this.s = s
+            this.n = n
+            this.v = v
+        }
+
+        @Override
+        void execute(ComponentMetadataListerDetails details) {
+        }
+    }
+
+    static class CustomMetadataSupplier implements ComponentMetadataSupplier {
+        @Override
+        void execute(ComponentMetadataSupplierDetails details) {
+        }
+    }
+
+    static class CustomMetadataSupplierWithParams implements ComponentMetadataSupplier {
+        String s
+        Number n
+        List<Integer> v
+
+        @Inject
+        CustomMetadataSupplierWithParams(String s, Number n, List<Integer> v) {
+            this.s = s
+            this.n = n
+            this.v = v
+        }
+
+        @Override
+        void execute(ComponentMetadataSupplierDetails details) {
+        }
     }
 
     private RepositoryTransport transport() {

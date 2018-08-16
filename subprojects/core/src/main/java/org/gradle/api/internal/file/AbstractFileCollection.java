@@ -15,6 +15,8 @@
  */
 package org.gradle.api.internal.file;
 
+import com.google.common.base.Predicate;
+import com.google.common.collect.Iterators;
 import groovy.lang.Closure;
 import org.apache.commons.lang.StringUtils;
 import org.codehaus.groovy.runtime.DefaultGroovyMethods;
@@ -24,7 +26,7 @@ import org.gradle.api.internal.file.collections.DirectoryFileTree;
 import org.gradle.api.internal.file.collections.FileBackedDirectoryFileTree;
 import org.gradle.api.internal.file.collections.FileCollectionResolveContext;
 import org.gradle.api.internal.file.collections.ResolvableFileCollectionResolveContext;
-import org.gradle.api.internal.tasks.DefaultTaskDependency;
+import org.gradle.api.internal.tasks.TaskDependencies;
 import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
@@ -34,6 +36,7 @@ import org.gradle.util.CollectionUtils;
 import org.gradle.util.DeprecationLogger;
 import org.gradle.util.GUtil;
 
+import javax.annotation.Nullable;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -55,33 +58,40 @@ public abstract class AbstractFileCollection implements FileCollectionInternal {
         return getDisplayName();
     }
 
+    @Override
     public File getSingleFile() throws IllegalStateException {
-        Collection<File> files = getFiles();
-        if (files.isEmpty()) {
+        Iterator<File> iterator = iterator();
+        if (!iterator.hasNext()) {
             throw new IllegalStateException(String.format("Expected %s to contain exactly one file, however, it contains no files.", getDisplayName()));
         }
-        if (files.size() != 1) {
-            throw new IllegalStateException(String.format("Expected %s to contain exactly one file, however, it contains %d files.", getDisplayName(), files.size()));
+        File singleFile = iterator.next();
+        if (iterator.hasNext()) {
+            throw new IllegalStateException(String.format("Expected %s to contain exactly one file, however, it contains more than one file.", getDisplayName()));
         }
-        return files.iterator().next();
+        return singleFile;
     }
 
+    @Override
     public Iterator<File> iterator() {
         return getFiles().iterator();
     }
 
+    @Override
     public String getAsPath() {
-        return GUtil.asPath(getFiles());
+        return GUtil.asPath(this);
     }
 
+    @Override
     public boolean contains(File file) {
         return getFiles().contains(file);
     }
 
+    @Override
     public FileCollection plus(FileCollection collection) {
         return new UnionFileCollection(this, collection);
     }
 
+    @Override
     public FileCollection minus(final FileCollection collection) {
         return new AbstractFileCollection() {
             @Override
@@ -94,18 +104,26 @@ public abstract class AbstractFileCollection implements FileCollectionInternal {
                 return AbstractFileCollection.this.getBuildDependencies();
             }
 
+            @Override
             public Set<File> getFiles() {
                 Set<File> files = new LinkedHashSet<File>(AbstractFileCollection.this.getFiles());
                 files.removeAll(collection.getFiles());
                 return files;
             }
+
+            @Override
+            public boolean contains(File file) {
+                return AbstractFileCollection.this.contains(file) && !collection.contains(file);
+            }
         };
     }
 
+    @Override
     public FileCollection add(FileCollection collection) throws UnsupportedOperationException {
         throw new UnsupportedOperationException(String.format("%s does not allow modification.", getCapDisplayName()));
     }
 
+    @Override
     public void addToAntBuilder(Object builder, String nodeName, AntType type) {
         if (type == AntType.ResourceCollection) {
             addAsResourceCollection(builder, nodeName);
@@ -133,7 +151,7 @@ public abstract class AbstractFileCollection implements FileCollectionInternal {
      */
     protected Collection<DirectoryFileTree> getAsFileTrees() {
         List<DirectoryFileTree> fileTrees = new ArrayList<DirectoryFileTree>();
-        for (File file : getFiles()) {
+        for (File file : this) {
             if (file.isFile()) {
                 fileTrees.add(new FileBackedDirectoryFileTree(file));
             }
@@ -141,16 +159,20 @@ public abstract class AbstractFileCollection implements FileCollectionInternal {
         return fileTrees;
     }
 
+    @Override
     public Object addToAntBuilder(Object node, String childNodeName) {
         addToAntBuilder(node, childNodeName, AntType.ResourceCollection);
         return this;
     }
 
+    @Override
     public boolean isEmpty() {
         return getFiles().isEmpty();
     }
 
+    @Override
     public FileCollection stopExecutionIfEmpty() {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("FileCollection.stopExecutionIfEmpty()");
         if (isEmpty()) {
             throw new StopExecutionException(String.format("%s does not contain any files.", getCapDisplayName()));
         }
@@ -182,10 +204,13 @@ public abstract class AbstractFileCollection implements FileCollectionInternal {
         return DefaultGroovyMethods.asType(this, type);
     }
 
+    @Override
     public TaskDependency getBuildDependencies() {
-        return new DefaultTaskDependency();
+        DeprecationLogger.nagUserOfDiscontinuedMethod("AbstractFileCollection.getBuildDependencies()", getClass().getName() + " extends AbstractFileCollection. Don't do that, use Project.files() instead.");
+        return TaskDependencies.EMPTY;
     }
 
+    @Override
     public FileTree getAsFileTree() {
         return new CompositeFileTree() {
             @Override
@@ -207,11 +232,19 @@ public abstract class AbstractFileCollection implements FileCollectionInternal {
         };
     }
 
+    @Override
     public FileCollection filter(Closure filterClosure) {
         return filter(Specs.convertClosureToSpec(filterClosure));
     }
 
+    @Override
     public FileCollection filter(final Spec<? super File> filterSpec) {
+        final Predicate<File> predicate = new Predicate<File>() {
+            @Override
+            public boolean apply(@Nullable File input) {
+                return filterSpec.isSatisfiedBy(input);
+            }
+        };
         return new AbstractFileCollection() {
             @Override
             public String getDisplayName() {
@@ -223,8 +256,19 @@ public abstract class AbstractFileCollection implements FileCollectionInternal {
                 return AbstractFileCollection.this.getBuildDependencies();
             }
 
+            @Override
             public Set<File> getFiles() {
                 return CollectionUtils.filter(AbstractFileCollection.this, new LinkedHashSet<File>(), filterSpec);
+            }
+
+            @Override
+            public boolean contains(File file) {
+                return AbstractFileCollection.this.contains(file) && predicate.apply(file);
+            }
+
+            @Override
+            public Iterator<File> iterator() {
+                return Iterators.filter(AbstractFileCollection.this.iterator(), predicate);
             }
         };
     }
@@ -240,7 +284,7 @@ public abstract class AbstractFileCollection implements FileCollectionInternal {
 
     @Override
     public void registerWatchPoints(FileSystemSubset.Builder builder) {
-        for (File file : getFiles()) {
+        for (File file : this) {
             builder.add(file);
         }
     }

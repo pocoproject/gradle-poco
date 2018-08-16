@@ -68,7 +68,7 @@ project(":project3") {
         }
     }
 
-    def "reports failure when project dependency references a project with multiple publications"() {
+    def "reports failure when project dependency references a project with multiple conflicting publications"() {
         createBuildScripts("""
 project(":project3") {
     publishing {
@@ -93,12 +93,30 @@ project(":project3") {
         fails "publish"
 
         then:
-        failure.assertHasCause "Exception thrown while executing model rule: PublishingPlugin.Rules#publishing"
         failure.assertHasCause """Publishing is not able to resolve a dependency on a project with multiple publications that have different coordinates.
 Found the following publications in project ':project3':
-  - Maven publication 'extra' with coordinates extra.group:extra:extra
+  - Maven publication 'maven' with coordinates org.gradle.test:project3:3.0
   - Maven publication 'extraComp' with coordinates extra.group:extra-comp:extra
-  - Maven publication 'maven' with coordinates org.gradle.test:project3:3.0"""
+  - Maven publication 'extra' with coordinates extra.group:extra:extra"""
+    }
+
+    def "referenced project can have additional non-component publications"() {
+        createBuildScripts("""
+project(":project3") {
+    publishing {
+        publications {
+            extra(MavenPublication) {
+                groupId "extra.group"
+                artifactId "extra"
+                version "extra"
+            }
+        }
+    }
+}
+""")
+
+        expect:
+        succeeds "publish"
     }
 
     def "referenced project can have multiple additional publications that contain a child of some other publication"() {

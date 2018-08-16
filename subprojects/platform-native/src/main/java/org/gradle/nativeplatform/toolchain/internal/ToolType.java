@@ -25,6 +25,7 @@ public enum ToolType {
     OBJECTIVECPP_COMPILER("Objective-C++ compiler"),
     OBJECTIVEC_COMPILER("Objective-C compiler"),
     WINDOW_RESOURCES_COMPILER("Windows resources compiler"),
+    WINDOW_MESSAGE_COMPILER("Windows message compiler"),
     ASSEMBLER("Assembler"),
     LINKER("Linker"),
     STATIC_LIB_ARCHIVER("Static library archiver"),

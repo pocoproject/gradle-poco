@@ -39,7 +39,7 @@ public class SkipSemiStaticExecuter implements TaskExecuter {
     public void execute(TaskInternal task, TaskStateInternal state, TaskExecutionContext context) {
         boolean skip;
         try {
-        	boolean enabled = task.getEnabled();
+            boolean enabled = task.getEnabled();
             skip = !enabled;
         } catch (Throwable t) {
             state.setOutcome(new GradleException(String.format("Could not evaluate onlyIf predicate for %s.", task), t));

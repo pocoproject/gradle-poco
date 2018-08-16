@@ -2,7 +2,7 @@ plugins {
     `java-gradle-plugin`
 }
 
-apply { plugin("org.gradle.kotlin.kotlin-dsl") }
+apply(plugin = "org.gradle.kotlin.kotlin-dsl")
 
 dependencies {
     implementation(project(":binaryCompatibility"))
@@ -14,6 +14,7 @@ dependencies {
     implementation(project(":plugins"))
     implementation(project(":performance"))
     implementation("org.owasp:dependency-check-gradle:3.1.0")
+    implementation("org.codenarc:CodeNarc:1.0")
 }
 
 gradlePlugin {
@@ -41,10 +42,6 @@ gradlePlugin {
         "taskPropertyValidation" {
             id = "gradlebuild.task-properties-validation"
             implementationClass = "org.gradle.gradlebuild.buildquality.TaskPropertyValidationPlugin"
-        }
-        "testFilesCleanUp" {
-            id = "gradlebuild.test-files-cleanup"
-            implementationClass = "org.gradle.gradlebuild.buildquality.testfiles.TestFilesCleanUpPlugin"
         }
     }
 }

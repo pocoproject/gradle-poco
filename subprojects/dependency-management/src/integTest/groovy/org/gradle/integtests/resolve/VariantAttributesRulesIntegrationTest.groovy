@@ -62,14 +62,27 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
         given:
         withDefaultVariantToTest()
         buildFile << """
+            class AttributeRule implements ComponentMetadataRule {
+                Attribute attribute
+
+                @javax.inject.Inject
+                AttributeRule(Attribute attribute) {
+                    this.attribute = attribute
+                }
+
+                void execute(ComponentMetadataContext context) {
+                    context.details.withVariant("$variantToTest") { 
+                        attributes {
+                            attribute(attribute, "custom")
+                        }
+                    }
+                }
+            }
+
             dependencies {
                 components {
-                    withModule('org.test:moduleB') {
-                        withVariant("$variantToTest") { 
-                            attributes {
-                                attribute(formatAttribute, "custom")
-                            }
-                        }
+                    withModule('org.test:moduleB', AttributeRule) {
+                        params(formatAttribute)
                     }
                 }
             }
@@ -109,14 +122,27 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
         given:
         withDefaultVariantToTest()
         buildFile << """
+            class AttributeRule implements ComponentMetadataRule {
+                Attribute attribute
+
+                @javax.inject.Inject
+                AttributeRule(Attribute attribute) {
+                    this.attribute = attribute
+                }
+
+                void execute(ComponentMetadataContext context) {
+                    context.details.withVariant("$variantToTest") { 
+                        attributes {
+                            attribute(attribute, "custom")
+                        }
+                    }
+                }
+            }
+
             dependencies {
                 components {
-                    withModule('org.test:moduleB') {
-                        withVariant("$variantToTest") { 
-                            attributes {
-                                attribute(formatAttribute, "custom")
-                            }
-                        }
+                    withModule('org.test:moduleB', AttributeRule) {
+                        params(formatAttribute)
                     }
                 }
             }
@@ -164,19 +190,19 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
                             // is target to the metadata rule, which explains we find the "format" attribute here
                             expectedTargetVariant = expectedVariant
                             artifact group: 'org', module: 'moduleB', version: '1.0', classifier: 'variant1'
-                            expectedAttributes = [format: 'custom', 'org.gradle.status': GradleMetadataResolveRunner.useIvy()?'integration':'release']
+                            expectedAttributes = [format: 'custom', 'org.gradle.status': GradleMetadataResolveRunner.useIvy() ? 'integration' : 'release']
                         } else {
                             if (GradleMetadataResolveRunner.useIvy()) {
                                 // Ivy doesn't derive any variant
                                 expectedTargetVariant = 'default+customVariant'
-                                expectedAttributes = [:]
+                                expectedAttributes = ['org.gradle.status': GradleMetadataResolveRunner.useIvy() ? 'integration' : 'release']
                             } else {
                                 // for Maven, we derive variants for compile/runtime. Variants are then used during selection, and are subject
                                 // to metadata rules. In this case, we have multiple variants (default, runtime, compile), but only the "compile"
                                 // one is target of the rule (see #getVariantToTest())
                                 expectedTargetVariant = 'compile'
                                 // the format attribute is added by the rule
-                                expectedAttributes = [format: 'custom']
+                                expectedAttributes = [format: 'custom', 'org.gradle.status': GradleMetadataResolveRunner.useIvy() ? 'integration' : 'release']
                                 if (GradleMetadataResolveRunner.experimentalResolveBehaviorEnabled) {
                                     // when experimental resolve is on, the "compile" configuration is mapped to the "java-api" usage
                                     expectedAttributes['org.gradle.usage'] = 'java-api'
@@ -197,6 +223,25 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
         given:
         withDefaultVariantToTest()
         buildFile << """
+            class AttributeRule implements ComponentMetadataRule {
+                Attribute attribute
+
+                @javax.inject.Inject
+                AttributeRule(Attribute attribute) {
+                    this.attribute = attribute
+                }
+
+                void execute(ComponentMetadataContext context) {
+                    context.details.withVariant("$variantToTest") { 
+                        attributes {
+                            // defines the 'format' attribute with value 'custom' on all variants
+                            // which will be inherited by artifacts
+                            attribute(attribute, "custom")
+                        }
+                    }
+                }
+            }
+
             dependencies {
                 artifactTypes {
                     jar {
@@ -206,14 +251,8 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
                     }
                 }
                 components {
-                    withModule('org.test:moduleB') {
-                        withVariant("$variantToTest") { 
-                            attributes {
-                                // defines the 'format' attribute with value 'custom' on all variants
-                                // which will be inherited by artifacts
-                                attribute(formatAttribute, "custom")
-                            }
-                        }
+                    withModule('org.test:moduleB', AttributeRule) {
+                        params(formatAttribute)
                     }
                 }
             }
@@ -316,18 +355,31 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
         given:
         withDefaultVariantToTest()
         buildFile << """
+            class AttributeRule implements ComponentMetadataRule {
+                Attribute attribute
+
+                @javax.inject.Inject
+                AttributeRule(Attribute attribute) {
+                    this.attribute = attribute
+                }
+
+                void execute(ComponentMetadataContext context) {
+                    context.details.withVariant('$selectedVariant') { 
+                        attributes {
+                            attribute(attribute, "select")
+                        }
+                    }
+                }
+            }
+
             configurations {
                 ${variantToTest}.attributes.attribute(testAttribute, "select")
             }
 
             dependencies {
                 components {
-                    withModule('org.test:moduleB') {
-                        withVariant('$selectedVariant') { 
-                            attributes {
-                                attribute(testAttribute, "select")
-                            }
-                        }
+                    withModule('org.test:moduleB', AttributeRule) {
+                        params(testAttribute)
                     }
                 }
             }
@@ -384,7 +436,7 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
 
     @RequiredFeatures(
         // published attributes are only available in Gradle metadata
-        @RequiredFeature(feature=GradleMetadataResolveRunner.GRADLE_METADATA, value="true")
+        @RequiredFeature(feature = GradleMetadataResolveRunner.GRADLE_METADATA, value = "true")
     )
     def "published variant metadata can be overwritten"() {
         given:
@@ -401,6 +453,23 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
         buildFile << """
             def quality = Attribute.of("quality", String)
             
+            class AttributeRule implements ComponentMetadataRule {
+                Attribute attribute
+
+                @javax.inject.Inject
+                AttributeRule(Attribute attribute) {
+                    this.attribute = attribute
+                }
+
+                void execute(ComponentMetadataContext context) {
+                    context.details.withVariant('customVariant2') {
+                       attributes {
+                          attribute attribute, 'qa'
+                       }
+                    }
+                }
+            }
+
             configurations {
                 ${variantToTest}.attributes.attribute(quality, 'qa')
             }
@@ -410,12 +479,8 @@ class VariantAttributesRulesIntegrationTest extends AbstractModuleDependencyReso
                     attribute(quality)
                 }
                 components {
-                    withModule('org.test:module') {
-                        withVariant('customVariant2') {
-                           attributes {
-                              attribute quality, 'qa'
-                           }
-                        }
+                    withModule('org.test:module', AttributeRule) {
+                        params(quality)
                     }
                 }
                 $variantToTest 'org.test:module:1.0'

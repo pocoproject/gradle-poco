@@ -16,6 +16,7 @@
 
 package org.gradle.plugin.autoapply
 
+import org.gradle.api.logging.configuration.ConsoleOutput
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.executer.GradleHandle
 import org.gradle.test.fixtures.file.LeaksFileHandles
@@ -30,7 +31,8 @@ import static org.gradle.integtests.fixtures.BuildScanUserInputFixture.NO
 import static org.gradle.integtests.fixtures.BuildScanUserInputFixture.YES
 import static org.gradle.integtests.fixtures.BuildScanUserInputFixture.writeToStdInAndClose
 
-@Requires(TestPrecondition.ONLINE)
+@Requires(value = [TestPrecondition.ONLINE, TestPrecondition.JDK8_OR_LATER])
+@Issue('https://github.com/gradle/gradle-private/issues/1341')
 @LeaksFileHandles
 class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
 
@@ -126,6 +128,7 @@ class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
         buildFile << dummyBuildFile()
 
         when:
+        executer.withArgument("--debug")
         def gradleHandle = startBuildWithBuildScanCommandLineOption()
 
         then:
@@ -161,7 +164,10 @@ class AutoAppliedPluginsFunctionalTest extends AbstractIntegrationSpec {
     }
 
     private void withInteractiveConsole() {
-        executer.withStdinPipe().withForceInteractive(true)
+        executer.withTestConsoleAttached()
+                .withConsole(ConsoleOutput.Plain)
+                .withStdinPipe()
+                .withForceInteractive(true)
     }
 
     private GradleHandle startBuildWithBuildScanCommandLineOption() {

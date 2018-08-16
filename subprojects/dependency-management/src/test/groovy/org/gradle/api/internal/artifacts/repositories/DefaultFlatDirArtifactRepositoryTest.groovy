@@ -16,13 +16,14 @@
 package org.gradle.api.internal.artifacts.repositories
 
 import org.gradle.api.InvalidUserDataException
+import org.gradle.api.internal.InstantiatorFactory
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory
 import org.gradle.api.internal.artifacts.repositories.metadata.IvyMutableModuleMetadataFactory
 import org.gradle.api.internal.artifacts.repositories.resolver.IvyResolver
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransportFactory
 import org.gradle.api.internal.file.FileResolver
-import org.gradle.api.internal.file.collections.SimpleFileCollection
+import org.gradle.api.internal.file.collections.ImmutableFileCollection
 import org.gradle.api.internal.filestore.ivy.ArtifactIdentifierFileStore
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata
 import org.gradle.internal.resource.ExternalResourceRepository
@@ -40,13 +41,13 @@ class DefaultFlatDirArtifactRepositoryTest extends Specification {
     final ImmutableModuleIdentifierFactory moduleIdentifierFactory = Mock()
     final IvyMutableModuleMetadataFactory metadataFactory = new IvyMutableModuleMetadataFactory(moduleIdentifierFactory, TestUtil.attributesFactory())
 
-    final DefaultFlatDirArtifactRepository repository = new DefaultFlatDirArtifactRepository(fileResolver, transportFactory, locallyAvailableResourceFinder, artifactIdentifierFileStore, moduleIdentifierFactory, metadataFactory)
+    final DefaultFlatDirArtifactRepository repository = new DefaultFlatDirArtifactRepository(fileResolver, transportFactory, locallyAvailableResourceFinder, artifactIdentifierFileStore, moduleIdentifierFactory, metadataFactory, Mock(InstantiatorFactory))
 
     def "creates a repository with multiple root directories"() {
         given:
         def dir1 = new File('a')
         def dir2 = new File('b')
-        _ * fileResolver.resolveFiles(['a', 'b']) >> new SimpleFileCollection(dir1, dir2)
+        _ * fileResolver.resolveFiles(['a', 'b']) >> ImmutableFileCollection.of(dir1, dir2)
         _ * repositoryTransport.repository >> resourceRepository
 
         and:
@@ -73,7 +74,7 @@ class DefaultFlatDirArtifactRepositoryTest extends Specification {
 
     def "fails when no directories specified"() {
         given:
-        _ * fileResolver.resolveFiles(_) >> new SimpleFileCollection()
+        _ * fileResolver.resolveFiles(_) >> ImmutableFileCollection.of()
 
         when:
         repository.createResolver()

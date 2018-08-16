@@ -102,7 +102,7 @@ public class DefaultIvyModulePublishMetadata implements IvyModulePublishMetadata
                 new DefaultImmutableVersionConstraint(
                     VERSION_TRANSFORMER.transform(versionConstraint.getPreferredVersion()),
                     CollectionUtils.collect(versionConstraint.getRejectedVersions(), VERSION_TRANSFORMER));
-            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getGroup(), selector.getModule(), transformedConstraint);
+            ModuleComponentSelector newSelector = DefaultModuleComponentSelector.newSelector(selector.getModuleIdentifier(), transformedConstraint, selector.getAttributes());
             return dependency.withTarget(newSelector);
         }
         return dependency;
@@ -166,6 +166,11 @@ public class DefaultIvyModulePublishMetadata implements IvyModulePublishMetadata
         @Override
         public void addFiles(LocalFileDependencyMetadata files) {
             // Ignore files
+        }
+
+        @Override
+        public void enableLocking() {
+            // Ignore
         }
     }
 

@@ -17,10 +17,16 @@
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
+import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.CandidateModule;
+import org.gradle.api.internal.attributes.AttributeContainerInternal;
+import org.gradle.api.internal.attributes.AttributeMergingException;
+import org.gradle.api.internal.attributes.ImmutableAttributes;
+import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.internal.id.IdGenerator;
 import org.gradle.internal.resolve.resolver.ComponentMetaDataResolver;
 
@@ -31,6 +37,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Resolution state for a given module.
@@ -41,15 +48,19 @@ class ModuleResolveState implements CandidateModule {
     private final ModuleIdentifier id;
     private final List<EdgeState> unattachedDependencies = new LinkedList<EdgeState>();
     private final Map<ModuleVersionIdentifier, ComponentState> versions = new LinkedHashMap<ModuleVersionIdentifier, ComponentState>();
-    private final List<SelectorState> selectors = Lists.newLinkedList();
+    private final List<SelectorState> selectors = Lists.newArrayListWithExpectedSize(4);
     private final VariantNameBuilder variantNameBuilder;
+    private final ImmutableAttributesFactory attributesFactory;
     private ComponentState selected;
+    private ImmutableAttributes mergedAttributes = ImmutableAttributes.EMPTY;
+    private AttributeMergingException attributeMergingError;
 
-    ModuleResolveState(IdGenerator<Long> idGenerator, ModuleIdentifier id, ComponentMetaDataResolver metaDataResolver, VariantNameBuilder variantNameBuilder) {
+    ModuleResolveState(IdGenerator<Long> idGenerator, ModuleIdentifier id, ComponentMetaDataResolver metaDataResolver, VariantNameBuilder variantNameBuilder, ImmutableAttributesFactory attributesFactory) {
         this.idGenerator = idGenerator;
         this.id = id;
         this.metaDataResolver = metaDataResolver;
         this.variantNameBuilder = variantNameBuilder;
+        this.attributesFactory = attributesFactory;
     }
 
     @Override
@@ -80,6 +91,10 @@ class ModuleResolveState implements CandidateModule {
         return versions;
     }
 
+    public Collection<ComponentState> getAllVersions() {
+        return this.versions.values();
+    }
+
     private static boolean areAllCandidatesForSelection(Collection<ComponentState> values) {
         boolean allCandidates = true;
         for (ComponentState value : values) {
@@ -95,52 +110,95 @@ class ModuleResolveState implements CandidateModule {
         return selected;
     }
 
+    /**
+     * Selects the target component for this module for the first time.
+     * Any existing versions will be evicted.
+     */
     public void select(ComponentState selected) {
         assert this.selected == null;
         this.selected = selected;
+
+        selectComponentAndEvictOthers(selected);
+    }
+
+    private void selectComponentAndEvictOthers(ComponentState selected) {
         for (ComponentState version : versions.values()) {
             version.evict();
         }
-
         selected.select();
     }
 
-    public ComponentState clearSelection() {
-        ComponentState previousSelection = selected;
-        selected = null;
+    /**
+     * Changes the selected target component for this module.
+     */
+    public void changeSelection(ComponentState newSelection) {
+        assert this.selected != null;
+        assert newSelection != null;
+        assert this.selected != newSelection;
+        assert newSelection.getModule() == this;
+
+        // Remove any outgoing edges for the current selection
+        selected.removeOutgoingEdges();
+
+        this.selected = newSelection;
+
+        doRestart(newSelection);
+    }
+
+    /**
+     * Clears the current selection for the module, to prepare for conflict resolution.
+     * - For the current selection, disconnect and remove any outgoing dependencies.
+     * - Make all 'selected' component versions selectable.
+     */
+    public void clearSelection() {
+        if (selected != null) {
+            selected.removeOutgoingEdges();
+        }
         for (ComponentState version : versions.values()) {
             if (version.isSelected()) {
                 version.makeSelectable();
             }
         }
-        return previousSelection;
+
+        selected = null;
     }
 
+    /**
+     * Overrides the component selection for this module, when this module has been replaced by another.
+     */
     public void restart(ComponentState selected) {
-        if (this.selected != selected) {
-            select(selected);
-            doRestart(selected);
+        if (this.selected != null) {
+            clearSelection();
         }
+
+        assert this.selected == null;
+        assert selected != null;
+
+        this.selected = selected;
+
+        doRestart(selected);
     }
 
     private void doRestart(ComponentState selected) {
+        selectComponentAndEvictOthers(selected);
         for (ComponentState version : versions.values()) {
-            version.restart(selected);
+            version.restartIncomingEdges(selected);
         }
         for (SelectorState selector : selectors) {
             selector.overrideSelection(selected);
         }
         if (!unattachedDependencies.isEmpty()) {
-            restartUnattachedDependencies(selected);
+            restartUnattachedDependencies();
         }
     }
 
-    private void restartUnattachedDependencies(ComponentState selected) {
-        if (unattachedDependencies.size()==1) {
-            unattachedDependencies.get(0).restart(selected);
+    private void restartUnattachedDependencies() {
+        if (unattachedDependencies.size() == 1) {
+            EdgeState singleDependency = unattachedDependencies.get(0);
+            singleDependency.restart();
         } else {
             for (EdgeState dependency : new ArrayList<EdgeState>(unattachedDependencies)) {
-                dependency.restart(selected);
+                dependency.restart();
             }
         }
         unattachedDependencies.clear();
@@ -163,21 +221,54 @@ class ModuleResolveState implements CandidateModule {
         return moduleRevision;
     }
 
-    public void addSelector(SelectorState selector) {
+    void addSelector(SelectorState selector) {
+        assert !selectors.contains(selector) : "Inconsistent call to addSelector: should only be done if the selector isn't in use";
         selectors.add(selector);
+        mergedAttributes = appendAttributes(mergedAttributes, selector);
+    }
+
+    void removeSelector(SelectorState selector) {
+        selectors.remove(selector);
+        mergedAttributes = ImmutableAttributes.EMPTY;
+        for (SelectorState selectorState : selectors) {
+            mergedAttributes = appendAttributes(mergedAttributes, selectorState);
+        }
     }
 
     public List<SelectorState> getSelectors() {
         return selectors;
     }
 
-    public List<ComponentState> getUnattachedEdgesTo(ComponentState target) {
-        List<ComponentState> result = Lists.newArrayListWithCapacity(unattachedDependencies.size());
-        for (EdgeState unattachedDependency : unattachedDependencies) {
-            if (unattachedDependency.getTargetComponent().equals(target)) {
-                result.add(unattachedDependency.getFrom().getComponent());
+    List<EdgeState> getUnattachedDependencies() {
+        return unattachedDependencies;
+    }
+
+    ImmutableAttributes getMergedSelectorAttributes() {
+        if (attributeMergingError != null) {
+            throw new IllegalStateException(IncompatibleDependencyAttributesMessageBuilder.buildMergeErrorMessage(this, attributeMergingError));
+        }
+        return mergedAttributes;
+    }
+
+    private ImmutableAttributes appendAttributes(ImmutableAttributes dependencyAttributes, SelectorState selectorState) {
+        try {
+            ComponentSelector selector = selectorState.getDependencyMetadata().getSelector();
+            ImmutableAttributes attributes = ((AttributeContainerInternal) selector.getAttributes()).asImmutable();
+            dependencyAttributes = attributesFactory.safeConcat(attributes, dependencyAttributes);
+        } catch (AttributeMergingException e) {
+            attributeMergingError = e;
+        }
+        return dependencyAttributes;
+    }
+
+    Set<EdgeState> getIncomingEdges() {
+        Set<EdgeState> incoming = Sets.newLinkedHashSet();
+        if (selected != null) {
+            for (NodeState nodeState : selected.getNodes()) {
+                incoming.addAll(nodeState.getIncomingEdges());
             }
         }
-        return result;
+        return incoming;
     }
+
 }

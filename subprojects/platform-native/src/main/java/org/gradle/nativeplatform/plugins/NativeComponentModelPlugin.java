@@ -370,10 +370,10 @@ public class NativeComponentModelPlugin implements Plugin<ProjectInternal> {
                 @Override
                 public void execute(CreateSemiStaticLibrary task) {
                     task.setDescription("Creates " + binary.getDisplayName());
-                    task.setToolChain(binary.getToolChain());
-                    task.setTargetPlatform(binary.getTargetPlatform());
-                    task.setOutputFile(binary.getSemiStaticLibraryFile());
-                    task.setStaticLibArgs(binary.getStaticLibArchiver().getArgs());
+                    task.getToolChain().set(binary.getToolChain());
+                    task.getTargetPlatform().set(binary.getTargetPlatform());
+                    task.getOutputFile().set(binary.getSemiStaticLibraryFile());
+                    task.getStaticLibArgs().set(binary.getStaticLibArchiver().getArgs());
                 }
             });
         }

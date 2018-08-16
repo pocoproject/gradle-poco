@@ -56,10 +56,10 @@ class BuildScanPluginPerformanceTest extends Specification {
     void setup() {
         def incomingDir = "../../incoming" // System.getProperty('incomingArtifactDir')
         assert incomingDir: "'incomingArtifactDir' system property is not set"
-        def versionJsonFile = new File(incomingDir, "version.json")
-        assert versionJsonFile.exists()
+        def buildStampJsonFile = new File(incomingDir, "buildStamp.json")
+        assert buildStampJsonFile.exists()
 
-        def versionJsonData = new JsonSlurper().parse(versionJsonFile) as Map<String, ?>
+        def versionJsonData = new JsonSlurper().parse(buildStampJsonFile) as Map<String, ?>
         assert versionJsonData.commitId
         def pluginCommitId = versionJsonData.commitId as String
 
@@ -103,7 +103,7 @@ class BuildScanPluginPerformanceTest extends Specification {
             displayName(WITH_PLUGIN_LABEL)
             invocation {
                 args(*jobArgs)
-                args("-Dscan", "-Dscan.dump")
+                args("-Dscan", "-Dscan.dump", "-Dorg.gradle.internal.tasks.createops")
                 tasksToRun(*tasks)
                 gradleOpts(*opts)
                 expectFailure()

@@ -26,6 +26,7 @@ import org.gradle.util.Requires
 import org.junit.Assume
 import spock.lang.Unroll
 
+@SuppressWarnings("IntegrationTestFixtures")
 class WrapperCrossVersionIntegrationTest extends CrossVersionIntegrationSpec {
     def setup() {
         requireOwnGradleUserHomeDir()
@@ -88,8 +89,7 @@ class WrapperCrossVersionIntegrationTest extends CrossVersionIntegrationSpec {
         println "use wrapper from $wrapperVersion to build using $executionVersion"
 
         buildFile << """
-
-task wrapper(type: Wrapper) {
+task wrapper (type: Wrapper, overwrite: true) {
     gradleVersion = '$executionVersion.version.version'
     distributionUrl = '${executionVersion.binDistribution.toURI()}'
 }
