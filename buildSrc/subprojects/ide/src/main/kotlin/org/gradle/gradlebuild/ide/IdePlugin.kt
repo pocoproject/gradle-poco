@@ -82,11 +82,25 @@ open class IdePlugin : Plugin<Project> {
                         // Remove references to other project's binaries
                         entries.removeAll { it is AbstractClasspathEntry && it.path.contains("/subprojects") && it.kind == "lib" }
                         // Add needed resources for running gradle as a non daemon java application
-                        entries.add(SourceFolder("build/generated-resources/main", null))
+                        if (file("build/generated-resources/main").exists()) {
+                            entries.add(SourceFolder("build/generated-resources/main", null))
+                        }
                         if (file("build/generated-resources/test").exists()) {
                             entries.add(SourceFolder("build/generated-resources/test", null))
                         }
                     })
+                }
+                jdt {
+                    sourceCompatibility = JavaVersion.VERSION_1_8
+                    targetCompatibility = JavaVersion.VERSION_1_8
+                    javaRuntimeName = "JavaSE-1.8"
+/*
+                    FIXME No idea why Kotlin fails to compile this line below: 
+                    file.withProperties { Properties properties ->
+                        // Eclipse's view of projects treat circular dependencies as errors by default
+                        properties["org.eclipse.jdt.core.circularClasspath"] = "warning"
+                    }
+*/
                 }
             }
         }
