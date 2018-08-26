@@ -34,7 +34,12 @@ public enum Linkage implements Named {
     /**
      * Dynamically link binaries together.
      */
-    SHARED;
+    SHARED,
+
+    /**
+     * Semi Statically link binaries together.
+     */
+    SEMI_STATIC;
 
     @Override
     public String getName() {
