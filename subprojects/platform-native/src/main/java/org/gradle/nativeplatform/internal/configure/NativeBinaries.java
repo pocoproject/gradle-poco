@@ -54,7 +54,8 @@ public class NativeBinaries {
         if (component instanceof NativeLibrarySpec) {
             createNativeBinary(SharedLibraryBinarySpec.class, binaries, resolver, fileCollectionFactory, namingScheme.withBinaryType("SharedLibrary").withRole("shared", false), platform, buildType, flavor);
             createNativeBinary(StaticLibraryBinarySpec.class, binaries, resolver, fileCollectionFactory, namingScheme.withBinaryType("StaticLibrary").withRole("static", false), platform, buildType, flavor);
-            createNativeBinary(SemiStaticLibraryBinarySpec.class, binaries, resolver, fileCollectionFactory, namingScheme.withBinaryType("SemiStaticLibrary").withRole("semistatic", false), platform, buildType, flavor);
+            if (platform.getOperatingSystem().isWindows())
+            	createNativeBinary(SemiStaticLibraryBinarySpec.class, binaries, resolver, fileCollectionFactory, namingScheme.withBinaryType("SemiStaticLibrary").withRole("semistatic", false), platform, buildType, flavor);
         } else {
             createNativeBinary(NativeExecutableBinarySpec.class, binaries, resolver, fileCollectionFactory, namingScheme.withBinaryType("Executable").withRole("executable", true), platform, buildType, flavor);
         }
