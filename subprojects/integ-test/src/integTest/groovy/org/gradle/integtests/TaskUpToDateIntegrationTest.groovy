@@ -269,4 +269,78 @@ class TaskUpToDateIntegrationTest extends AbstractIntegrationSpec {
         then:
         executedAndNotSkipped ":customTask"
     }
+
+    def "changes to inputs that are excluded by default leave task up-to-date"() {
+        def inputDir = file("inputDir").createDir()
+        inputDir.file('inputFile.txt').text = "input file"
+        inputDir.createDir('something')
+
+        buildFile << """
+            task myTask {
+                inputs.dir('inputDir')
+                outputs.file('build/output.txt')
+                doLast {
+                    file('build/output.txt').text = "Hello world"
+                }
+            }
+        """
+
+        when:
+        run 'myTask'
+        then:
+        executedAndNotSkipped(':myTask')
+
+        when:
+        inputDir.file('.gitignore').text = "some ignored file"
+        inputDir.file('#ignored#').text = "some ignored file"
+        inputDir.file('.git/any-name.txt').text = "some ignored file"
+        inputDir.file('something/.git/deeper/dir/structure/any-name.txt').text = "some ignored file"
+        inputDir.file('._ignored').text = "some ignored file"
+        inputDir.file('some-file.txt~').text = "some ignored file"
+
+        run 'myTask', "--info"
+        then:
+        skipped(':myTask')
+    }
+
+    @Issue("https://github.com/gradle/gradle/issues/6592")
+    def "missing directory is ignored"() {
+        buildFile << """
+            class TaskWithInputDir extends DefaultTask {
+            
+                @InputFiles
+                FileTree inputDir
+                
+                @OutputFile
+                File outputFile
+            
+                @TaskAction
+                void doStuff() { 
+                    outputFile.text = inputDir.files.collect { it.name }.join("\\n") 
+                }
+            }                             
+
+            task myTask1(type: TaskWithInputDir) {
+                inputDir = fileTree(file('input'))
+                outputFile = file('build/output.txt')
+            }
+            task myTask2(type: TaskWithInputDir) {
+                inputDir = fileTree(file('input'))
+                outputFile = file('build/output.txt')
+                dependsOn("myTask1")
+            }
+        """
+
+        def tasks = [":myTask1", ":myTask2"]
+
+        when:
+        run(*tasks)
+        then:
+        executedAndNotSkipped(*tasks)
+
+        when:
+        run(*tasks)
+        then:
+        skipped(*tasks)
+    }
 }

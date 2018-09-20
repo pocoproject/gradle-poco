@@ -2,7 +2,6 @@ import org.gradle.gradlebuild.BuildEnvironment
 import org.gradle.gradlebuild.unittestandcompile.ModuleType
 
 plugins {
-    id 'gradlebuild.strict-compile'
     id 'gradlebuild.classycle'
 }
 
@@ -36,7 +35,7 @@ testFixtures {
     from(':platformBase')
 }
 
-integTest {
+tasks.named("integTest").configure {
     exclude 'org/gradle/play/prepare/**'
 }
 

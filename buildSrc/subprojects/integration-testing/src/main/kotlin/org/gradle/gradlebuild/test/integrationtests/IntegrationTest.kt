@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 the original author or authors.
+ * Copyright 2018 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,11 @@
 
 package org.gradle.gradlebuild.test.integrationtests
 
-import org.gradle.api.Named
-import org.gradle.api.file.ProjectLayout
 import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.InputDirectory
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.Internal
-import org.gradle.api.tasks.Nested
-import org.gradle.api.tasks.Optional
-import org.gradle.api.tasks.PathSensitive
-import org.gradle.api.tasks.PathSensitivity
-import org.gradle.process.CommandLineArgumentProvider
-import java.util.concurrent.Callable
+import java.util.concurrent.TimeUnit
+import java.util.Timer
+import kotlin.concurrent.timerTask
+import org.gradle.gradlebuild.BuildEnvironment
 
 
 /**
@@ -38,51 +30,35 @@ import java.util.concurrent.Callable
  */
 @CacheableTask
 open class IntegrationTest : DistributionTest() {
-
-    @Internal
-    val userguideSamples = UserguideSamples(project.layout)
-
-    init {
-        jvmArgumentProviders.add(UserguideIntegrationTestEnvironmentProvider(userguideSamples))
-        dependsOn(Callable { if (userguideSamples.required) ":docs:extractSamples" else null })
+    override fun executeTests() {
+        printStacktracesAfterTimeout { super.executeTests() }
     }
-}
 
-
-class UserguideSamples(layout: ProjectLayout) {
-
-    @Input
-    var required = false
-
-    @InputFile
-    @PathSensitive(PathSensitivity.NAME_ONLY)
-    val samplesXml = layout.fileProperty()
-
-    @InputDirectory
-    @PathSensitive(PathSensitivity.RELATIVE)
-    val userGuideSamplesOutput = layout.directoryProperty()
-}
-
-
-class UserguideIntegrationTestEnvironmentProvider(private val samplesInternal: UserguideSamples) : CommandLineArgumentProvider, Named {
-
-    @get:Nested
-    @get:Optional
-    val samples
-        get() =
-            if (samplesInternal.required) samplesInternal
-            else null
-
-    override fun asArguments() =
-        if (samplesInternal.required) {
-            mapOf(
-                "integTest.userGuideInfoDir" to samplesInternal.samplesXml.asFile.get().parentFile.absolutePath,
-                "integTest.userGuideOutputDir" to samplesInternal.userGuideSamplesOutput.asFile.get().absolutePath
-            ).asSystemPropertyJvmArguments()
-        } else {
-            emptyList()
+    private
+    fun printStacktracesAfterTimeout(work: () -> Unit) = if (BuildEnvironment.isCiServer) {
+        val timer = Timer(true).apply {
+            schedule(timerTask {
+                project.javaexec {
+                    classpath = this@IntegrationTest.classpath
+                    main = "org.gradle.integtests.fixtures.timeout.JavaProcessStackTracesMonitor"
+                }
+            }, determineTimeoutMillis())
         }
+        try {
+            work()
+        } finally {
+            timer.cancel()
+        }
+    } else {
+        work()
+    }
 
-    override fun getName() =
-        "userguide"
+    private
+    fun determineTimeoutMillis(): Long {
+        return if ("embedded" == getSystemProperties().get("org.gradle.integtest.executer")) {
+            TimeUnit.MINUTES.toMillis(30)
+        } else {
+            TimeUnit.HOURS.toMillis(2)
+        }
+    }
 }

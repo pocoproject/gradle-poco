@@ -1,102 +1,116 @@
-The Gradle team is pleased to announce Gradle 4.9.
+The Gradle team is pleased to announce Gradle 4.10. This is a big release.
 
-First, publishing tools get some more love: projects that publish auxiliary publications (e.g. test fixtures) through `maven-publish` and `ivy-publish` can now be [depended upon by other projects](https://github.com/gradle/gradle/issues/1061) in the same build.
-There is also a [new Publishing Overview chapter](userguide/publishing_overview.html) in the user manual and updates throughout the documentation regarding publishing artifacts using Maven and Ivy.
+First and foremost, this release of Gradle features an improved [incremental Java compiler, now enabled by default](#incremental-java-compilation-by-default).
+This will result in significantly reduced Java compilation time in subsequent builds when outputs are not up-to-date or resolved from the build cache.
 
-On to the Kotlin DSL, which reaches version 0.18.4 included in this distribution of Gradle.
-In addition to quicker `.gradle.kts` [evaluation and other UX improvements](https://github.com/gradle/kotlin-dsl/releases/tag/v0.18.4), we're delighted to introduce a new guide: [Migrating build logic from Groovy to Kotlin](https://guides.gradle.org/migrating-build-logic-from-groovy-to-kotlin/).
-This covers considerations and build script snippets that are essential to a successful migration. 
-You will start seeing more and more Groovy and Kotlin side-by-side in the documentation — stay tuned!  
+Chances are caches in those `.gradle/` directories have accumulated a few (or a few dozen) gigabytes over time.
+If so, you'll be relieved to know that Gradle will now [periodically clean up unused `/caches`](#periodic-cache-cleanup) under `GRADLE_USER_HOME` and project root directories.
 
-Next up, you can now pass arguments to `JavaExec` tasks [directly from the command-line](#command-line-args-supported-by-javaexec) using `--args`:
+A moment you have anticipated is nearly here, as the [Kotlin DSL reaches version 1.0 RC6](https://github.com/gradle/kotlin-dsl/releases/tag/v1.0-RC6).
+Configuration avoidance, `buildSrc` refactoring propagation to the IDE, and lots of DSL polish make this the release to try.
+Gradle Kotlin DSL 1.0 will ship with the next version of Gradle, 5.0.
+Read [this blog post](https://blog.gradle.org/gradle-kotlin-dsl-release-candidate) for guidance on trying the Kotlin DSL and submitting feedback.
 
-    ❯ gradle run --args 'foo --bar'
-    
-No more need to hard-code arguments in your build scripts. 
-Consult the documentation for the [Application Plugin](userguide/application_plugin.html#sec:application_usage) for more information.
+You can now use [SNAPSHOT plugin versions with the `plugins {}`](#use-snapshot-plugin-versions-with-the-plugins-{}-block) and `pluginManagement {}` blocks.
+This is especially good news for Kotlin DSL users, who will get code assistance and auto-completion for these `SNAPSHOT` plugins.
+Special thanks to [Sébastien Deleuze](https://github.com/sdeleuze) for contributing.
 
-Last but not least, this version of Gradle has an _improved dependency insight report_. Read the [details further on](#improved-dependency-insight-report).   
+Last but not least, [included builds can now be nested](#nested-included-builds).
+This makes some common workflows more convenient, such as working on multiple source repositories at the same time to implement a cross-cutting feature.
 
-We hope you will build happiness with Gradle 4.9, and we look forward to your feedback [via Twitter](https://twitter.com/gradle) or [on GitHub](https://github.com/gradle).
+We hope you will build happiness with Gradle 4.10, and we look forward to your feedback [via Twitter](https://twitter.com/gradle) or [on GitHub](https://github.com/gradle/gradle).
 
 ## Upgrade Instructions
 
-Switch your build to use Gradle 4.9 quickly by updating your wrapper properties:
+Switch your build to use Gradle 4.10 quickly by updating your wrapper properties:
 
-`./gradlew wrapper --gradle-version=4.9`
+    ./gradlew wrapper --gradle-version=4.10.2
 
-Standalone downloads are available at [gradle.org/install](https://gradle.org/install). 
+Standalone downloads are available at [gradle.org/releases](https://gradle.org/releases/).
+
+**NOTE**: Gradle 4.10 has had two patch releases. You should use the latest patch release (4.10.2).  
 
 ## New and noteworthy
 
 Here are the new features introduced in this Gradle release.
 
-### Command line args supported by JavaExec
-
-Command line arguments can be passed to `JavaExec` with `--args`. For example, if you want to launch the application with command line arguments `foo --bar`,
-you don't need to hardcode it into the build script - you can just run `gradle run --args 'foo --bar'`.
-See the [Application Plugin documentation](userguide/application_plugin.html#sec:application_usage) for more information.
-
-### Improved dependency insight report
-
-The [dependency insight report](userguide/inspecting_dependencies.html#sec:identifying_reason_dependency_selection) is the distant ancestor of [build scans](https://scans.gradle.com) and helps you diagnose dependency management problems locally.
-This release of Gradle implements several improvements:
-
-- using `failOnVersionConflict()` no longer fails the dependency insight report in case of conflict
-- all participants of conflict resolution are shown
-- modules which were rejected by a rule are displayed
-- modules which didn't match the version selector but were considered in selection are shown
-- all custom reasons for a component selection are shown
-- ability to restrict the report to one path to each dependency, for readability
-- resolution failures are displayed in the report
-
-### Continuing development of Native ecosystem
-
-[The Gradle Native project continues](https://github.com/gradle/gradle-native/blob/master/docs/RELEASE-NOTES.md#changes-included-in-gradle-49) to improve and evolve the native ecosystem support for Gradle.
-
-### Faster clean checkout builds
-
-Gradle now stores more state in the Gradle user home instead of the project directory. Clean checkout builds on CI should now be faster as long as the user home is preserved.
-
-### Java and Groovy compiler no longer leak file descriptors
-
-The Java and Groovy compilers both used to leak file descriptors when run in-process (which is the default).
-This could lead to "cannot delete file" exceptions on Windows and "too many open file descriptors" on Unix.
-These leaks have been fixed.  If you had switched to forking mode because of this problem, it is now safe to switch back to in-process compilation.
-
-### Experimental new task API
-
-In a nutshell, the new task API allows builds to avoid the cost of creating and [configuring](userguide/build_lifecycle.html) tasks when those tasks will never be executed.
-
-Some Gradle tasks have converted to use this API, so you may see slightly faster configuration times just by upgrading.
-The benefits will improve as more plugins adopt this API.
-
-To learn more about the lazy task API, please refer to the [Task Configuration Avoidance chapter](userguide/task_configuration_avoidance.html) covering migration, try it out in non-production environments, and [file issues](https://github.com/gradle/gradle/issues) or [discuss with us](https://discuss.gradle.org). Your feedback is very welcome. This API is [incubating](userguide/feature_lifecycle.html#sec:incubating_state) and may change in breaking ways before Gradle 5.0.
-
-For more insight regarding the performance goals refer to the [blog post](https://blog.gradle.org/preview-avoiding-task-configuration-time) introducing how those new lazy task APIs can improve your configuration time.
-
 <!--
 IMPORTANT: if this is a patch release, ensure that a prominent link is included in the foreword to all releases of the same minor stream.
 Add-->
 
-<!--
-### Example new and noteworthy
--->
+### Incremental Java compilation by default
 
-## Promoted features
+This release fixes all known issues of the incremental compiler. It now
 
-Promoted features are features that were incubating in previous versions of Gradle but are now supported and subject to backwards compatibility.
-See the User guide section on the “[Feature Lifecycle](userguide/feature_lifecycle.html)” for more information.
+- deletes empty package directories when the last class file is removed
+- recompiles all classes when module-info files change
+- recompiles all classes in a package when that package's package-info changes
 
-The following are the features that have been promoted in this Gradle release.
+Its memory usage has also been reduced. For the gradle/gradle build, heap usage dropped from 350MB to just 10MB.
 
-### Dependency insight report
+We are now confident that the incremental compiler is ready to be used in every build, so it is now the new default setting.
 
-The dependency insight report is now considered stable.
+### Periodic cache cleanup
 
-### Tooling API types and methods
+Caching has always been one of the strong suits of Gradle. Over time, more and more persistent caches have been added to improve performance and support new features, requiring more and more disk space on build servers and developer workstations. Gradle now addresses one of the most highly voted issues on GitHub and introduces the cleanup strategies for the caches in the [Gradle user home directory](userguide/directory_layout.html#dir:gradle_user_home:cache_cleanup) and the [project root directory](userguide/directory_layout.html#dir:project_root:cache_cleanup).
 
-Many types and methods that were previously marked `@Incubating` are now considered stable. 
+### Kotlin DSL 1.0 RC
+
+[Kotlin DSL version 1.0 RC](https://github.com/gradle/kotlin-dsl/releases/tag/v1.0-RC6) is now available. Major updates from v0.18 include:
+
+ * API Documentation in IDE and reference forms
+ * Script compilation build cache
+ * IDE integration improvements
+ * Support for configuration avoidance
+ * `buildSrc` refactoring propagation to the IDE
+
+This version includes the last set of backward compatibility-breaking DSL changes until Gradle 6.0.
+
+Please give it a go and file issues in the [gradle/kotlin-dsl](https://github.com/gradle/kotlin-dsl) project.
+_If you are interested in using the Kotlin DSL, please check out the [Gradle guides](https://gradle.org/guides/), especially the [Groovy DSL to Kotlin DSL migration guide](https://guides.gradle.org/migrating-build-logic-from-groovy-to-kotlin/)._
+
+### Use SNAPSHOT plugin versions with the `plugins {}` block
+
+Starting with this release, it is now possible to use SNAPSHOT plugin versions in the `plugins {}` and `pluginManagement {}` blocks.
+For example:
+
+    plugins {
+        id 'org.springframework.boot' version '2.0.0.BUILD-SNAPSHOT'
+    }
+
+### Nested included builds
+
+Composite builds is a feature that allows a Gradle build to 'include' another build and conveniently use its outputs locally rather than via a binary repository. This makes some common workflows more convenient, such as working on multiple source repositories at the same time to implement a cross-cutting feature. In previous releases, it was not possible for a Gradle build to include another build that also includes other builds, which limits the usefulness of this feature for these workflows. In this Gradle release, a build can now include another build that also includes other builds. In other words, composite builds can now be nested.
+
+There are a number of limitations to be aware of. These will be improved in later Gradle releases:
+
+- A `buildSrc` build cannot include other builds, such as a shared plugin build.
+- The root project of each build must have a unique name.
+
+### Authorization for Maven repositories with custom HTTP headers
+
+Now it is possible to define a custom HTTP header to authorize access to a Maven repository. This enables Gradle to access private Gitlab and TFS repositories
+used as Maven repositories or any OAuth2 protected Maven repositories.
+
+### Environment variables kept up-to-date on Java 9+
+
+Early previews of Java 9 failed when Gradle tried to update the environment variables of the daemon to match the client that requested the build.
+The final Java 9 version added ways to work around this, but Gradle was not updated accordingly, meaning that environment variables always had the same value as when the daemon was started.
+This has now been fixed and the environment variables of the daemon will match the variables of the client again.
+Changes to the PATH will be visible to `Exec` tasks and calling `System.getenv` will yield the expected result.
+
+However, we strongly recommend that build and plugin authors use Gradle properties instead of `System.getenv` for a more idiomatic end user experience.
+
+### Incremental build uses less memory
+
+Memory usage for up-to-date checking has been improved.
+For the gradle/gradle build, heap usage dropped by 60 MB to 450 MB, that is a 12% reduction.
+
+### Build Scan Plugin default version updated to 1.16
+
+The built-in build scan plugin version has been updated to 1.16. When used with Gradle Enterprise 2018.4 or [scans.gradle.com](https://scans.gradle.com/), this provides deeper configuration time profiling, dependency repository insights, deprecated Gradle functionality usage analysis, and more.
+
+For more information on how to use build scans, see [https://scans.gradle.com/](https://scans.gradle.com/). For more information on new features in Gradle Enterprise 2018.4, see the [Gradle Enterprise 2018.4 Release Notes](https://gradle.com/enterprise/releases/2018.4/).
 
 ## Fixed issues
 
@@ -107,51 +121,111 @@ in the next major Gradle version (Gradle 5.0). See the User guide section on the
 
 The following are the newly deprecated items in this Gradle release. If you have concerns about a deprecation, please raise it via the [Gradle Forums](https://discuss.gradle.org).
 
-<!--
-### Example deprecation
--->
+### Creating instances of JavaPluginConvention
+
+Instances of this class are intended to be created only by the `java-base` plugin and should not be created directly. Creating instances using the constructor of `JavaPluginConvention` will become an error in Gradle 5.0. The class itself is not deprecated and it is still be possible to use the instances created by the `java-base` plugin.
+
+### Creating instances of ApplicationPluginConvention
+
+Instances of this class are intended to be created only by the `application` plugin and should not be created directly. Creating instances using the constructor of `ApplicationPluginConvention` will become an error in Gradle 5.0. The class itself is not deprecated and it is still be possible to use the instances created by the `application` plugin.
+
+### Creating instances of WarPluginConvention
+
+Instances of this class are intended to be created only by the `war` plugin and should not be created directly. Creating instances using the constructor of `WarPluginConvention` will become an error in Gradle 5.0. The class itself is not deprecated and it is still be possible to use the instances created by the `war` plugin.
+
+### Creating instances of EarPluginConvention
+
+Instances of this class are intended to be created only by the `ear` plugin and should not be created directly. Creating instances using the constructor of `EarPluginConvention` will become an error in Gradle 5.0. The class itself is not deprecated and it is still be possible to use the instances created by the `ear` plugin.
+
+### Creating instances of BasePluginConvention
+
+Instances of this class are intended to be created only by the `base` plugin and should not be created directly. Creating instances using the constructor of `BasePluginConvention` will become an error in Gradle 5.0. The class itself is not deprecated and it is still be possible to use the instances created by the `base` plugin.
+
+### Creating instances of ProjectReportsPluginConvention
+
+Instances of this class are intended to be created only by the `project-reports` plugin and should not be created directly. Creating instances using the constructor of `ProjectReportsPluginConvention` will become an error in Gradle 5.0. The class itself is not deprecated and it is still be possible to use the instances created by the `project-reports` plugin.
+
+### Adding tasks via TaskContainer.add() and TaskContainer.addAll()
+
+These methods have been deprecated and the `create()` or `register()` methods should be used instead.
 
 ## Potential breaking changes
 
-### `EclipseProject` tasks defined for `gradle eclipse` may now run in Buildship
+### Changes to the Gradle Kotlin DSL
 
-The [EclipseClasspath](dsl/org.gradle.plugins.ide.eclipse.model.EclipseClasspath.html) and [EclipseProject](dsl/org.gradle.plugins.ide.eclipse.model.EclipseProject.html) tasks both accept `beforeMerged` and `whenMerged` closures, for advanced Eclipse-specific customisation.
+The Kotlin DSL enables experimental Kotlin compiler features in order to expose an uniform `org.gradle.api.Action<T>` based API to both Groovy DSL and Kotlin DSL scripts.
 
-Previous versions of Gradle did not execute the closures defined in `EclipseProject` when invoked from Buildship (only those in `EclipseClasspath`). Now Gradle executes them both, similarly to when invoked from the command-line.
+The DSL types and behavior of containers elements delegated properties (e.g. `val jar by tasks`) and containers scopes (e.g. `tasks { }`) changed.
 
-This leads to a potential change of behavior in this scenario:
- - These closures were defined for use with `gradle eclipse`
- - The gradle project was later imported into Eclipse, but these definitions were not removed.
+The source set container can now be accessed using `project.sourceSets`, or just `sourceSets`.
+Previously it was located at `project.java.sourceSets`, or just `java.sourceSets`.
 
-The code in these closures will now become active in the `Gradle -> Refresh Gradle Project` action.
+All these changes could cause script compilation errors.
 
-<!--
-### Example breaking change
--->
+See the [Gradle Kotlin DSL release notes](https://github.com/gradle/kotlin-dsl/releases/tag/v1.0-RC6) for more information and how to fix builds broken by the changes described above.
 
-### Using Groovy GPath with `tasks.withType()`
+### Restricting cross-configuration and lifecycle hooks from lazy configuration APIs
 
-In previous versions of Gradle, it was sometimes possible to use a [GPath](http://docs.groovy-lang.org/latest/html/documentation/#gpath_expressions) expression with a project's task collection to build a list of a single property for all tasks.
+In Gradle 4.9, we [introduced a new API](https://blog.gradle.org/preview-avoiding-task-configuration-time) for creating and configuring tasks.
 
-For instance, `tasks.withType(SomeTask).name` would create a list of `String`s containing all of the names of tasks of type `SomeTask`. This was only possible with the method [`TaskCollection.withType(Class)`](javadoc/org/gradle/api/tasks/TaskCollection.html#withType-java.lang.Class-).
+The following hooks are disallowed when called from these new APIs:
 
-Plugins or build scripts attempting to do this will now get a runtime exception.  The easiest fix is to explicitly use the [spread operator](http://docs.groovy-lang.org/latest/html/documentation/#_spread_operator).
+- `project.afterEvaluate(Action)` and `project.afterEvaluate(Closure)`
+- `project.beforeEvaluate(Action)` and `project.beforeEvaluate(Closure)`
+
+If you attempt to call any of these methods an exception will be thrown. Gradle restricts these APIs because mixing these APIs with lazy configuration can cause hard to diagnose build failures and complexity.
+
+### Cross Account AWS S3 Artifact Publishing
+
+The S3 [repository transport protocol](userguide/repository_types.html#sub:supported_transport_protocols) allows Gradle to publish artifacts to AWS S3 buckets. Starting with this release, every artifact uploaded to an S3 bucket will be equipped with `bucket-owner-full-control` canned ACL. Make sure the used AWS credentials can do `s3:PutObjectAcl` and `s3:PutObjectVersionAcl` to ensure successful artifacts uploads.
+
+    {
+        "Version":"2012-10-17",
+        "Statement":[
+            // ...
+            {
+                "Effect":"Allow",
+                "Action":[
+                    "s3:PutObject", // necessary for uploading objects
+                    "s3:PutObjectAcl", // required starting with this release
+                    "s3:PutObjectVersionAcl" // if S3 bucket versioning is enabled
+                ],
+                "Resource":"arn:aws:s3:::myCompanyBucket/*"
+            }
+        ]
+    }
+
+See the User guide section on “[Repository Types](userguide/repository_types.html#sub:s3_cross_account)” for more information.
+
+### Changes to the Java Gradle Plugin plugin
+
+- `PluginUnderTestMetadata` and `GeneratePluginDescriptors` were updated to use the Provider API.
+- All setters were removed and can be replaced with calls to the new Property `set(...)` method.
 
 ## External contributions
 
+
 We would like to thank the following community members for making contributions to this release of Gradle.
 
-- [Luke Usherwood](https://github.com/lukeu) Fix `ClassCastException` when generating Eclipse files for Gradle (gradle/gradle#5278)
-- [Luke Usherwood](https://github.com/lukeu) Make Buildship's "Refresh Gradle Project" action honour more of the `EclipseProject` task (eclipse/buildship#694)
-- [Theodore Ni](https://github.com/tjni) Reduce string allocations when working with paths. (gradle/gradle#5543)
-- [Theodore Ni](https://github.com/tjni) Suppress redundant warning message (gradle/gradle#5544)
-- [Lars Grefer](https://github.com/larsgrefer) Remove dependencies between `javadoc` tasks of dependent Java projects (gradle/gradle#5221)
-- [Aaron Hill](https://github.com/Aaron1011) Continue executing tests if irreplaceable security manager is installed (gradle/gradle#5324)
-- [Jonathan Leitschuh](https://github.com/JLLeitschuh) Throw `UnknownDomainObjectException` instead of `NullPointerException` when extension isn't found (gradle/gradle#5547)
-- [thc202](https://github.com/thc202) Fix typo in TestKit chapter (gradle/gradle#5691)
-- [stefanleh](https://github.com/stefanleh) Let ProjectConnection extend Closeable interface (gradle/gradle#5687) 
+<!--
+ - [Some person](https://github.com/some-person) - fixed some issue (gradle/gradle#1234)
+-->
 
 We love getting contributions from the Gradle community. For information on contributing, please see [gradle.org/contribute](https://gradle.org/contribute).
+
+- [Sébastien Deleuze](https://github.com/sdeleuze) - Add support for SNAPSHOT plugin versions in the `plugins {}` block (gradle/gradle#5762)
+- [Paul Wellner Bou](https://github.com/paulwellnerbou) - Authorization for Maven repositories with custom HTTP headers (gradle/gradle#5571)
+- [Salvian Reynaldi](https://github.com/salvianreynaldi) - Give S3 bucket owner full control over the published Maven artifacts (gradle/gradle#5329)
+- [Mike Kobit](https://github.com/mkobit) - Add ability to use `RegularFile` and `Directory` as publishable artifacts (gradle/gradle#5109)
+- [Thomas Broyer](https://github.com/tbroyer) - Convert `java-gradle-plugin` to use lazy configuration API (gradle/gradle#6115)
+- [Björn Kautler](https://github.com/Vampire) - Update Spock version in docs and build init (gradle/gradle#5627)
+- [Ben McCann](https://github.com/benmccann) - Decouple Play and Twirl versions (gradle/gradle#2062)
+- [Kyle Moore](https://github.com/DPUkyle) - Use latest Gosu plugin 0.3.10 (gradle/gradle#5855)
+- [Jean-Baptiste Nizet](https://github.com/jnizet) — Avoid double deprecation message when using the publishing plugin (gradle/gradle#6653)
+- [Mata Saru](https://github.com/matasaru) - Add missing verb into docs (gradle/gradle#5694)
+- [Mészáros Máté Róbert](https://github.com/mrmeszaros) - Fix typo in userguide java plugin configuration image (gradle/gradle#6011)
+- [Kenzie Togami](https://github.com/kenzierocks) - Docs are unclear on how JavaExec parses --args (gradle/gradle#6056)
+- [Sebastian Schuberth](https://github.com/sschuberth) - Fix an application plugin example to work for Windows (gradle/gradle#5994)
 
 ## Known issues
 

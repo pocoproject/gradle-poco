@@ -21,6 +21,7 @@ import org.gradle.performance.categories.PerformanceRegressionTest
 import org.gradle.performance.fixture.BuildExperimentRunner
 import org.gradle.performance.fixture.BuildExperimentSpec
 import org.gradle.performance.fixture.CrossBuildPerformanceTestRunner
+import org.gradle.performance.fixture.GradleBuildExperimentSpec
 import org.gradle.performance.fixture.GradleSessionProvider
 import org.gradle.performance.fixture.PerformanceTestRetryRule
 import org.gradle.performance.results.BaselineVersion
@@ -34,6 +35,11 @@ import org.junit.rules.TestName
 import spock.lang.AutoCleanup
 import spock.lang.Shared
 import spock.lang.Specification
+
+import static org.gradle.api.internal.artifacts.BaseRepositoryFactory.PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY
+import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.createMirrorInitScript
+import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.gradlePluginRepositoryMirrorUrl
+
 /**
  * Test Gradle's build performance against current Gradle.
  *
@@ -80,6 +86,9 @@ class GradleBuildPerformanceTest extends Specification {
             protected void defaultSpec(BuildExperimentSpec.Builder builder) {
                 super.defaultSpec(builder)
                 builder.workingDirectory = tmpDir.testDirectory
+                if (builder instanceof GradleBuildExperimentSpec.GradleBuilder) {
+                    builder.invocation.args("-Djava9Home=${System.getProperty('java9Home')}", "-D${PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}=${gradlePluginRepositoryMirrorUrl()}", "-I", createMirrorInitScript().absolutePath)
+                }
             }
         }
         runner.testGroup = 'gradle build'
@@ -137,7 +146,6 @@ class GradleBuildPerformanceTest extends Specification {
     }
 
     def "eager vs lazy on the gradle build"() {
-
         given:
         runner.testId = testName.methodName
 

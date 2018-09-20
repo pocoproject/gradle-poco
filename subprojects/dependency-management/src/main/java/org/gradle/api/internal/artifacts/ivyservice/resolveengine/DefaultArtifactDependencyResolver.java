@@ -32,12 +32,13 @@ import org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution.Depen
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ComponentResolvers;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ResolveIvyFactory;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ResolverProviderFactory;
-import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.LatestVersionSelector;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.LockingAwareSelector;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionComparator;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionParser;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelector;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelectorScheme;
 import org.gradle.api.internal.artifacts.ivyservice.moduleconverter.dependencies.DependencyDescriptorFactory;
+import org.gradle.api.internal.artifacts.ivyservice.projectmodule.ProjectDependencyResolver;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.DependencyArtifactsVisitor;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.ResolvedArtifactsGraphVisitor;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions;
@@ -73,6 +74,7 @@ public class DefaultArtifactDependencyResolver implements ArtifactDependencyReso
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultArtifactDependencyResolver.class);
     private final DependencyDescriptorFactory dependencyDescriptorFactory;
     private final List<ResolverProviderFactory> resolverFactories;
+    private final ProjectDependencyResolver projectDependencyResolver;
     private final ResolveIvyFactory ivyFactory;
     private final VersionComparator versionComparator;
     private final ModuleExclusions moduleExclusions;
@@ -85,6 +87,7 @@ public class DefaultArtifactDependencyResolver implements ArtifactDependencyReso
 
     public DefaultArtifactDependencyResolver(BuildOperationExecutor buildOperationExecutor,
                                              List<ResolverProviderFactory> resolverFactories,
+                                             ProjectDependencyResolver projectDependencyResolver,
                                              ResolveIvyFactory ivyFactory,
                                              DependencyDescriptorFactory dependencyDescriptorFactory,
                                              VersionComparator versionComparator,
@@ -95,6 +98,7 @@ public class DefaultArtifactDependencyResolver implements ArtifactDependencyReso
                                              VersionParser versionParser,
                                              ComponentMetadataSupplierRuleExecutor componentMetadataSupplierRuleExecutor) {
         this.resolverFactories = resolverFactories;
+        this.projectDependencyResolver = projectDependencyResolver;
         this.ivyFactory = ivyFactory;
         this.dependencyDescriptorFactory = dependencyDescriptorFactory;
         this.versionComparator = versionComparator;
@@ -130,15 +134,15 @@ public class DefaultArtifactDependencyResolver implements ArtifactDependencyReso
 
         DependencySubstitutionApplicator applicator = createDependencySubstitutionApplicator(resolutionStrategy);
         VersionSelectorScheme versionSelectorScheme = createVersionSelectorScheme(resolutionStrategy.isDependencyLockingEnabled());
-        return new DependencyGraphBuilder(componentIdResolver, componentMetaDataResolver, requestResolver, conflictHandler, capabilitiesConflictHandler, edgeFilter, attributesSchema, moduleExclusions, buildOperationExecutor, globalRules.getModuleMetadataProcessor().getModuleReplacements(), applicator, componentSelectorConverter, attributesFactory, versionSelectorScheme);
+        return new DependencyGraphBuilder(componentIdResolver, componentMetaDataResolver, requestResolver, conflictHandler, capabilitiesConflictHandler, edgeFilter, attributesSchema, moduleExclusions, buildOperationExecutor, globalRules.getModuleMetadataProcessor().getModuleReplacements(), applicator, componentSelectorConverter, attributesFactory, versionSelectorScheme, versionComparator.asVersionComparator(), versionParser);
     }
 
     private VersionSelectorScheme createVersionSelectorScheme(boolean dependencyLockingEnabled) {
         if (dependencyLockingEnabled) {
             return new VersionSelectorScheme() {
                 private VersionSelector unlockLatestSelector(VersionSelector selector) {
-                    if (selector instanceof LatestVersionSelector) {
-                        return ((LatestVersionSelector) selector).forLocking();
+                    if (selector instanceof LockingAwareSelector) {
+                        return ((LockingAwareSelector) selector).forLocking();
                     }
                     return selector;
                 }
@@ -176,10 +180,9 @@ public class DefaultArtifactDependencyResolver implements ArtifactDependencyReso
     private ComponentResolversChain createResolvers(ResolveContext resolveContext, List<? extends ResolutionAwareRepository> repositories, GlobalDependencyResolutionRules metadataHandler, ArtifactTypeRegistry artifactTypeRegistry, AttributesSchema consumerSchema) {
         List<ComponentResolvers> resolvers = Lists.newArrayList();
         for (ResolverProviderFactory factory : resolverFactories) {
-            if (factory.canCreate(resolveContext)) {
-                resolvers.add(factory.create(resolveContext));
-            }
+            factory.create(resolveContext, resolvers);
         }
+        resolvers.add(projectDependencyResolver);
         ResolutionStrategyInternal resolutionStrategy = resolveContext.getResolutionStrategy();
         resolvers.add(ivyFactory.create(resolutionStrategy, repositories, metadataHandler.getComponentMetadataProcessorFactory(), resolveContext.getAttributes(), consumerSchema, attributesFactory, componentMetadataSupplierRuleExecutor));
         return new ComponentResolversChain(resolvers, artifactTypeRegistry);
@@ -190,17 +193,9 @@ public class DefaultArtifactDependencyResolver implements ArtifactDependencyReso
     }
 
     private ModuleConflictHandler createModuleConflictHandler(ResolutionStrategyInternal resolutionStrategy, GlobalDependencyResolutionRules metadataHandler) {
-        ModuleConflictResolver conflictResolver = null;
         ConflictResolution conflictResolution = resolutionStrategy.getConflictResolution();
-        switch (conflictResolution) {
-            case strict:
-            case latest:
-                conflictResolver = new LatestModuleConflictResolver(versionComparator, versionParser);
-                break;
-            case preferProjectModules:
-                conflictResolver = new ProjectDependencyForcingResolver(new LatestModuleConflictResolver(versionComparator, versionParser));
-                break;
-        }
+        ModuleConflictResolver conflictResolver =
+            new ConflictResolverFactory(versionComparator, versionParser).createConflictResolver(conflictResolution);
         return new DefaultConflictHandler(conflictResolver, metadataHandler.getModuleMetadataProcessor().getModuleReplacements());
     }
 

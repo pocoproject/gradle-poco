@@ -25,9 +25,7 @@ import org.gradle.gradlebuild.ProjectGroups.pluginProjects
 import org.gradle.gradlebuild.ProjectGroups.publishedProjects
 
 buildscript {
-    project.apply {
-        from("$rootDir/gradle/shared-with-buildSrc/mirrors.gradle.kts")
-    }
+    project.apply(from = "$rootDir/gradle/shared-with-buildSrc/mirrors.gradle.kts")
 }
 
 plugins {
@@ -141,6 +139,7 @@ allprojects {
 
     repositories {
         maven(url = "https://repo.gradle.org/gradle/libs-releases")
+        maven(url = "https://repo.gradle.org/gradle/libs")
         maven(url = "https://repo.gradle.org/gradle/libs-milestones")
         maven(url = "https://repo.gradle.org/gradle/libs-snapshots")
     }
@@ -264,11 +263,13 @@ dependencies {
     coreRuntimeExtensions(project(":pluginUse"))
     coreRuntimeExtensions(project(":workers"))
     coreRuntimeExtensions(patchedExternalModules)
+
+    testRuntime(project(":apiMetadata"))
 }
 
 extra["allCoreRuntimeExtensions"] = coreRuntimeExtensions.allDependencies
 
-task<PatchExternalModules>("patchExternalModules") {
+tasks.register<PatchExternalModules>("patchExternalModules") {
     allModules = externalModulesRuntime
     coreModules = coreRuntime
     modulesToPatch = this@Build_gradle.externalModules
@@ -277,16 +278,16 @@ task<PatchExternalModules>("patchExternalModules") {
 
 evaluationDependsOn(":distributions")
 
-val gradle_installPath: Any? by project
+val gradle_installPath: Any? = findProperty("gradle_installPath")
 
-task<Install>("install") {
+tasks.register<Install>("install") {
     description = "Installs the minimal distribution into directory $gradle_installPath"
     group = "build"
     with(distributionImage("binDistImage"))
     installDirPropertyName = ::gradle_installPath.name
 }
 
-task<Install>("installAll") {
+tasks.register<Install>("installAll") {
     description = "Installs the full distribution into directory $gradle_installPath"
     group = "build"
     with(distributionImage("allDistImage"))

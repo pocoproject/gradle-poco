@@ -20,8 +20,6 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.internal.scan.config.fixtures.BuildScanPluginFixture
 import spock.lang.Unroll
 
-import static org.gradle.util.TextUtil.normaliseFileSeparators
-
 @Unroll
 class BuildScanConfigIntegrationTest extends AbstractIntegrationSpec {
 
@@ -40,7 +38,6 @@ class BuildScanConfigIntegrationTest extends AbstractIntegrationSpec {
             task t
         """
     }
-
 
     def "enabled and disabled are false with no flags"() {
         when:
@@ -228,15 +225,35 @@ class BuildScanConfigIntegrationTest extends AbstractIntegrationSpec {
         scanPlugin.attributes(output) != null
     }
 
+    def "unsupported for pre 1.15.2 versions when kotlin script build caching used"() {
+        given:
+        scanPlugin.runtimeVersion = "1.15.1"
+
+        when:
+        succeeds "t", "-D${BuildScanPluginCompatibility.KOTLIN_SCRIPT_BUILD_CACHE_TOGGLE}=true"
+
+        then:
+        scanPlugin.assertUnsupportedMessage(output, BuildScanPluginCompatibility.UNSUPPORTED_KOTLIN_SCRIPT_BUILD_CACHING_MESSAGE)
+    }
+
+    def "supported for 1.15.2 versions when kotlin script build caching used"() {
+        given:
+        scanPlugin.runtimeVersion = "1.15.2"
+
+        when:
+        succeeds "t", "-D${BuildScanPluginCompatibility.KOTLIN_SCRIPT_BUILD_CACHE_TOGGLE}=true"
+
+        then:
+        scanPlugin.assertUnsupportedMessage(output, null)
+    }
+
     void installVcsMappings() {
-        def mapped = file('repo/mapped')
         settingsFile.text = """
-            import org.gradle.vcs.internal.spec.DirectoryRepositorySpec
             sourceControl {
                 vcsMappings {
                     withModule('external-source:artifact') {
-                        from(DirectoryRepositorySpec) {
-                            sourceDir = file('${normaliseFileSeparators(mapped.absolutePath)}')
+                        from(GitVersionControlSpec) {
+                            // not actually used, doesn't need a real repo
                         }
                     }
                 }

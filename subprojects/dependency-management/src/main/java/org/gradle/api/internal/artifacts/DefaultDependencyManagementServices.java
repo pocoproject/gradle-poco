@@ -79,7 +79,9 @@ import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.filestore.ivy.ArtifactIdentifierFileStore;
 import org.gradle.api.internal.model.NamedObjectInstantiator;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.internal.project.ProjectStateRegistry;
 import org.gradle.api.internal.tasks.TaskResolver;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.initialization.ProjectAccessListener;
 import org.gradle.internal.authentication.AuthenticationSchemeRegistry;
 import org.gradle.internal.build.BuildState;
@@ -155,7 +157,8 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                                                           FeaturePreviews featurePreviews,
                                                           MavenMutableModuleMetadataFactory metadataFactory,
                                                           IvyMutableModuleMetadataFactory ivyMetadataFactory,
-                                                          IsolatableFactory isolatableFactory) {
+                                                          IsolatableFactory isolatableFactory,
+                                                          ObjectFactory objectFactory) {
             return new DefaultBaseRepositoryFactory(
                 localMavenRepositoryLocator,
                 fileResolver,
@@ -173,7 +176,8 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                 featurePreviews,
                 metadataFactory,
                 ivyMetadataFactory,
-                isolatableFactory);
+                isolatableFactory,
+                objectFactory);
         }
 
         RepositoryHandler createRepositoryHandler(Instantiator instantiator, BaseRepositoryFactory baseRepositoryFactory) {
@@ -186,7 +190,8 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                                                                     GlobalDependencyResolutionRules globalDependencyResolutionRules, VcsMappingsStore vcsMappingsStore, ComponentIdentifierFactory componentIdentifierFactory,
                                                                     BuildOperationExecutor buildOperationExecutor, ImmutableAttributesFactory attributesFactory,
                                                                     ImmutableModuleIdentifierFactory moduleIdentifierFactory, ComponentSelectorConverter componentSelectorConverter,
-                                                                    DependencyLockingProvider dependencyLockingProvider) {
+                                                                    DependencyLockingProvider dependencyLockingProvider,
+                                                                    ProjectStateRegistry projectStateRegistry) {
             return instantiator.newInstance(DefaultConfigurationContainer.class,
                 configurationResolver,
                 instantiator,
@@ -205,7 +210,8 @@ public class DefaultDependencyManagementServices implements DependencyManagement
                 attributesFactory,
                 moduleIdentifierFactory,
                 componentSelectorConverter,
-                dependencyLockingProvider
+                dependencyLockingProvider,
+                projectStateRegistry
             );
         }
 

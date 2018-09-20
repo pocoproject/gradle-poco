@@ -26,13 +26,14 @@ import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.internal.component.external.descriptor.Artifact
 import org.gradle.internal.component.external.descriptor.Configuration
 import org.gradle.internal.component.external.descriptor.DefaultExclude
+import org.gradle.internal.component.external.model.ivy.IvyDependencyDescriptor
 import org.gradle.internal.component.model.DefaultIvyArtifactName
 import org.gradle.internal.component.model.Exclude
 import org.gradle.util.TestUtil
 
 import static org.gradle.internal.component.external.model.DefaultModuleComponentSelector.newSelector
 
-class DefaultIvyModuleResolveMetadataTest extends AbstractModuleComponentResolveMetadataTest {
+class DefaultIvyModuleResolveMetadataTest extends AbstractLazyModuleComponentResolveMetadataTest {
     def ivyMetadataFactory = new IvyMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory())
 
     @Override
@@ -59,10 +60,10 @@ class DefaultIvyModuleResolveMetadataTest extends AbstractModuleComponentResolve
         def compile = md.getConfiguration("compile")
 
         then:
-        runtime.dependencies*.selector*.versionConstraint.preferredVersion == ["1.1", "1.2", "1.3", "1.5"]
+        runtime.dependencies*.selector*.version == ["1.1", "1.2", "1.3", "1.5"]
         runtime.dependencies.is(runtime.dependencies)
 
-        compile.dependencies*.selector*.versionConstraint.preferredVersion == ["1.2", "1.3", "1.5"]
+        compile.dependencies*.selector*.version == ["1.2", "1.3", "1.5"]
         compile.dependencies.is(compile.dependencies)
     }
 

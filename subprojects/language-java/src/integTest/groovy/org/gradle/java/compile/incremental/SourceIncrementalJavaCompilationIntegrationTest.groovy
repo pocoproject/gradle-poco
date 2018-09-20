@@ -19,6 +19,8 @@ package org.gradle.java.compile.incremental
 import groovy.transform.NotYetImplemented
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.CompilationOutputsFixture
+import org.gradle.util.Requires
+import org.gradle.util.TestPrecondition
 import spock.lang.Issue
 import spock.lang.Unroll
 
@@ -31,7 +33,6 @@ class SourceIncrementalJavaCompilationIntegrationTest extends AbstractIntegratio
 
         buildFile << """
             apply plugin: 'java'
-            compileJava.options.incremental = true
         """
     }
 
@@ -465,10 +466,6 @@ sourceSets {
     }
 
     def "recompilation does not process removed classes from dependent sourceSet"() {
-        buildFile << """
-compileTestJava.options.incremental = true
-"""
-
         def unusedClass = java("public class Unused {}")
         // Need another class or :compileJava will always be considered UP-TO-DATE
         java("public class Other {}")
@@ -569,7 +566,7 @@ compileTestJava.options.incremental = true
         then:
         outputs.recompiledClasses("A", "B", "C")
         output.contains("Cannot infer source root(s) for source `file '${textFile.absolutePath}'`. Supported types are `File` (directories only), `DirectoryTree` and `SourceDirectorySet`.")
-        output.contains(":compileJava - is not incremental. Unable to infer the source directories.")
+        output.contains("Full recompilation is required because the source roots could not be inferred.")
     }
 
     def "handles duplicate class across source directories"() {
@@ -620,7 +617,7 @@ dependencies { compile 'com.ibm.icu:icu4j:2.6.1' }
 
         then:
         succeeds "compileJava", "--info"
-        outputContains("Full recompilation is required because class file LocaleElements_zh__PINYIN.class could not be analyzed.")
+        outputContains("Full recompilation is required because LocaleElements_zh__PINYIN.class could not be analyzed for incremental compilation.")
     }
 
     @Issue("GRADLE-3495")
@@ -841,5 +838,171 @@ dependencies { compile 'net.sf.ehcache:ehcache:2.10.2' }
 
         then:
         failure.assertHasErrorOutput 'Runnable r = b;'
+    }
+
+    def "deletes empty packages dirs"() {
+        given:
+        def a = file('src/main/java/com/foo/internal/A.java') << """
+            package com.foo.internal;
+            public class A {}
+        """
+        file('src/main/java/com/bar/B.java') << """
+            package com.bar;
+            public class B {}
+        """
+
+        succeeds "compileJava"
+        a.delete()
+
+        when:
+        succeeds "compileJava"
+
+        then:
+        ! file("build/classes/java/main/com/foo").exists()
+    }
+
+    def "recompiles types whose names look like inne classes even if they aren't"() {
+        given:
+        file('src/main/java/Test.java') << 'public class Test{}'
+        file('src/main/java/Test$$InnerClass.java') << 'public class Test$$InnerClass{}'
+        buildFile << '''
+            apply plugin: 'java'
+        '''.stripIndent()
+
+        when:
+        succeeds ':compileJava'
+
+        then:
+        executedAndNotSkipped ':compileJava'
+        file('build/classes/java/main/Test.class').assertExists()
+        file('build/classes/java/main/Test$$InnerClass.class').assertExists()
+
+        when:
+        file('src/main/java/Test.java').text = 'public class Test{ void foo() {} }'
+        succeeds ':compileJava'
+
+        then:
+        executedAndNotSkipped ':compileJava'
+        file('build/classes/java/main/Test.class').assertExists()
+        file('build/classes/java/main/Test$$InnerClass.class').assertExists()
+    }
+
+    def "incremental java compilation ignores empty packages"() {
+        given:
+        file('src/main/java/org/gradle/test/MyTest.java').text = """
+            package org.gradle.test;
+            
+            class MyTest {}
+        """
+
+        when:
+        run 'compileJava'
+        then:
+        executedAndNotSkipped(':compileJava')
+
+        when:
+        file('src/main/java/org/gradle/different').createDir()
+        run('compileJava')
+
+        then:
+        skipped(':compileJava')
+    }
+
+    @Requires(TestPrecondition.JDK9_OR_LATER)
+    def "recompiles when module info changes"() {
+        given:
+        java("""
+            import java.util.logging.Logger;
+            class Foo {
+                Logger logger;
+            }
+        """)
+        def moduleInfo = file("src/main/java/module-info.java")
+        moduleInfo.text = """
+            module foo {
+                requires java.logging;
+            }
+        """
+
+        succeeds'compileJava'
+
+        when:
+        moduleInfo.text = """
+            module foo {
+            }
+        """
+
+        then:
+        fails'compileJava'
+        result.assertHasErrorOutput("package java.util.logging is not visible")
+    }
+
+    def "recompiles all classes in a package if the package-info file changes"() {
+        given:
+        def packageFile = file("src/main/java/foo/package-info.java")
+        packageFile.text = """package foo;"""
+        file("src/main/java/foo/A.java").text = "package foo; class A {}"
+        file("src/main/java/foo/B.java").text = "package foo; public class B {}"
+        file("src/main/java/foo/bar/C.java").text = "package foo.bar; class C {}"
+        file("src/main/java/baz/D.java").text = "package baz; class D {}"
+        file("src/main/java/baz/E.java").text = "package baz; import foo.B; class E extends B {}"
+
+        outputs.snapshot { succeeds 'compileJava' }
+
+        when:
+        packageFile.text = """@Deprecated package foo;"""
+        succeeds 'compileJava'
+
+        then:
+        outputs.recompiledClasses("A", "B", "E", "package-info")
+    }
+
+    @Requires(TestPrecondition.JDK8_OR_LATER)
+    def "deletes headers when source file is deleted"() {
+        given:
+        buildFile << """
+            compileJava.options.headerOutputDirectory = file("build/headers/java/main")
+        """
+        def source = java("""class Foo {
+            public native void foo();
+        }""")
+        java("""class Bar {
+            public native void bar();
+        }""")
+
+        succeeds "compileJava"
+
+        when:
+        source.delete()
+        succeeds "compileJava"
+
+        then:
+        file("build/headers/java/main/Foo.h").assertDoesNotExist()
+        file("build/headers/java/main/Bar.h").assertExists()
+    }
+
+
+    def "recompiles all dependents when no jar analysis is present"() {
+        given:
+        java """class A {
+            com.google.common.base.Splitter splitter;
+        }"""
+        java """class B {}"""
+
+        buildFile << """
+        ${jcenterRepository()}
+dependencies { compile 'com.google.guava:guava:21.0' }
+"""
+        outputs.snapshot { succeeds 'compileJava' }
+
+        when:
+        executer.requireOwnGradleUserHomeDir()
+        java """class B {
+            //some change
+        }"""
+
+        then:
+        succeeds "compileJava"
+        outputs.recompiledClasses("A", "B")
     }
 }

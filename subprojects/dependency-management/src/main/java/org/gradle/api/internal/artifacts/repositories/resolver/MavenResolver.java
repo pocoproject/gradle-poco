@@ -30,11 +30,11 @@ import org.gradle.api.internal.component.ArtifactType;
 import org.gradle.api.resources.MissingResourceException;
 import org.gradle.internal.action.InstantiatingAction;
 import org.gradle.internal.component.external.model.FixedComponentArtifacts;
-import org.gradle.internal.component.external.model.MavenModuleResolveMetadata;
 import org.gradle.internal.component.external.model.MetadataSourcedComponentArtifacts;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
-import org.gradle.internal.component.external.model.MutableMavenModuleResolveMetadata;
+import org.gradle.internal.component.external.model.maven.MavenModuleResolveMetadata;
+import org.gradle.internal.component.external.model.maven.MutableMavenModuleResolveMetadata;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ComponentOverrideMetadata;
 import org.gradle.internal.component.model.ModuleSource;
@@ -65,7 +65,8 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
     private final MavenLocalRepositoryAccess localAccess = new MavenLocalRepositoryAccess();
     private final MavenRemoteRepositoryAccess remoteAccess = new MavenRemoteRepositoryAccess();
 
-    public MavenResolver(String name, URI rootUri,
+    public MavenResolver(String name,
+                         URI rootUri,
                          RepositoryTransport transport,
                          LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> locallyAvailableResourceFinder,
                          FileStore<ModuleComponentArtifactIdentifier> artifactFileStore,
@@ -74,7 +75,8 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
                          MetadataArtifactProvider metadataArtifactProvider,
                          MavenMetadataLoader mavenMetadataLoader,
                          @Nullable InstantiatingAction<ComponentMetadataSupplierDetails> componentMetadataSupplierFactory,
-                         @Nullable InstantiatingAction<ComponentMetadataListerDetails> versionListerFactory, Instantiator injector) {
+                         @Nullable InstantiatingAction<ComponentMetadataListerDetails> versionListerFactory,
+                         Instantiator injector) {
         super(name, transport.isLocal(),
             transport.getRepository(),
             transport.getResourceAccessor(),

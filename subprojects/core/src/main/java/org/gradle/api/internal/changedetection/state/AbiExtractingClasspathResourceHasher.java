@@ -16,6 +16,7 @@
 package org.gradle.api.internal.changedetection.state;
 
 import com.google.common.io.ByteStreams;
+import org.gradle.api.internal.changedetection.state.mirror.PhysicalFileSnapshot;
 import org.gradle.api.internal.tasks.compile.ApiClassExtractor;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
@@ -25,13 +26,16 @@ import org.gradle.internal.hash.HashCode;
 import org.gradle.internal.hash.Hashing;
 import org.objectweb.asm.ClassReader;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.zip.ZipEntry;
 
+@SuppressWarnings("Since15")
 public class AbiExtractingClasspathResourceHasher implements ResourceHasher {
     private static final Logger LOGGER = Logging.getLogger(AbiExtractingClasspathResourceHasher.class);
 
@@ -49,19 +53,20 @@ public class AbiExtractingClasspathResourceHasher implements ResourceHasher {
         return null;
     }
 
+    @Nullable
     @Override
-    public HashCode hash(RegularFileSnapshot fileSnapshot) {
-        String name = fileSnapshot.getName();
-        if (!isClassFile(name)) {
+    public HashCode hash(PhysicalFileSnapshot fileSnapshot) {
+        if (!isClassFile(fileSnapshot.getName())) {
             return null;
         }
+        Path path = Paths.get(fileSnapshot.getAbsolutePath());
         InputStream inputStream = null;
         try {
-            inputStream = Files.newInputStream(Paths.get(fileSnapshot.getPath()));
+            inputStream = Files.newInputStream(path);
             return hashClassBytes(inputStream);
         } catch (Exception e) {
-            LOGGER.debug("Malformed class file '" + name + "' found on compile classpath. Falling back to full file hash instead of ABI hasing.", e);
-            return fileSnapshot.getContent().getContentMd5();
+            LOGGER.debug("Malformed class file '{}' found on compile classpath. Falling back to full file hash instead of ABI hashing.", fileSnapshot.getName(), e);
+            return fileSnapshot.getHash();
         } finally {
             IoActions.closeQuietly(inputStream);
         }

@@ -83,9 +83,7 @@ const val performanceExperimentCategory = "org.gradle.performance.categories.Per
 class PerformanceTestPlugin : Plugin<Project> {
 
     override fun apply(project: Project): Unit = project.run {
-        apply {
-            plugin("java")
-        }
+        apply(plugin = "java")
 
         val performanceTestSourceSet = createPerformanceTestSourceSet()
         addConfigurationAndDependencies()
@@ -124,6 +122,7 @@ class PerformanceTestPlugin : Plugin<Project> {
 
     private
     fun Project.addConfigurationAndDependencies() {
+
         configurations {
 
             val testCompile by getting
@@ -144,8 +143,7 @@ class PerformanceTestPlugin : Plugin<Project> {
                 extendsFrom(performanceTestRuntimeClasspath)
             }
 
-            "junit" {
-            }
+            create("junit")
         }
 
         dependencies {
@@ -321,6 +319,7 @@ class PerformanceTestPlugin : Plugin<Project> {
 
         val result = tasks.register(name, DistributedPerformanceTest::class.java) {
             configureForAnyPerformanceTestTask(this, performanceSourceSet, prepareSamplesTask, performanceReportTask)
+            configureForAnyDistributedPerformanceTestTask(this)
             scenarioList = buildDir / Config.performanceTestScenarioListFileName
             scenarioReport = buildDir / Config.performanceTestScenarioReportFileName
             buildTypeId = stringPropertyOrNull(PropertyNames.buildTypeId)
@@ -368,8 +367,8 @@ class PerformanceTestPlugin : Plugin<Project> {
         // TODO: Make this lazy, see https://github.com/gradle/gradle-native/issues/718
         tasks.getByName("clean${name.capitalize()}") {
             delete(performanceTest)
-            dependsOn("clean${testResultsZipTask.get().name.capitalize()}")
-            dependsOn("clean${performanceReportTask.get().name.capitalize()}")
+            dependsOn(testResultsZipTask.map { "clean${it.name.capitalize()}" }) // Avoid realizing because of issue
+            dependsOn(performanceReportTask.map { "clean${it.name.capitalize()}" }) // Avoid realizing because of issue
         }
 
         return performanceTest
@@ -435,6 +434,19 @@ class PerformanceTestPlugin : Plugin<Project> {
                     performanceReportTask.get().systemProperty(PropertyNames.channel, channel)
                 }
             }
+        }
+    }
+
+    private
+    fun Project.configureForAnyDistributedPerformanceTestTask(task: DistributedPerformanceTest) {
+        task.apply {
+            val registerInputs: (Task) -> Unit = { prepareSampleTask ->
+                val prepareSampleTaskInputs = prepareSampleTask.inputs.properties.mapKeys { entry -> "${prepareSampleTask.name}_${entry.key}" }
+                task.inputs.properties(prepareSampleTaskInputs)
+            }
+            tasks.withType<ProjectGeneratorTask>().forEach(registerInputs)
+            tasks.withType<RemoteProject>().forEach(registerInputs)
+            tasks.withType<JavaExecProjectGeneratorTask>().forEach(registerInputs)
         }
     }
 

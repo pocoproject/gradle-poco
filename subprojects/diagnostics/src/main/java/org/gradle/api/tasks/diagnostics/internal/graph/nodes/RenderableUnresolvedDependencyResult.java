@@ -51,9 +51,15 @@ public class RenderableUnresolvedDependencyResult extends AbstractRenderableDepe
             ModuleComponentSelector attemptedSelector = (ModuleComponentSelector)attempted;
 
             if(requestedSelector.getGroup().equals(attemptedSelector.getGroup())
-                    && requestedSelector.getModule().equals(attemptedSelector.getModule())
-                    && !requestedSelector.getVersionConstraint().equals(attemptedSelector.getVersionConstraint())) {
-                return requested.getDisplayName() + " -> " + ((ModuleComponentSelector) attempted).getVersionConstraint().getPreferredVersion();
+                && requestedSelector.getModule().equals(attemptedSelector.getModule())) {
+
+                String requestedVersion = requestedSelector.getVersion();
+                String attemptedVersion = attemptedSelector.getVersion();
+                if (attemptedVersion.equals(requestedVersion)) {
+                    return requested.getDisplayName();
+                } else {
+                    return requested.getDisplayName() + " -> " + attemptedVersion;
+                }
             }
         }
 

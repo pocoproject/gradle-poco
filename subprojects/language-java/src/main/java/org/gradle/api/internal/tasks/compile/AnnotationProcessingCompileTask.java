@@ -65,6 +65,10 @@ class AnnotationProcessingCompileTask implements JavaCompiler.CompilationTask {
     }
 
     @Override
+    public void addModules(Iterable<String> moduleNames) {
+    }
+
+    @Override
     public void setProcessors(Iterable<? extends Processor> processors) {
         throw new UnsupportedOperationException("This decorator already handles annotation processing");
     }
@@ -101,9 +105,23 @@ class AnnotationProcessingCompileTask implements JavaCompiler.CompilationTask {
     }
 
     private URLClassLoader createProcessorClassLoader() {
+        return new URLClassLoader(
+            DefaultClassPath.of(annotationProcessorPath).getAsURLArray(),
+            new FilteringClassLoader(delegate.getClass().getClassLoader(), getExtraAllowedPackages())
+        );
+    }
+
+    /**
+     * Many popular annotation processors like lombok need access to compiler internals
+     * to do their magic, e.g. to inspect or even change method bodies. This is not valid
+     * according to the annotation processing spec, but forbidding it would upset a lot of
+     * our users.
+     */
+    private FilteringClassLoader.Spec getExtraAllowedPackages() {
         FilteringClassLoader.Spec spec = new FilteringClassLoader.Spec();
         spec.allowPackage("com.sun.tools.javac");
-        return new URLClassLoader(DefaultClassPath.of(annotationProcessorPath).getAsURLArray(), new FilteringClassLoader(Processor.class.getClassLoader(), spec));
+        spec.allowPackage("com.sun.source");
+        return spec;
     }
 
     private Class<?> loadProcessor(AnnotationProcessorDeclaration declaredProcessor) {
@@ -116,7 +134,7 @@ class AnnotationProcessingCompileTask implements JavaCompiler.CompilationTask {
 
     private Processor instantiateProcessor(Class<?> processorClass) {
         try {
-            return (Processor) processorClass.newInstance();
+            return (Processor) processorClass.getConstructor().newInstance();
         } catch (Exception e) {
             throw new IllegalArgumentException("Could not instantiate annotation processor '" + processorClass.getName() + "'");
         }

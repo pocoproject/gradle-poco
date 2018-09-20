@@ -17,7 +17,6 @@
 package org.gradle.initialization;
 
 import com.google.common.collect.ImmutableList;
-import org.gradle.BuildAdapter;
 import org.gradle.BuildResult;
 import org.gradle.StartParameter;
 import org.gradle.api.internal.BuildDefinition;
@@ -31,6 +30,7 @@ import org.gradle.configuration.BuildConfigurer;
 import org.gradle.deployment.internal.DefaultDeploymentRegistry;
 import org.gradle.execution.BuildConfigurationActionExecuter;
 import org.gradle.execution.BuildExecuter;
+import org.gradle.internal.InternalBuildAdapter;
 import org.gradle.internal.build.BuildState;
 import org.gradle.internal.build.NestedBuildState;
 import org.gradle.internal.build.RootBuildState;
@@ -40,6 +40,7 @@ import org.gradle.internal.buildevents.TaskExecutionStatisticsReporter;
 import org.gradle.internal.classpath.ClassPath;
 import org.gradle.internal.concurrent.Stoppable;
 import org.gradle.internal.event.ListenerManager;
+import org.gradle.internal.featurelifecycle.DeprecatedUsageBuildOperationProgressBroadaster;
 import org.gradle.internal.featurelifecycle.LoggingDeprecatedFeatureHandler;
 import org.gradle.internal.featurelifecycle.ScriptUsageLocationReporter;
 import org.gradle.internal.logging.text.StyledTextOutputFactory;
@@ -107,7 +108,7 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
         rootBuild = launcher;
 
         final DefaultDeploymentRegistry deploymentRegistry = parentRegistry.get(DefaultDeploymentRegistry.class);
-        launcher.getGradle().addBuildListener(new BuildAdapter() {
+        launcher.getGradle().addBuildListener(new InternalBuildAdapter() {
             @Override
             public void buildFinished(BuildResult result) {
                 deploymentRegistry.buildFinished(result);
@@ -138,9 +139,9 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
         StartParameter startParameter = buildDefinition.getStartParameter();
         ListenerManager listenerManager = serviceRegistry.get(ListenerManager.class);
 
+        Clock clock = serviceRegistry.get(Clock.class);
         if (parent == null) {
             BuildStartedTime buildStartedTime = serviceRegistry.get(BuildStartedTime.class);
-            Clock clock = serviceRegistry.get(Clock.class);
             listenerManager.useLogger(new BuildLogger(Logging.getLogger(BuildLogger.class), serviceRegistry.get(StyledTextOutputFactory.class), startParameter, requestMetaData, buildStartedTime, clock));
         }
 
@@ -163,7 +164,10 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
             default:
                 LoggingDeprecatedFeatureHandler.setTraceLoggingEnabled(false);
         }
-        DeprecationLogger.init(usageLocationReporter, startParameter.getWarningMode());
+
+        BuildOperationExecutor buildOperationExecutor = serviceRegistry.get(BuildOperationExecutor.class);
+        DeprecatedUsageBuildOperationProgressBroadaster deprecationWarningBuildOperationProgressBroadaster = serviceRegistry.get(DeprecatedUsageBuildOperationProgressBroadaster.class);
+        DeprecationLogger.init(usageLocationReporter, startParameter.getWarningMode(), deprecationWarningBuildOperationProgressBroadaster);
 
         SettingsLoaderFactory settingsLoaderFactory = serviceRegistry.get(SettingsLoaderFactory.class);
         SettingsLoader settingsLoader = parent != null ? settingsLoaderFactory.forNestedBuild() : settingsLoaderFactory.forTopLevelBuild();
@@ -187,12 +191,13 @@ public class DefaultGradleLauncherFactory implements GradleLauncherFactory {
             gradle.getBuildListenerBroadcaster(),
             listenerManager.getBroadcaster(ModelConfigurationListener.class),
             listenerManager.getBroadcaster(BuildCompletionListener.class),
-            serviceRegistry.get(BuildOperationExecutor.class),
+            buildOperationExecutor,
             gradle.getServices().get(BuildConfigurationActionExecuter.class),
             gradle.getServices().get(BuildExecuter.class),
             serviceRegistry,
             servicesToStop,
-            includedBuildControllers
+            includedBuildControllers,
+            buildDefinition.getFromBuild()
         );
         nestedBuildFactory.setParent(gradleLauncher);
         nestedBuildFactory.setBuildCancellationToken(cancellationToken);

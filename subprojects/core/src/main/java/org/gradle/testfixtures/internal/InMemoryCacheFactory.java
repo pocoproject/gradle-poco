@@ -21,6 +21,7 @@ import org.gradle.cache.CacheBuilder;
 import org.gradle.cache.CacheOpenException;
 import org.gradle.cache.CacheValidator;
 import org.gradle.cache.CleanupAction;
+import org.gradle.cache.CleanupProgressMonitor;
 import org.gradle.cache.LockOptions;
 import org.gradle.cache.PersistentCache;
 import org.gradle.cache.PersistentIndexedCache;
@@ -71,7 +72,7 @@ public class InMemoryCacheFactory implements CacheFactory {
         public void close() {
             if (cleanup!=null) {
                 synchronized (this) {
-                    cleanup.clean(this);
+                    cleanup.clean(this, CleanupProgressMonitor.NO_OP);
                 }
             }
             closed = true;
@@ -145,8 +146,13 @@ public class InMemoryCacheFactory implements CacheFactory {
         }
 
         @Override
-        public String toString() {
+        public String getDisplayName() {
             return "InMemoryCache '" + displayName + "' " + cacheDir;
+        }
+
+        @Override
+        public String toString() {
+            return getDisplayName();
         }
     }
 }

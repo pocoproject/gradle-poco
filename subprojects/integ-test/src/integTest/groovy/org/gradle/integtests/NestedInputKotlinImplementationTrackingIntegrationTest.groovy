@@ -16,14 +16,15 @@
 
 package org.gradle.integtests
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.AbstractPluginIntegrationTest
+import org.gradle.integtests.fixtures.KotlinDslTestUtil
 import org.gradle.test.fixtures.file.LeaksFileHandles
 import org.gradle.util.Requires
 import org.gradle.util.TestPrecondition
 
 @Requires([TestPrecondition.KOTLIN_SCRIPT])
 @LeaksFileHandles
-class NestedInputKotlinImplementationTrackingIntegrationTest extends AbstractIntegrationSpec {
+class NestedInputKotlinImplementationTrackingIntegrationTest extends AbstractPluginIntegrationTest {
 
     @Override
     protected String getDefaultBuildFileName() {
@@ -87,11 +88,7 @@ class NestedInputKotlinImplementationTrackingIntegrationTest extends AbstractInt
     }
 
     private void setupTaskWithNestedAction(String actionType, String actionInvocation) {
-        file('buildSrc/build.gradle.kts') << """
-            plugins {
-                `kotlin-dsl`
-            }
-        """
+        file('buildSrc/build.gradle.kts') << KotlinDslTestUtil.kotlinDslBuildSrcScript
         file("buildSrc/src/main/kotlin/TaskWithNestedAction.kt") << """
             import org.gradle.api.DefaultTask
             import org.gradle.api.tasks.Nested

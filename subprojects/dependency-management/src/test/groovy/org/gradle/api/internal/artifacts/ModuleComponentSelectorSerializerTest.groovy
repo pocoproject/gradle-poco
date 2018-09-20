@@ -17,8 +17,9 @@
 package org.gradle.api.internal.artifacts
 
 import org.gradle.api.artifacts.ModuleIdentifier
+import org.gradle.api.artifacts.MutableVersionConstraint
 import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConstraint
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.AttributeContainerSerializer
+import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.DesugaredAttributeContainerSerializer
 import org.gradle.api.internal.model.NamedObjectInstantiator
 import org.gradle.internal.serialize.SerializerSpec
 import spock.lang.Unroll
@@ -30,21 +31,32 @@ import static org.gradle.util.TestUtil.attributesFactory
 class ModuleComponentSelectorSerializerTest extends SerializerSpec {
     private final static ModuleIdentifier UTIL = DefaultModuleIdentifier.newId("org", "util")
 
-    private serializer = new ModuleComponentSelectorSerializer(new AttributeContainerSerializer(attributesFactory(), NamedObjectInstantiator.INSTANCE))
+    private serializer = new ModuleComponentSelectorSerializer(new DesugaredAttributeContainerSerializer(attributesFactory(), NamedObjectInstantiator.INSTANCE))
 
     @Unroll
     def "serializes"() {
         when:
-        def result = serialize(newSelector(UTIL, new DefaultMutableVersionConstraint(version, rejects), attributes(foo: 'bar')), serializer)
+        def result = serialize(newSelector(UTIL, constraint(version, strict, rejects), attributes(foo: 'bar')), serializer)
 
         then:
-        result == newSelector(UTIL, new DefaultMutableVersionConstraint(version, rejects), attributes(foo: 'bar'))
+        result == newSelector(UTIL, constraint(version, strict, rejects), attributes(foo: 'bar'))
 
         where:
-        version | rejects
-        '5.0'   | []
-        '5.0'   | ['1.0']
-        '5.0'   | ['1.0', '2.0']
+        version | strict   | rejects
+        '5.0'   | ''       | []
+        '5.0'   | ''       | ['1.0']
+        '5.0'   | ''       | ['1.0', '2.0']
+        '5.0'   | '[1.0,)' | []
+    }
 
+    private static MutableVersionConstraint constraint(String version, String strictVersion, List<String> rejectedVersions) {
+        MutableVersionConstraint constraint = new DefaultMutableVersionConstraint(version)
+        if (strictVersion != null) {
+            constraint.strictly(strictVersion)
+        }
+        for (String reject : rejectedVersions) {
+            constraint.reject(reject)
+        }
+        return constraint
     }
 }

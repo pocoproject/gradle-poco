@@ -27,7 +27,7 @@ tasks.register("gradleBuildBaseline", RemoteProject) {
     remoteUri = rootDir.absolutePath
     // Remember to update accordingly when rebasing/squashing
     // Do not use the "Rebase and merge" nor "Squash and merge" Github buttons when merging a PR that change the baseline
-    ref = 'fccbe3a8ebba359f4655d276eb34c3380bbeb5b9'
+    ref = '97951b7f541f1da43de291246cc7b17507e75a14'
 }
 
 // === Java ===
@@ -59,12 +59,6 @@ tasks.register("withVerboseJUnit", JvmProjectGeneratorTask) {
     subProjectTemplates << 'with-verbose-junit'
 }
 
-//TODO replace with static project or direct project objects creation
-tasks.register("bigEmpty", JvmProjectGeneratorTask) {
-    projects = 10000
-    subProjectTemplates = ['empty']
-}
-
 //TODO replace with direct task objects creation in test
 tasks.register("createLotsOfTasks", JvmProjectGeneratorTask) {
     projects = 1
@@ -79,6 +73,12 @@ tasks.register("createLotsOfTasks", JvmProjectGeneratorTask) {
 
     numberOfExternalDependencies = 0
 }
+
+tasks.register("generateLotsOfDeprecationWarnings", Copy) {
+    into "build/$name"
+    from "src/templates/$name"
+}
+
 
 // === Gradle Kotlin DSL ===
 tasks.register("ktsManyProjects", KtsProjectGeneratorTask) {
@@ -196,7 +196,7 @@ tasks.register("mediumNativeMonolithic", MonolithicNativeProjectGeneratorTask) {
     sourceFiles = 200
 }
 
-configure([nativeMonolithicOverlapping, nativeMonolithic, smallNativeMonolithic, mediumNativeMonolithic]) {
+["nativeMonolithicOverlapping", "nativeMonolithic", "smallNativeMonolithic", "mediumNativeMonolithic"].collect { tasks.withType(MonolithicNativeProjectGeneratorTask).named(it) }*.configure {
     templateArgs += [
         // number of functions created in each source file
         functionCount: 50,
@@ -313,7 +313,7 @@ tasks.register("installBuildBuilder", GradleBuild) {
     dependsOn buildBuilder
 }
 
-tasks.withType(BuildBuilderGenerator) {
+tasks.withType(BuildBuilderGenerator).configureEach {
     buildBuilderInstall = new File(tasks.buildBuilder.outputDirectory, "build/install/build-builder")
     dependsOn installBuildBuilder
 }

@@ -29,13 +29,15 @@ import org.gradle.api.internal.artifacts.repositories.metadata.MavenMutableModul
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.internal.component.external.descriptor.Configuration
 import org.gradle.internal.component.external.descriptor.MavenScope
+import org.gradle.internal.component.external.model.maven.DefaultMutableMavenModuleResolveMetadata
+import org.gradle.internal.component.external.model.maven.MavenDependencyDescriptor
 import org.gradle.internal.component.model.ModuleSource
 import org.gradle.util.TestUtil
 import spock.lang.Unroll
 
 import static org.gradle.internal.component.external.model.DefaultModuleComponentSelector.newSelector
 
-class DefaultMavenModuleResolveMetadataTest extends AbstractModuleComponentResolveMetadataTest {
+class DefaultMavenModuleResolveMetadataTest extends AbstractLazyModuleComponentResolveMetadataTest {
 
     private final mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
 
@@ -59,10 +61,10 @@ class DefaultMavenModuleResolveMetadataTest extends AbstractModuleComponentResol
         def compile = md.getConfiguration("compile")
 
         then:
-        runtime.dependencies*.selector*.versionConstraint.preferredVersion == ["1.1", "1.2"]
+        runtime.dependencies*.selector*.version == ["1.1", "1.2"]
         runtime.dependencies.is(runtime.dependencies)
 
-        compile.dependencies*.selector*.versionConstraint.preferredVersion == ["1.1"]
+        compile.dependencies*.selector*.version == ["1.1"]
         compile.dependencies.is(compile.dependencies)
     }
 

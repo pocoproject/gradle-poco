@@ -16,7 +16,7 @@
 
 package org.gradle.api.tasks.compile
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.AbstractPluginIntegrationTest
 import org.gradle.integtests.fixtures.AvailableJavaHomes
 import org.gradle.util.Requires
 import org.gradle.util.Resources
@@ -28,7 +28,7 @@ import spock.lang.Ignore
 import spock.lang.Issue
 import spock.lang.Unroll
 
-class JavaCompileIntegrationTest extends AbstractIntegrationSpec {
+class JavaCompileIntegrationTest extends AbstractPluginIntegrationTest {
 
     @Rule
     Resources resources = new Resources()
@@ -636,10 +636,11 @@ class JavaCompileIntegrationTest extends AbstractIntegrationSpec {
 
     @ToBeImplemented
     @Issue(["https://github.com/gradle/gradle/issues/2463", "https://github.com/gradle/gradle/issues/3444"])
-    def "java compilation ignores empty packages"() {
+    def "non-incremental java compilation ignores empty packages"() {
         given:
         buildFile << """
             plugins { id 'java' }
+            compileJava.options.incremental = false
         """
 
         file('src/main/java/org/gradle/test/MyTest.java').text = """
@@ -652,11 +653,6 @@ class JavaCompileIntegrationTest extends AbstractIntegrationSpec {
         run 'compileJava'
         then:
         executedAndNotSkipped(':compileJava')
-
-        when:
-        run 'compileJava'
-        then:
-        skipped(':compileJava')
 
         when:
         file('src/main/java/org/gradle/different').createDir()
@@ -833,7 +829,7 @@ class JavaCompileIntegrationTest extends AbstractIntegrationSpec {
         outputContains("Specifying the source path in the CompilerOptions compilerArgs property has been deprecated")
     }
 
-    @Requires(adhoc = { AvailableJavaHomes.getJdk7() && AvailableJavaHomes.getJdk8() })
+    @Requires(adhoc = { AvailableJavaHomes.getJdk7() && AvailableJavaHomes.getJdk8() && TestPrecondition.NOT_JDK_IBM.fulfilled })
     def "bootclasspath can be set"() {
         def jdk7 = AvailableJavaHomes.getJdk7()
         def jdk7bootClasspath = TextUtil.escapeString(jdk7.jre.homeDir.absolutePath) + "/lib/rt.jar"
@@ -895,6 +891,71 @@ class JavaCompileIntegrationTest extends AbstractIntegrationSpec {
         executer.withFullDeprecationStackTraceDisabled()
         executer.expectDeprecationWarning()
         succeeds "compileJava"
-        output.contains "The CompileOptions.bootClasspath property has been deprecated and is scheduled to be removed in Gradle 5.0. Please use the CompileOptions.bootstrapClasspath property instead."
+        output.contains "The CompileOptions.bootClasspath property has been deprecated. This is scheduled to be removed in Gradle 5.0. Please use the CompileOptions.bootstrapClasspath property instead."
+    }
+
+    def "deletes empty packages dirs"() {
+        given:
+        buildFile << """
+            apply plugin: 'java'
+        """
+        def a = file('src/main/java/com/foo/internal/A.java') << """
+            package com.foo.internal;
+            public class A {}
+        """
+        file('src/main/java/com/bar/B.java') << """
+            package com.bar;
+            public class B {}
+        """
+
+        succeeds "compileJava"
+        a.delete()
+
+        when:
+        succeeds "compileJava"
+
+        then:
+        ! file("build/classes/java/main/com/foo").exists()
+    }
+
+    @Requires(TestPrecondition.JDK8_OR_LATER)
+    def "can configure custom header output"() {
+        given:
+        buildFile << """
+            apply plugin: 'java'
+            compileJava.options.headerOutputDirectory = file("build/headers/java/main")
+        """
+        file('src/main/java/Foo.java') << """
+            public class Foo {
+                public native void foo();
+            }
+        """
+        when:
+        succeeds "compileJava"
+
+        then:
+        file("build/headers/java/main/Foo.h").exists()
+    }
+
+    @Requires(TestPrecondition.JDK8_OR_LATER)
+    def "deletes stale header files"() {
+        given:
+        buildFile << """
+            apply plugin: 'java'
+            compileJava.options.headerOutputDirectory = file("build/headers/java/main")
+        """
+        def header = file('src/main/java/Foo.java') << """
+            public class Foo {
+                public native void foo();
+            }
+        """
+        succeeds "compileJava"
+
+        when:
+        header.delete()
+        succeeds "compileJava"
+
+        then:
+        !file("build/headers/java/main/Foo.h").exists()
     }
 }

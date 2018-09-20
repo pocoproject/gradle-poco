@@ -31,7 +31,7 @@ class BuildScanPluginSmokeTest extends AbstractSmokeTest {
     private static final List<String> SUPPORTED = [
         "1.8",
         "1.9",
-        "1.9.1",
+        // "1.9.1", // https://github.com/gradle/dotcom/issues/1213
         "1.10",
         "1.10.1",
         "1.10.2",
@@ -45,7 +45,9 @@ class BuildScanPluginSmokeTest extends AbstractSmokeTest {
         "1.13.3",
         "1.13.4",
         "1.14",
-        "1.15.1"
+        "1.15.1",
+        "1.15.2",
+        "1.16"
     ]
 
     @Unroll

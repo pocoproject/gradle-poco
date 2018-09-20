@@ -27,9 +27,12 @@ import org.gradle.integtests.fixtures.executer.GradleDistribution
 import org.gradle.integtests.fixtures.executer.GradleExecuter
 import org.gradle.integtests.fixtures.executer.IntegrationTestBuildContext
 import org.gradle.integtests.fixtures.executer.UnderDevelopmentGradleDistribution
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
+import org.gradle.test.fixtures.dsl.GradleDsl
 import org.gradle.test.fixtures.file.CleanupTestDirectory
 import org.gradle.test.fixtures.file.TestFile
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.test.fixtures.file.TestWorkspaceBuilder
 import org.gradle.test.fixtures.ivy.IvyFileRepository
 import org.gradle.test.fixtures.maven.M2Installation
 import org.gradle.test.fixtures.maven.MavenFileRepository
@@ -39,6 +42,10 @@ import org.hamcrest.CoreMatchers
 import org.hamcrest.Matcher
 import org.junit.Rule
 
+import static org.gradle.api.internal.artifacts.BaseRepositoryFactory.PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY
+import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.gradlePluginRepositoryMirrorUrl
+import static org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout.DEFAULT_TIMEOUT_SECONDS
+import static org.gradle.test.fixtures.dsl.GradleDsl.GROOVY
 import static org.gradle.util.Matchers.normalizedLineSeparators
 
 /**
@@ -48,6 +55,7 @@ import static org.gradle.util.Matchers.normalizedLineSeparators
  */
 @CleanupTestDirectory
 @SuppressWarnings("IntegrationTestFixtures")
+@IntegrationTestTimeout(DEFAULT_TIMEOUT_SECONDS)
 class AbstractIntegrationSpec extends Specification {
 
     @Rule
@@ -345,7 +353,7 @@ class AbstractIntegrationSpec extends Specification {
         return zip
     }
 
-    def createDir(String name, Closure cl) {
+    def createDir(String name, @DelegatesTo(value = TestWorkspaceBuilder.class, strategy = Closure.DELEGATE_FIRST) Closure cl) {
         TestFile root = file(name)
         root.create(cl)
     }
@@ -384,13 +392,25 @@ class AbstractIntegrationSpec extends Specification {
         result.assertHasPostBuildOutput(string.trim())
     }
 
+    void useRepositoryMirrors() {
+        executer.beforeExecute {
+            executer.usingInitScript(RepoScriptBlockUtil.createMirrorInitScript())
+        }
+    }
+
+    void usePluginRepositoryMirror() {
+        executer.beforeExecute {
+            executer.withArgument("-D${PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}=${gradlePluginRepositoryMirrorUrl()}")
+        }
+    }
+
     void outputDoesNotContain(String string) {
         assertHasResult()
         result.assertNotOutput(string.trim())
     }
 
-    static String jcenterRepository() {
-        RepoScriptBlockUtil.jcenterRepository()
+    static String jcenterRepository(GradleDsl dsl = GROOVY) {
+        RepoScriptBlockUtil.jcenterRepository(dsl)
     }
 
     static String mavenCentralRepository() {

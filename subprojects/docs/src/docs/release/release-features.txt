@@ -1,4 +1,5 @@
- - Experimental APIs for creating and configuring tasks lazily
- - Pass arguments to JavaExec via CLI
- - Auxiliary publication dependency support for multi-project builds
- - Improved dependency insight report
+ - Incremental Java compilation by default
+ - Periodic Gradle caches cleanup
+ - Gradle Kotlin DSL 1.0-RC6
+ - Nested included builds
+ - SNAPSHOT plugin versions in the `plugins {}` block

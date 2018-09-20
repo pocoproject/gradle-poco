@@ -14,28 +14,29 @@
  * limitations under the License.
  */
 
-import org.gradle.api.internal.project.ProjectInternal
-import org.gradle.jvm.toolchain.internal.JavaInstallationProbe
+import org.gradle.api.internal.artifacts.BaseRepositoryFactory.PLUGIN_PORTAL_DEFAULT_URL
 import org.gradle.plugins.ide.idea.model.IdeaModel
+
+import org.gradle.kotlin.dsl.plugins.dsl.KotlinDslPlugin
+
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 import java.io.File
 import java.util.Properties
-import kotlin.coroutines.experimental.EmptyCoroutineContext.plus
+
 
 buildscript {
-    project.apply {
-        from("$rootDir/../gradle/shared-with-buildSrc/mirrors.gradle.kts")
-    }
+    project.apply(from = "$rootDir/../gradle/shared-with-buildSrc/mirrors.gradle.kts")
 }
 
 plugins {
     `kotlin-dsl`
-    id("org.gradle.kotlin.ktlint-convention") version "0.1.8" apply false
+    id("org.gradle.kotlin.ktlint-convention") version "0.1.14" apply false
 }
 
 subprojects {
 
-    apply { plugin("java-library") }
+    apply(plugin = "java-library")
 
     if (file("src/main/groovy").isDirectory || file("src/test/groovy").isDirectory) {
 
@@ -47,10 +48,8 @@ subprojects {
         applyKotlinProjectConventions()
     }
 
-    apply {
-        plugin("idea")
-        plugin("eclipse")
-    }
+    apply(plugin = "idea")
+    apply(plugin = "eclipse")
 
     configure<IdeaModel> {
         module.name = "buildSrc-${this@subprojects.name}"
@@ -62,25 +61,25 @@ subprojects {
 
     afterEvaluate {
         if (tasks.withType<ValidateTaskProperties>().isEmpty()) {
-            tasks.create<ValidateTaskProperties>("validateTaskProperties") {
+            val validateTaskProperties = tasks.register("validateTaskProperties", ValidateTaskProperties::class.java) {
                 outputFile.set(project.the<ReportingExtension>().baseDirectory.file("task-properties/report.txt"))
 
-                val mainSourceSet = project.java.sourceSets[SourceSet.MAIN_SOURCE_SET_NAME]
+                val mainSourceSet = project.sourceSets[SourceSet.MAIN_SOURCE_SET_NAME]
                 classes = mainSourceSet.output.classesDirs
                 classpath = mainSourceSet.compileClasspath
                 dependsOn(mainSourceSet.output)
-
-                project.tasks["check"].dependsOn(this)
             }
+            tasks.named("check").configure { dependsOn(validateTaskProperties) }
         }
     }
 }
+var pluginPortalUrl = (project.rootProject.extensions.extraProperties.get("repositoryMirrors") as Map<String, String>).get("gradleplugins")
 
 allprojects {
     repositories {
         maven(url = "https://repo.gradle.org/gradle/libs-releases")
         maven(url = "https://repo.gradle.org/gradle/libs-snapshots")
-        gradlePluginPortal()
+        maven(url = pluginPortalUrl ?: PLUGIN_PORTAL_DEFAULT_URL)
     }
 }
 
@@ -93,7 +92,7 @@ dependencies {
 // TODO Avoid duplication of what defines a CI Server with BuildEnvironment
 val isCiServer: Boolean by extra { "CI" in System.getenv() }
 if (!isCiServer || System.getProperty("enableCodeQuality")?.toLowerCase() == "true") {
-    apply { from("../gradle/shared-with-buildSrc/code-quality-configuration.gradle.kts") }
+    apply(from = "../gradle/shared-with-buildSrc/code-quality-configuration.gradle.kts")
 }
 
 if (isCiServer) {
@@ -131,26 +130,23 @@ fun readProperties(propertiesFile: File) = Properties().apply {
     }
 }
 
-tasks {
-    val checkSameDaemonArgs by creating {
-        doLast {
-            val buildSrcProperties = readProperties(File(project.rootDir, "gradle.properties"))
-            val rootProperties = readProperties(File(project.rootDir, "../gradle.properties"))
-            val jvmArgs = listOf(buildSrcProperties, rootProperties).map { it.getProperty("org.gradle.jvmargs") }.toSet()
-            if (jvmArgs.size > 1) {
-                throw GradleException("gradle.properties and buildSrc/gradle.properties have different org.gradle.jvmargs " +
-                    "which may cause two daemons to be spawned on CI and in IDEA. " +
-                    "Use the same org.gradle.jvmargs for both builds.")
-            }
+val checkSameDaemonArgs = tasks.register("checkSameDaemonArgs") {
+    doLast {
+        val buildSrcProperties = readProperties(File(project.rootDir, "gradle.properties"))
+        val rootProperties = readProperties(File(project.rootDir, "../gradle.properties"))
+        val jvmArgs = listOf(buildSrcProperties, rootProperties).map { it.getProperty("org.gradle.jvmargs") }.toSet()
+        if (jvmArgs.size > 1) {
+            throw GradleException("gradle.properties and buildSrc/gradle.properties have different org.gradle.jvmargs " +
+                "which may cause two daemons to be spawned on CI and in IDEA. " +
+                "Use the same org.gradle.jvmargs for both builds.")
         }
     }
-
-    val build by getting
-    build.dependsOn(checkSameDaemonArgs)
 }
 
+tasks.named("build").configure { dependsOn(checkSameDaemonArgs) }
+
 fun Project.applyGroovyProjectConventions() {
-    apply { plugin("groovy") }
+    apply(plugin = "groovy")
 
     dependencies {
         compile(localGroovy())
@@ -158,11 +154,11 @@ fun Project.applyGroovyProjectConventions() {
         testCompile("cglib:cglib:3.2.6")
         testCompile("org.objenesis:objenesis:2.4")
         constraints {
-            compile("org.codehaus.groovy:groovy-all:2.4.12")
+            compile("org.codehaus.groovy:groovy-all:${groovy.lang.GroovySystem.getVersion()}")
         }
     }
 
-    tasks.withType<GroovyCompile> {
+    tasks.withType<GroovyCompile>().configureEach {
         groovyOptions.apply {
             encoding = "utf-8"
         }
@@ -175,13 +171,13 @@ fun Project.applyGroovyProjectConventions() {
         inputs.property("javaInstallation", "$vendor ${JavaVersion.current()}")
     }
 
-    val compileGroovy: GroovyCompile by tasks
+    val compileGroovy: TaskProvider<GroovyCompile> = tasks.withType(GroovyCompile::class.java).named("compileGroovy")
 
     configurations {
         "apiElements" {
             outgoing.variants["classes"].artifact(
                 mapOf(
-                    "file" to compileGroovy.destinationDir,
+                    "file" to compileGroovy.get().destinationDir,
                     "type" to ArtifactTypeDefinition.JVM_CLASS_DIRECTORY,
                     "builtBy" to compileGroovy
                 ))
@@ -190,14 +186,19 @@ fun Project.applyGroovyProjectConventions() {
 }
 
 fun Project.applyKotlinProjectConventions() {
-    apply {
-        plugin("kotlin")
-        plugin("org.gradle.kotlin.ktlint-convention")
-    }
+    apply(plugin = "kotlin")
 
-    tasks.withType<KotlinCompile> {
+    apply(plugin = "org.gradle.kotlin.ktlint-convention")
+
+    tasks.withType<KotlinCompile>().configureEach {
         kotlinOptions {
             freeCompilerArgs += listOf("-Xjsr305=strict")
+        }
+    }
+
+    plugins.withType<KotlinDslPlugin> {
+        kotlinDslPluginOptions {
+//            experimentalWarning.set(false)
         }
     }
 }

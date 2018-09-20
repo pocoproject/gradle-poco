@@ -38,6 +38,11 @@ public class FilteredCollection<T, S extends T> implements ElementSource<S> {
     }
 
     @Override
+    public boolean addRealized(S o) {
+        throw new UnsupportedOperationException(String.format("Cannot add '%s' to '%s' as it is a filtered collection", o, this));
+    }
+
+    @Override
     public void clear() {
         throw new UnsupportedOperationException(String.format("Cannot clear '%s' as it is a filtered collection", this));
     }
@@ -75,7 +80,7 @@ public class FilteredCollection<T, S extends T> implements ElementSource<S> {
         if (collection.isEmpty()) {
             return true;
         } else {
-            for (T o : collection) {
+            for (T o : this) {
                 if (accept(o)) {
                     return false;
                 }
@@ -156,8 +161,8 @@ public class FilteredCollection<T, S extends T> implements ElementSource<S> {
     @Override
     public int size() {
         int i = 0;
-        // TODO this will realize all pending elements
-        for (T o : collection) {
+        // NOTE: There isn't much we can do about collection.matching { } filters as the spec requires a realized element, unless make major changes
+        for (T o : this) {
             if (accept(o)) {
                 ++i;
             }
@@ -181,15 +186,20 @@ public class FilteredCollection<T, S extends T> implements ElementSource<S> {
     }
 
     @Override
-    public void addPending(ProviderInternal<? extends S> provider) {
-        collection.addPending(provider);
+    public boolean addPending(ProviderInternal<? extends S> provider) {
+        return collection.addPending(provider);
     }
 
     @Override
-    public void removePending(ProviderInternal<? extends S> provider) {
-        collection.removePending(provider);
+    public boolean removePending(ProviderInternal<? extends S> provider) {
+        return collection.removePending(provider);
     }
 
     @Override
-    public void onRealize(Action<ProviderInternal<? extends S>> action) { }
+    public void onRealize(Action<S> action) { }
+
+    @Override
+    public void realizeExternal(ProviderInternal<? extends S> provider) {
+        collection.realizeExternal(provider);
+    }
 }

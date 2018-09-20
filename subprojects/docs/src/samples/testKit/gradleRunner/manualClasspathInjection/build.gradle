@@ -4,7 +4,7 @@ dependencies {
     compile localGroovy()
     compile gradleApi()
     testCompile gradleTestKit()
-    testCompile('org.spockframework:spock-core:1.0-groovy-2.4') {
+    testCompile('org.spockframework:spock-core:1.1-groovy-2.4') {
         exclude module: 'groovy-all'
     }
 }
@@ -13,7 +13,7 @@ repositories {
     mavenCentral()
 }
 
-// START SNIPPET test-logic-classpath
+// tag::test-logic-classpath[]
 // Write the plugin's classpath to a file to share with the tests
 task createClasspathManifest {
     def outputDir = file("$buildDir/$name")
@@ -31,4 +31,4 @@ task createClasspathManifest {
 dependencies {
     testRuntime files(createClasspathManifest)
 }
-// END SNIPPET test-logic-classpath
+// end::test-logic-classpath[]

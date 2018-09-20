@@ -16,6 +16,8 @@
 package org.gradle.api.internal.artifacts.repositories;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.InvalidUserDataException;
@@ -36,6 +38,8 @@ import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.IvyModuleD
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.IvyXmlModuleDescriptorParser;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MetaDataParser;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.ModuleMetadataParser;
+import org.gradle.api.internal.artifacts.repositories.descriptor.IvyRepositoryDescriptor;
+import org.gradle.api.internal.artifacts.repositories.descriptor.RepositoryDescriptor;
 import org.gradle.api.internal.artifacts.repositories.layout.AbstractRepositoryLayout;
 import org.gradle.api.internal.artifacts.repositories.layout.DefaultIvyPatternRepositoryLayout;
 import org.gradle.api.internal.artifacts.repositories.layout.GradleRepositoryLayout;
@@ -56,10 +60,11 @@ import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransp
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransportFactory;
 import org.gradle.api.internal.changedetection.state.isolation.IsolatableFactory;
 import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.internal.action.InstantiatingAction;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
-import org.gradle.internal.component.external.model.MutableIvyModuleResolveMetadata;
+import org.gradle.internal.component.external.model.ivy.MutableIvyModuleResolveMetadata;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.resource.local.FileResourceRepository;
 import org.gradle.internal.resource.local.FileStore;
@@ -67,7 +72,9 @@ import org.gradle.internal.resource.local.LocallyAvailableResourceFinder;
 import org.gradle.util.ConfigureUtil;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 import static org.gradle.api.internal.FeaturePreviews.Feature.GRADLE_METADATA;
@@ -104,8 +111,9 @@ public class DefaultIvyArtifactRepository extends AbstractAuthenticationSupporte
                                         ModuleMetadataParser moduleMetadataParser,
                                         FeaturePreviews featurePreviews,
                                         IvyMutableModuleMetadataFactory metadataFactory,
-                                        IsolatableFactory isolatableFactory) {
-        super(instantiatorFactory.decorate(), authenticationContainer);
+                                        IsolatableFactory isolatableFactory,
+                                        ObjectFactory objectFactory) {
+        super(instantiatorFactory.decorate(), authenticationContainer, objectFactory);
         this.fileResolver = fileResolver;
         this.transportFactory = transportFactory;
         this.locallyAvailableResourceFinder = locallyAvailableResourceFinder;
@@ -142,7 +150,39 @@ public class DefaultIvyArtifactRepository extends AbstractAuthenticationSupporte
         return createRealResolver();
     }
 
-    protected IvyResolver createRealResolver() {
+    @Override
+    protected RepositoryDescriptor createDescriptor() {
+        String layoutType;
+        boolean m2Compatible;
+        if (layout instanceof GradleRepositoryLayout) {
+            layoutType = "Gradle";
+            m2Compatible = false;
+        } else if (layout instanceof MavenRepositoryLayout) {
+            layoutType = "Maven";
+            m2Compatible = true;
+        } else if (layout instanceof IvyRepositoryLayout) {
+            layoutType = "Ivy";
+            m2Compatible = false;
+        } else if (layout instanceof DefaultIvyPatternRepositoryLayout) {
+            layoutType = "Pattern";
+            m2Compatible = ((DefaultIvyPatternRepositoryLayout) layout).getM2Compatible();
+        } else {
+            layoutType = "Unknown";
+            m2Compatible = false;
+        }
+
+        return new IvyRepositoryDescriptor.Builder(getName(), getUrl())
+            .setAuthenticated(getConfiguredCredentials() != null)
+            .setAuthenticationSchemes(getAuthenticationSchemes())
+            .setMetadataSources(metadataSources.asList())
+            .setLayoutType(layoutType)
+            .setM2Compatible(m2Compatible)
+            .setIvyPatterns(Sets.union(layout.getIvyPatterns(), additionalPatternsLayout.ivyPatterns))
+            .setArtifactPatterns(Sets.union(layout.getArtifactPatterns(), additionalPatternsLayout.artifactPatterns))
+            .create();
+    }
+
+    private IvyResolver createRealResolver() {
         URI uri = getUrl();
 
         Set<String> schemes = new LinkedHashSet<String>();
@@ -173,6 +213,7 @@ public class DefaultIvyArtifactRepository extends AbstractAuthenticationSupporte
 
     @Override
     public void metadataSources(Action<? super MetadataSources> configureAction) {
+        invalidateDescriptor();
         metadataSources.reset();
         configureAction.execute(metadataSources);
     }
@@ -201,22 +242,31 @@ public class DefaultIvyArtifactRepository extends AbstractAuthenticationSupporte
 
     @Override
     public void setUrl(URI url) {
+        invalidateDescriptor();
         baseUrl = url;
     }
 
+    @Override
     public void setUrl(Object url) {
+        invalidateDescriptor();
         baseUrl = url;
     }
 
+    @Override
     public void artifactPattern(String pattern) {
+        invalidateDescriptor();
         additionalPatternsLayout.artifactPatterns.add(pattern);
     }
 
+    @Override
     public void ivyPattern(String pattern) {
+        invalidateDescriptor();
         additionalPatternsLayout.ivyPatterns.add(pattern);
     }
 
+    @Override
     public void layout(String layoutName) {
+        invalidateDescriptor();
         if ("ivy".equals(layoutName)) {
             layout = instantiator.newInstance(IvyRepositoryLayout.class);
         } else if ("maven".equals(layoutName)) {
@@ -228,10 +278,12 @@ public class DefaultIvyArtifactRepository extends AbstractAuthenticationSupporte
         }
     }
 
+    @Override
     public void layout(String layoutName, Closure config) {
         layout(layoutName, ConfigureUtil.<RepositoryLayout>configureUsing(config));
     }
 
+    @Override
     public void layout(String layoutName, Action<? extends RepositoryLayout> config) {
         layout(layoutName);
         ((Action) config).execute(layout);
@@ -275,6 +327,16 @@ public class DefaultIvyArtifactRepository extends AbstractAuthenticationSupporte
                 schemes.add(new ResolvedPattern(pattern, fileResolver).scheme);
             }
         }
+
+        @Override
+        public Set<String> getIvyPatterns() {
+            return ImmutableSet.copyOf(ivyPatterns);
+        }
+
+        @Override
+        public Set<String> getArtifactPatterns() {
+            return ImmutableSet.copyOf(artifactPatterns);
+        }
     }
 
     private static class MetaDataProvider implements IvyArtifactRepositoryMetaDataProvider {
@@ -307,6 +369,26 @@ public class DefaultIvyArtifactRepository extends AbstractAuthenticationSupporte
             gradleMetadata = false;
             ivyDescriptor = false;
             artifact = false;
+        }
+
+        /**
+         * This is used for reporting purposes on build scans.
+         * Changing this means a change of repository for build scans.
+         *
+         * @return a list of implemented metadata sources, as strings.
+         */
+        List<String> asList() {
+            List<String> list = new ArrayList<String>();
+            if (gradleMetadata) {
+                list.add("gradleMetadata");
+            }
+            if (ivyDescriptor) {
+                list.add("ivyDescriptor");
+            }
+            if (artifact) {
+                list.add("artifact");
+            }
+            return list;
         }
 
         @Override

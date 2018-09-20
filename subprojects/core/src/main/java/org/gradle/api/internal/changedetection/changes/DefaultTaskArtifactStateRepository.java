@@ -16,11 +16,9 @@
 
 package org.gradle.api.internal.changedetection.changes;
 
-import com.google.common.base.Function;
 import com.google.common.collect.ImmutableCollection;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
-import com.google.common.collect.Maps;
 import org.gradle.api.NonNullApi;
 import org.gradle.api.internal.OverlappingOutputs;
 import org.gradle.api.internal.TaskExecutionHistory;
@@ -34,8 +32,6 @@ import org.gradle.api.internal.changedetection.rules.TaskStateChange;
 import org.gradle.api.internal.changedetection.rules.TaskStateChangeVisitor;
 import org.gradle.api.internal.changedetection.rules.TaskUpToDateState;
 import org.gradle.api.internal.changedetection.state.CurrentTaskExecution;
-import org.gradle.api.internal.changedetection.state.FileCollectionSnapshot;
-import org.gradle.api.internal.changedetection.state.FileContentSnapshot;
 import org.gradle.api.internal.changedetection.state.HistoricalTaskExecution;
 import org.gradle.api.internal.changedetection.state.TaskHistoryRepository;
 import org.gradle.api.internal.changedetection.state.TaskOutputFilesRepository;
@@ -45,6 +41,9 @@ import org.gradle.api.internal.tasks.execution.TaskProperties;
 import org.gradle.api.tasks.incremental.IncrementalTaskInputs;
 import org.gradle.caching.internal.tasks.TaskCacheKeyCalculator;
 import org.gradle.caching.internal.tasks.TaskOutputCachingBuildCacheKey;
+import org.gradle.internal.fingerprint.CurrentFileCollectionFingerprint;
+import org.gradle.internal.fingerprint.FileCollectionFingerprint;
+import org.gradle.internal.fingerprint.HistoricalFileCollectionFingerprint;
 import org.gradle.internal.id.UniqueId;
 import org.gradle.internal.reflect.Instantiator;
 
@@ -132,24 +131,19 @@ public class DefaultTaskArtifactStateRepository implements TaskArtifactStateRepo
             if (previousExecution == null) {
                 return Collections.emptySet();
             }
-            ImmutableCollection<FileCollectionSnapshot> outputFilesSnapshot = previousExecution.getOutputFilesSnapshot().values();
+            ImmutableCollection<HistoricalFileCollectionFingerprint> outputFingerprints = previousExecution.getOutputFingerprints().values();
             Set<File> outputs = new HashSet<File>();
-            for (FileCollectionSnapshot fileCollectionSnapshot : outputFilesSnapshot) {
-                outputs.addAll(fileCollectionSnapshot.getElements());
+            for (FileCollectionFingerprint fileCollectionFingerprint : outputFingerprints) {
+                for (String absolutePath : fileCollectionFingerprint.getSnapshots().keySet()) {
+                    outputs.add(new File(absolutePath));
+                }
             }
             return outputs;
         }
 
         @Override
-        public Map<String, Map<String, FileContentSnapshot>> getOutputContentSnapshots() {
-            ImmutableSortedMap<String, FileCollectionSnapshot> outputFilesSnapshot = history.getCurrentExecution().getOutputFilesSnapshot();
-            return Maps.transformValues(outputFilesSnapshot, new Function<FileCollectionSnapshot, Map<String, FileContentSnapshot>>() {
-                @Override
-                @SuppressWarnings("NullableProblems")
-                public Map<String, FileContentSnapshot> apply(FileCollectionSnapshot fileCollectionSnapshot) {
-                    return fileCollectionSnapshot.getContentSnapshots();
-                }
-            });
+        public Map<String, CurrentFileCollectionFingerprint> getOutputFingerprints() {
+            return history.getCurrentExecution().getOutputFingerprints();
         }
 
         @Override
@@ -183,8 +177,8 @@ public class DefaultTaskArtifactStateRepository implements TaskArtifactStateRepo
         }
 
         @Override
-        public void snapshotAfterLoadedFromCache(ImmutableSortedMap<String, FileCollectionSnapshot> newOutputSnapshot, OriginTaskExecutionMetadata originMetadata) {
-            history.updateCurrentExecutionWithOutputs(newOutputSnapshot);
+        public void snapshotAfterLoadedFromCache(ImmutableSortedMap<String, CurrentFileCollectionFingerprint> newOutputFingerprints, OriginTaskExecutionMetadata originMetadata) {
+            history.updateCurrentExecutionWithOutputs(newOutputFingerprints);
             snapshotAfterOutputsWereGenerated(history, null, originMetadata);
         }
 

@@ -15,7 +15,7 @@ plugins {
 
 java {
     gradlebuildJava {
-        moduleType = ModuleType.ENTRY_POINT
+        moduleType = ModuleType.REQUIRES_JAVA_9_COMPILER
     }
 }
 
@@ -52,13 +52,9 @@ val buildReceiptPackage: String by rootProject.extra
 
 
 
-val buildReceiptResource by tasks.creating(Copy::class) {
+val buildReceiptResource = tasks.register<Copy>("buildReceiptResource") {
     from(Callable { tasks.getByPath(":createBuildReceipt").outputs.files })
     destinationDir = file("${gradlebuildJava.generatedTestResourcesDir}/$buildReceiptPackage")
 }
 
-java.sourceSets {
-    "main" {
-        output.dir(mapOf("builtBy" to buildReceiptResource), gradlebuildJava.generatedTestResourcesDir)
-    }
-}
+sourceSets["main"].output.dir(mapOf("builtBy" to buildReceiptResource), gradlebuildJava.generatedTestResourcesDir)

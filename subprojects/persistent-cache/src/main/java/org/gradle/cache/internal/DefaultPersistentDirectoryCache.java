@@ -25,8 +25,7 @@ import org.gradle.cache.FileLockManager;
 import org.gradle.cache.LockOptions;
 import org.gradle.cache.PersistentCache;
 import org.gradle.internal.concurrent.ExecutorFactory;
-import org.gradle.internal.time.Time;
-import org.gradle.internal.time.Timer;
+import org.gradle.internal.logging.progress.ProgressLoggerFactory;
 import org.gradle.util.GFileUtils;
 import org.gradle.util.GUtil;
 import org.slf4j.Logger;
@@ -35,34 +34,26 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 
 public class DefaultPersistentDirectoryCache extends DefaultPersistentDirectoryStore implements ReferencablePersistentCache {
-    public static final int CLEANUP_INTERVAL_IN_HOURS = 24;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultPersistentDirectoryCache.class);
+
     private final Properties properties = new Properties();
     private final Action<? super PersistentCache> initAction;
-    private final CleanupAction cleanupAction;
     private final CacheValidator validator;
     private boolean didRebuild;
 
-    public DefaultPersistentDirectoryCache(File dir, String displayName, CacheValidator validator, Map<String, ?> properties, CacheBuilder.LockTarget lockTarget, LockOptions lockOptions, Action<? super PersistentCache> initAction, CleanupAction cleanupAction, FileLockManager lockManager, ExecutorFactory executorFactory) {
-        super(dir, displayName, lockTarget, lockOptions, lockManager, executorFactory);
+    public DefaultPersistentDirectoryCache(File dir, String displayName, CacheValidator validator, Map<String, ?> properties, CacheBuilder.LockTarget lockTarget, LockOptions lockOptions, Action<? super PersistentCache> initAction, CleanupAction cleanupAction, FileLockManager lockManager, ExecutorFactory executorFactory, ProgressLoggerFactory progressLoggerFactory) {
+        super(dir, displayName, lockTarget, lockOptions, cleanupAction, lockManager, executorFactory, progressLoggerFactory);
         this.validator = validator;
         this.initAction = initAction;
-        this.cleanupAction = cleanupAction;
         this.properties.putAll(properties);
     }
 
     @Override
     protected CacheInitializationAction getInitAction() {
         return new Initializer();
-    }
-
-    @Override
-    public CacheCleanupAction getCleanupAction() {
-        return new Cleanup();
     }
 
     public Properties getProperties() {
@@ -85,13 +76,19 @@ public class DefaultPersistentDirectoryCache extends DefaultPersistentDirectoryS
                 return true;
             }
 
-            Properties cachedProperties = GUtil.loadProperties(propertiesFile);
-            for (Map.Entry<?, ?> entry : properties.entrySet()) {
-                String previousValue = cachedProperties.getProperty(entry.getKey().toString());
-                String currentValue = entry.getValue().toString();
-                if (!previousValue.equals(currentValue)) {
-                    LOGGER.debug("Invalidating {} as cache property {} has changed from {} to {}.", DefaultPersistentDirectoryCache.this, entry.getKey(), previousValue, currentValue);
+            if (!properties.isEmpty()) {
+                if (!propertiesFile.exists()) {
+                    LOGGER.debug("Invalidating {} as cache properties file {} is missing and cache properties are not empty.", DefaultPersistentDirectoryCache.this, propertiesFile.getAbsolutePath());
                     return true;
+                }
+                Properties cachedProperties = GUtil.loadProperties(propertiesFile);
+                for (Map.Entry<?, ?> entry : properties.entrySet()) {
+                    String previousValue = cachedProperties.getProperty(entry.getKey().toString());
+                    String currentValue = entry.getValue().toString();
+                    if (!currentValue.equals(previousValue)) {
+                        LOGGER.debug("Invalidating {} as cache property {} has changed from {} to {}.", DefaultPersistentDirectoryCache.this, entry.getKey(), previousValue, currentValue);
+                        return true;
+                    }
                 }
             }
             return false;
@@ -113,34 +110,6 @@ public class DefaultPersistentDirectoryCache extends DefaultPersistentDirectoryS
             }
             GUtil.saveProperties(properties, propertiesFile);
             didRebuild = true;
-        }
-    }
-
-    private class Cleanup implements CacheCleanupAction {
-        @Override
-        public boolean requiresCleanup() {
-            // Dead simple check that it's been more than 7 days since we last checked for cleanup
-            if (cleanupAction != null) {
-                if (!gcFile.exists()) {
-                    GFileUtils.touch(gcFile);
-                } else {
-                    long duration = System.currentTimeMillis() - gcFile.lastModified();
-                    long timeInHours = TimeUnit.MILLISECONDS.toHours(duration);
-                    LOGGER.debug("{} has last been cleaned up {} hours ago", DefaultPersistentDirectoryCache.this, timeInHours);
-                    return timeInHours >= CLEANUP_INTERVAL_IN_HOURS;
-                }
-            }
-            return false;
-        }
-
-        @Override
-        public void cleanup() {
-            if (cleanupAction != null) {
-                Timer timer = Time.startTimer();
-                cleanupAction.clean(DefaultPersistentDirectoryCache.this);
-                LOGGER.info("{} cleaned up in {}.", DefaultPersistentDirectoryCache.this, timer.getElapsed());
-            }
-            GFileUtils.touch(gcFile);
         }
     }
 }

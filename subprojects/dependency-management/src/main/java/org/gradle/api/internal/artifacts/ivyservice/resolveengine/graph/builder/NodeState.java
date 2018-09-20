@@ -16,8 +16,12 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.builder;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.gradle.api.artifacts.ModuleIdentifier;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.api.artifacts.component.ModuleComponentSelector;
 import org.gradle.api.internal.artifacts.DependencySubstitutionInternal;
 import org.gradle.api.internal.artifacts.ResolvedConfigurationIdentifier;
 import org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution.DependencySubstitutionApplicator;
@@ -26,8 +30,10 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.Modul
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphNode;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.specs.Spec;
+import org.gradle.internal.component.external.model.DefaultModuleComponentSelector;
 import org.gradle.internal.component.local.model.LocalConfigurationMetadata;
 import org.gradle.internal.component.local.model.LocalFileDependencyMetadata;
+import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.component.model.ConfigurationMetadata;
 import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.resolve.ModuleVersionResolveException;
@@ -62,7 +68,11 @@ class NodeState implements DependencyGraphNode {
     private final ConfigurationMetadata metaData;
     private final ResolveState resolveState;
     private final boolean isTransitive;
-    private ModuleExclusion previousTraversalExclusions;
+
+    ModuleExclusion previousTraversalExclusions;
+    // In opposite to outgoing edges, virtual edges are for now pretty rare, so they are created lazily
+    private List<EdgeState> virtualEdges;
+    private boolean queued;
 
     NodeState(Long resultId, ResolvedConfigurationIdentifier id, ComponentState component, ResolveState resolveState, ConfigurationMetadata md) {
         this.resultId = resultId;
@@ -72,6 +82,21 @@ class NodeState implements DependencyGraphNode {
         this.metaData = md;
         this.isTransitive = metaData.isTransitive();
         component.addConfiguration(this);
+    }
+
+    // the enqueue and dequeue methods are used for performance reasons
+    // in order to avoid tracking the set of enqueued nodes
+    boolean enqueue() {
+        if (queued) {
+            return false;
+        }
+        queued = true;
+        return true;
+    }
+
+    NodeState dequeue() {
+        queued = false;
+        return this;
     }
 
     ComponentState getComponent() {
@@ -138,6 +163,7 @@ class NodeState implements DependencyGraphNode {
     /**
      * Visits all of the dependencies that originate on this node, adding them as outgoing edges.
      * The {@link #outgoingEdges} collection is populated, as is the `discoveredEdges` parameter.
+     *
      * @param discoveredEdges A collector for visited edges.
      * @param pendingDependenciesHandler Handler for pending dependencies.
      */
@@ -190,6 +216,7 @@ class NodeState implements DependencyGraphNode {
         }
 
         visitDependencies(resolutionFilter, pendingDependenciesHandler, discoveredEdges);
+        visitOwners(discoveredEdges);
     }
 
     /**
@@ -197,7 +224,7 @@ class NodeState implements DependencyGraphNode {
      * or adding them to the `discoveredEdges` collection (and `this.outgoingEdges`)
      */
     private void visitDependencies(ModuleExclusion resolutionFilter, PendingDependenciesHandler pendingDependenciesHandler, Collection<EdgeState> discoveredEdges) {
-        PendingDependenciesHandler.Visitor pendingDepsVisitor =  pendingDependenciesHandler.start();
+        PendingDependenciesHandler.Visitor pendingDepsVisitor = pendingDependenciesHandler.start();
         try {
             for (DependencyMetadata dependency : metaData.getDependencies()) {
                 DependencyState dependencyState = new DependencyState(dependency, resolveState.getComponentSelectorConverter());
@@ -220,6 +247,51 @@ class NodeState implements DependencyGraphNode {
             pendingDepsVisitor.complete();
         }
     }
+
+    /**
+     * If a component declares that it belongs to a platform, we add an edge to the platform.
+     *
+     * @param discoveredEdges the collection of edges for this component
+     */
+    private void visitOwners(Collection<EdgeState> discoveredEdges) {
+        ImmutableList<? extends ComponentIdentifier> owners = component.getMetadata().getPlatformOwners();
+        if (!owners.isEmpty()) {
+            for (ComponentIdentifier owner : owners) {
+                if (owner instanceof ModuleComponentIdentifier) {
+                    ModuleComponentIdentifier platformId = (ModuleComponentIdentifier) owner;
+                    final ModuleComponentSelector cs = DefaultModuleComponentSelector.newSelector(platformId.getModuleIdentifier(), platformId.getVersion());
+
+                    // There are 2 possibilities here:
+                    // 1. the "platform" referenced is a real module, in which case we directly add it to the graph
+                    // 2. the "platform" is a virtual, constructed thing, in which case we add virtual edges to the graph
+                    addPlatformEdges(discoveredEdges, platformId, cs);
+                }
+            }
+        }
+    }
+
+    private void addPlatformEdges(Collection<EdgeState> discoveredEdges, ModuleComponentIdentifier platformComponentIdentifier, ModuleComponentSelector platformSelector) {
+        PotentialEdge potentialEdge = PotentialEdge.of(resolveState, this, platformComponentIdentifier, platformSelector, platformComponentIdentifier);
+        ComponentResolveMetadata metadata = potentialEdge.metadata;
+        VirtualPlatformState virtualPlatformState = null;
+        if (metadata == null || metadata instanceof LenientPlatformResolveMetadata) {
+            virtualPlatformState = potentialEdge.component.getModule().getPlatformState();
+            virtualPlatformState.participatingModule(component.getModule());
+        }
+        if (metadata == null) {
+            // the platform doesn't exist, so we're building a lenient one
+            metadata = new LenientPlatformResolveMetadata(platformComponentIdentifier, potentialEdge.toModuleVersionId, virtualPlatformState);
+            potentialEdge.component.setMetadata(metadata);
+        }
+        if (virtualEdges == null) {
+            virtualEdges = Lists.newArrayList();
+        }
+        EdgeState edge = potentialEdge.edge;
+        virtualEdges.add(edge);
+        discoveredEdges.add(edge);
+        edge.getSelector().use();
+    }
+
 
     /**
      * Execute any dependency substitution rules that apply to this dependency.
@@ -311,6 +383,13 @@ class NodeState implements DependencyGraphNode {
             }
         }
         outgoingEdges.clear();
+        if (virtualEdges != null) {
+            for (EdgeState outgoingDependency : virtualEdges) {
+                outgoingDependency.removeFromTargetConfigurations();
+                outgoingDependency.getSelector().release();
+            }
+        }
+        virtualEdges = null;
         previousTraversalExclusions = null;
     }
 
@@ -344,12 +423,16 @@ class NodeState implements DependencyGraphNode {
     }
 
     void resetSelectionState() {
-        previousTraversalExclusions = null;
-        outgoingEdges.clear();
-        resolveState.onMoreSelected(this);
+        if (previousTraversalExclusions != null) {
+            previousTraversalExclusions = null;
+            outgoingEdges.clear();
+            virtualEdges = null;
+            resolveState.onMoreSelected(this);
+        }
     }
 
     public ImmutableAttributesFactory getAttributesFactory() {
         return resolveState.getAttributesFactory();
     }
+
 }

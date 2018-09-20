@@ -35,6 +35,7 @@ import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.invocation.Gradle;
 import org.gradle.api.tasks.TaskReference;
 import org.gradle.initialization.GradleLauncher;
+import org.gradle.initialization.IncludedBuildSpec;
 import org.gradle.initialization.NestedBuildFactory;
 import org.gradle.internal.ImmutableActionSet;
 import org.gradle.internal.Pair;
@@ -85,6 +86,11 @@ public class DefaultIncludedBuild extends AbstractBuildState implements Included
     }
 
     @Override
+    public File getRootDirectory() {
+        return buildDefinition.getBuildRootDir();
+    }
+
+    @Override
     public Path getIdentityPath() {
         return identityPath;
     }
@@ -124,6 +130,14 @@ public class DefaultIncludedBuild extends AbstractBuildState implements Included
     }
 
     @Override
+    public void assertCanAdd(IncludedBuildSpec includedBuildSpec) {
+        if (isImplicit) {
+            // Not yet supported for implicit included builds
+            super.assertCanAdd(includedBuildSpec);
+        }
+    }
+
+    @Override
     public Path getCurrentPrefixForProjectsInChildBuilds() {
         if (name != null) {
             return owner.getCurrentPrefixForProjectsInChildBuilds().child(name);
@@ -159,8 +173,7 @@ public class DefaultIncludedBuild extends AbstractBuildState implements Included
     }
 
     @Override
-    public Set<Pair<ModuleVersionIdentifier, ProjectComponentIdentifier>> getAvailableModules() {
-        // TODO: Synchronization
+    public synchronized Set<Pair<ModuleVersionIdentifier, ProjectComponentIdentifier>> getAvailableModules() {
         if (availableModules == null) {
             Gradle gradle = getConfiguredBuild();
             availableModules = Sets.newLinkedHashSet();

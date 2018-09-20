@@ -16,7 +16,6 @@
 
 package org.gradle.language.cpp.internal;
 
-import org.apache.commons.lang.StringUtils;
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ConfigurationContainer;
@@ -58,7 +57,7 @@ public class DefaultCppLibrary extends DefaultCppComponent implements CppLibrary
         super(name, fileOperations, objectFactory);
         this.objectFactory = objectFactory;
         this.developmentBinary = objectFactory.property(CppBinary.class);
-        publicHeaders = fileOperations.files();
+        publicHeaders = fileOperations.configurableFiles();
         publicHeadersWithConvention = createDirView(publicHeaders, "src/" + name + "/public");
 
         linkage = new LockableSetProperty<Linkage>(objectFactory.setProperty(Linkage.class));
@@ -77,13 +76,13 @@ public class DefaultCppLibrary extends DefaultCppComponent implements CppLibrary
     }
 
     public DefaultCppSharedLibrary addSharedLibrary(NativeVariantIdentity identity, CppPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
-        DefaultCppSharedLibrary result = objectFactory.newInstance(DefaultCppSharedLibrary.class, getName() + StringUtils.capitalize(identity.getName()), getBaseName(), getCppSource(), getAllHeaderDirs(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider, identity);
+        DefaultCppSharedLibrary result = objectFactory.newInstance(DefaultCppSharedLibrary.class, getNames().append(identity.getName()), getBaseName(), getCppSource(), getAllHeaderDirs(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider, identity);
         getBinaries().add(result);
         return result;
     }
 
     public DefaultCppStaticLibrary addStaticLibrary(NativeVariantIdentity identity, CppPlatform targetPlatform, NativeToolChainInternal toolChain, PlatformToolProvider platformToolProvider) {
-        DefaultCppStaticLibrary result = objectFactory.newInstance(DefaultCppStaticLibrary.class, getName() + StringUtils.capitalize(identity.getName()), getBaseName(), getCppSource(), getAllHeaderDirs(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider, identity);
+        DefaultCppStaticLibrary result = objectFactory.newInstance(DefaultCppStaticLibrary.class, getNames().append(identity.getName()), getBaseName(), getCppSource(), getAllHeaderDirs(), getImplementationDependencies(), targetPlatform, toolChain, platformToolProvider, identity);
         getBinaries().add(result);
         return result;
     }

@@ -129,7 +129,7 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
     }
 
     public void resolveGraph(ConfigurationInternal configuration, ResolverResults results) {
-        List<ResolutionAwareRepository> resolutionAwareRepositories = CollectionUtils.collect(repositories, Transformers.cast(ResolutionAwareRepository.class));
+        List<ResolutionAwareRepository> resolutionAwareRepositories = getRepositories();
         StoreSet stores = storeFactory.createStoreSet();
 
         BinaryStore oldModelStore = stores.nextBinaryStore();
@@ -179,6 +179,10 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
         }
     }
 
+    public List<ResolutionAwareRepository> getRepositories() {
+        return CollectionUtils.collect(repositories, Transformers.cast(ResolutionAwareRepository.class));
+    }
+
     public void resolveArtifacts(ConfigurationInternal configuration, ResolverResults results) {
         ArtifactResolveState resolveState = (ArtifactResolveState) results.getArtifactResolveState();
         ResolvedGraphResults graphResults = resolveState.graphResults;
@@ -206,4 +210,5 @@ public class DefaultConfigurationResolver implements ConfigurationResolver {
             this.transientConfigurationResultsBuilder = transientConfigurationResultsBuilder;
         }
     }
+
 }

@@ -24,7 +24,6 @@ plugins {
 
 dependencies {
     api(project(":core"))
-    api(project(":versionControl"))
 
     implementation(project(":resources"))
     implementation(project(":resourcesHttp"))
@@ -43,6 +42,7 @@ dependencies {
     runtimeOnly(library("bouncycastle_provider"))
     runtimeOnly(project(":installationBeacon"))
     runtimeOnly(project(":compositeBuilds"))
+    runtimeOnly(project(":versionControl"))
 
     testImplementation(library("nekohtml"))
 
@@ -72,6 +72,6 @@ testFilesCleanup {
     policy.set(WhenNotEmpty.REPORT)
 }
 
-val classpathManifest by tasks.getting(ClasspathManifest::class) {
+tasks.named("classpathManifest").configureAs<ClasspathManifest> {
     additionalProjects = listOf(project(":runtimeApiInfo"))
 }

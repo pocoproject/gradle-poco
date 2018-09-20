@@ -43,6 +43,7 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.Visit
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.projectresult.ResolvedLocalComponentsResult;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.projectresult.ResolvedLocalComponentsResultGraphVisitor;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.DefaultResolutionResultBuilder;
+import org.gradle.api.internal.artifacts.repositories.ResolutionAwareRepository;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
 import org.gradle.api.specs.Spec;
 import org.gradle.internal.locking.LockOutOfDateException;
@@ -50,6 +51,7 @@ import org.gradle.internal.locking.LockOutOfDateException;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 public class ShortCircuitEmptyConfigurationResolver implements ConfigurationResolver {
@@ -63,6 +65,11 @@ public class ShortCircuitEmptyConfigurationResolver implements ConfigurationReso
         this.componentIdentifierFactory = componentIdentifierFactory;
         this.moduleIdentifierFactory = moduleIdentifierFactory;
         this.thisBuild = thisBuild;
+    }
+
+    @Override
+    public List<ResolutionAwareRepository> getRepositories() {
+        return delegate.getRepositories();
     }
 
     @Override

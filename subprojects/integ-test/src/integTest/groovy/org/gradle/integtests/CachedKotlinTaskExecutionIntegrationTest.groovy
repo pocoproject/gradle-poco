@@ -16,8 +16,9 @@
 
 package org.gradle.integtests
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.AbstractPluginIntegrationTest
 import org.gradle.integtests.fixtures.DirectoryBuildCacheFixture
+import org.gradle.integtests.fixtures.KotlinDslTestUtil
 import org.gradle.integtests.fixtures.executer.GradleContextualExecuter
 import org.gradle.test.fixtures.file.LeaksFileHandles
 import org.gradle.test.fixtures.file.TestFile
@@ -27,7 +28,7 @@ import spock.lang.IgnoreIf
 import static org.gradle.util.TestPrecondition.KOTLIN_SCRIPT
 
 @Requires([KOTLIN_SCRIPT])
-class CachedKotlinTaskExecutionIntegrationTest extends AbstractIntegrationSpec implements DirectoryBuildCacheFixture {
+class CachedKotlinTaskExecutionIntegrationTest extends AbstractPluginIntegrationTest implements DirectoryBuildCacheFixture {
 
     @Override
     protected String getDefaultBuildFileName() {
@@ -36,7 +37,15 @@ class CachedKotlinTaskExecutionIntegrationTest extends AbstractIntegrationSpec i
 
     def setup() {
         settingsFile << "rootProject.buildFileName = '$defaultBuildFileName'"
-        file("buildSrc/settings.gradle") << localCacheConfiguration()
+
+        file("buildSrc/settings.gradle.kts") << """
+            buildCache {
+                local(DirectoryBuildCache::class.java) {
+                    directory = "${cacheDir.absoluteFile.toURI()}"
+                    isPush = true
+                }
+            }
+        """
     }
 
     @IgnoreIf({GradleContextualExecuter.parallel})
@@ -96,9 +105,7 @@ class CachedKotlinTaskExecutionIntegrationTest extends AbstractIntegrationSpec i
     }
 
     def withKotlinBuildSrc() {
-        file("buildSrc/build.gradle.kts") << """
-            plugins { `kotlin-dsl` }
-        """
+        file("buildSrc/build.gradle.kts") << KotlinDslTestUtil.kotlinDslBuildSrcScript
     }
 
     private static String customKotlinTask(String suffix = "") {

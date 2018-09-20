@@ -4,10 +4,8 @@ plugins {
     `java-gradle-plugin`
 }
 
-apply {
-    plugin("org.gradle.kotlin.kotlin-dsl")
-    plugin<PrecompiledScriptPlugins>()
-}
+apply(plugin = "org.gradle.kotlin.kotlin-dsl")
+apply<PrecompiledScriptPlugins>()
 
 dependencies {
     implementation(project(":binaryCompatibility"))
@@ -23,20 +21,20 @@ dependencies {
     implementation("org.ow2.asm:asm-commons:6.0")
     implementation("com.google.code.gson:gson:2.7")
     testImplementation("junit:junit:4.12")
-    testImplementation("com.nhaarman:mockito-kotlin:1.5.0")
+    testImplementation("com.nhaarman:mockito-kotlin:1.6.0")
 }
 
 gradlePlugin {
-    (plugins) {
-        "buildTypes" {
+    plugins {
+        register("buildTypes") {
             id = "gradlebuild.build-types"
             implementationClass = "org.gradle.plugins.buildtypes.BuildTypesPlugin"
         }
-        "performanceTest" {
+        register("performanceTest") {
             id = "gradlebuild.performance-test"
             implementationClass = "org.gradle.plugins.performance.PerformanceTestPlugin"
         }
-        "unitTestAndCompile" {
+        register("unitTestAndCompile") {
             id = "gradlebuild.unittest-and-compile"
             implementationClass = "org.gradle.gradlebuild.unittestandcompile.UnitTestAndCompilePlugin"
         }

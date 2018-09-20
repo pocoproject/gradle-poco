@@ -25,6 +25,8 @@ import org.gradle.api.internal.InstantiatorFactory;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ModuleVersionPublisher;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ConfiguredModuleComponentRepository;
+import org.gradle.api.internal.artifacts.repositories.descriptor.FlatDirRepositoryDescriptor;
+import org.gradle.api.internal.artifacts.repositories.descriptor.RepositoryDescriptor;
 import org.gradle.api.internal.artifacts.repositories.metadata.DefaultArtifactMetadataSource;
 import org.gradle.api.internal.artifacts.repositories.metadata.DefaultImmutableMetadataSources;
 import org.gradle.api.internal.artifacts.repositories.metadata.ImmutableMetadataSources;
@@ -35,6 +37,7 @@ import org.gradle.api.internal.artifacts.repositories.resolver.IvyResolver;
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport;
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransportFactory;
 import org.gradle.api.internal.file.FileResolver;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.authentication.Authentication;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
@@ -54,7 +57,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-public class DefaultFlatDirArtifactRepository extends AbstractArtifactRepository implements FlatDirectoryArtifactRepository, ResolutionAwareRepository, PublicationAwareRepository {
+public class DefaultFlatDirArtifactRepository extends AbstractResolutionAwareArtifactRepository implements FlatDirectoryArtifactRepository, ResolutionAwareRepository, PublicationAwareRepository {
     private final FileResolver fileResolver;
     private List<Object> dirs = new ArrayList<Object>();
     private final RepositoryTransportFactory transportFactory;
@@ -70,7 +73,9 @@ public class DefaultFlatDirArtifactRepository extends AbstractArtifactRepository
                                             FileStore<ModuleComponentArtifactIdentifier> artifactFileStore,
                                             ImmutableModuleIdentifierFactory moduleIdentifierFactory,
                                             IvyMutableModuleMetadataFactory metadataFactory,
-                                            InstantiatorFactory instantiatorFactory) {
+                                            InstantiatorFactory instantiatorFactory,
+                                            ObjectFactory objectFactory) {
+        super(objectFactory);
         this.fileResolver = fileResolver;
         this.transportFactory = transportFactory;
         this.locallyAvailableResourceFinder = locallyAvailableResourceFinder;
@@ -89,33 +94,51 @@ public class DefaultFlatDirArtifactRepository extends AbstractArtifactRepository
         return super.getDisplayName() + '(' + Joiner.on(", ").join(dirs) + ')';
     }
 
+    @Override
     public Set<File> getDirs() {
         return fileResolver.resolveFiles(dirs).getFiles();
     }
 
+    @Override
     public void setDirs(Set<File> dirs) {
         setDirs((Iterable<?>) dirs);
     }
 
+    @Override
     public void setDirs(Iterable<?> dirs) {
+        invalidateDescriptor();
         this.dirs = Lists.newArrayList(dirs);
     }
 
+    @Override
     public void dir(Object dir) {
         dirs(dir);
     }
 
+    @Override
     public void dirs(Object... dirs) {
+        invalidateDescriptor();
         this.dirs.addAll(Arrays.asList(dirs));
     }
 
+    @Override
     public ModuleVersionPublisher createPublisher() {
         return createRealResolver();
     }
 
+    @Override
     public ConfiguredModuleComponentRepository createResolver() {
         return createRealResolver();
     }
+
+    @Override
+    protected RepositoryDescriptor createDescriptor() {
+        return new FlatDirRepositoryDescriptor(
+            getName(),
+            getDirs()
+        );
+    }
+
 
     @Override
     protected RepositoryResourceAccessor createRepositoryAccessor(RepositoryTransport transport, URI rootUri, FileStore<String> externalResourcesFileStore) {
