@@ -16,27 +16,28 @@
 
 package org.gradle.integtests.samples
 
-import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.RepoScriptBlockUtil
+import org.gradle.integtests.fixtures.AbstractSampleIntegrationTest
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.util.Requires
 import org.junit.Rule
+import spock.lang.Unroll
 
-class SamplesScalaZincIntegrationTest extends AbstractIntegrationSpec {
+import static org.gradle.util.TestPrecondition.KOTLIN_SCRIPT
+
+@Requires(KOTLIN_SCRIPT)
+class SamplesScalaZincIntegrationTest extends AbstractSampleIntegrationTest {
 
     @Rule Sample sample = new Sample(temporaryFolder, 'scala/zinc')
 
-    def setup() {
-        executer.usingInitScript(RepoScriptBlockUtil.createMirrorInitScript())
-    }
-
-    def canBuildJar() {
+    @Unroll
+    def "can build jar with #dsl dsl"() {
         given:
-        def projectDir = sample.dir
+        def projectDir = sample.dir.file(dsl)
 
         when:
         // Build and test projects
-        executer.inDirectory(projectDir).withTasks('clean', 'build').run()
+        executer.inDirectory(projectDir).requireGradleDistribution().withTasks('clean', 'build').run()
 
         then:
         // Check contents of Jar
@@ -47,5 +48,8 @@ class SamplesScalaZincIntegrationTest extends AbstractIntegrationSpec {
                 'org/gradle/sample/Named.class',
                 'org/gradle/sample/Person.class'
         )
+
+        where:
+        dsl << ['groovy', 'kotlin']
     }
 }

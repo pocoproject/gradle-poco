@@ -22,23 +22,30 @@ import groovy.lang.Closure;
 import org.apache.commons.lang.StringUtils;
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
+import org.gradle.api.GradleException;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.NamedDomainObjectContainer;
 import org.gradle.api.NonNullApi;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.UnknownTaskException;
+import org.gradle.api.internal.MutationGuards;
 import org.gradle.api.internal.NamedDomainObjectContainerConfigureDelegate;
 import org.gradle.api.internal.TaskInternal;
+import org.gradle.api.internal.project.CrossProjectConfigurator;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.internal.project.taskfactory.ITaskFactory;
 import org.gradle.api.internal.project.taskfactory.TaskIdentity;
+import org.gradle.api.internal.project.taskfactory.TaskInstantiator;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.TaskCollection;
 import org.gradle.api.tasks.TaskProvider;
 import org.gradle.initialization.ProjectAccessListener;
+import org.gradle.internal.Actions;
 import org.gradle.internal.Cast;
 import org.gradle.internal.ImmutableActionSet;
 import org.gradle.internal.Transformers;
+import org.gradle.internal.exceptions.Contextual;
 import org.gradle.internal.metaobject.DynamicObject;
 import org.gradle.internal.operations.BuildOperationContext;
 import org.gradle.internal.operations.BuildOperationDescriptor;
@@ -56,6 +63,7 @@ import org.gradle.util.DeprecationLogger;
 import org.gradle.util.GUtil;
 
 import javax.annotation.Nullable;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -78,18 +86,19 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     );
 
     private final ITaskFactory taskFactory;
+    private final NamedEntityInstantiator<Task> taskInstantiator;
     private final ProjectAccessListener projectAccessListener;
     private final BuildOperationExecutor buildOperationExecutor;
 
     private final TaskStatistics statistics;
     private final boolean eagerlyCreateLazyTasks;
-    private final Map<String, TaskProvider<? extends Task>> placeholders = Maps.newLinkedHashMap();
 
     private MutableModelNode modelNode;
 
-    public DefaultTaskContainer(ProjectInternal project, Instantiator instantiator, ITaskFactory taskFactory, ProjectAccessListener projectAccessListener, TaskStatistics statistics, BuildOperationExecutor buildOperationExecutor) {
-        super(Task.class, instantiator, project);
+    public DefaultTaskContainer(final ProjectInternal project, Instantiator instantiator, final ITaskFactory taskFactory, ProjectAccessListener projectAccessListener, TaskStatistics statistics, BuildOperationExecutor buildOperationExecutor, CrossProjectConfigurator crossProjectConfigurator) {
+        super(Task.class, instantiator, project, MutationGuards.of(crossProjectConfigurator));
         this.taskFactory = taskFactory;
+        taskInstantiator = new TaskInstantiator(taskFactory, project);
         this.projectAccessListener = projectAccessListener;
         this.statistics = statistics;
         this.eagerlyCreateLazyTasks = Boolean.getBoolean(EAGERLY_CREATE_LAZY_TASKS_PROPERTY);
@@ -97,6 +106,11 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     }
 
     public Task create(Map<String, ?> options) {
+        assertMutable("create(Map<String, ?>)");
+        return doCreate(options, Actions.doNothing());
+    }
+
+    private Task doCreate(Map<String, ?> options, final Action<? super Task> configureAction) {
         Map<String, ?> factoryOptions = options;
         final boolean replace;
         if (options.containsKey(Task.TASK_OVERWRITE)) {
@@ -125,34 +139,39 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
 
             @Override
             public Task call(BuildOperationContext context) {
-                Object[] constructorArgs = getConstructorArgs(actualArgs);
-                TaskInternal task = createTask(identity, constructorArgs);
-                statistics.eagerTask(type);
+                try {
+                    Object[] constructorArgs = getConstructorArgs(actualArgs);
+                    TaskInternal task = createTask(identity, constructorArgs);
+                    statistics.eagerTask(type);
 
-                Object dependsOnTasks = actualArgs.get(Task.TASK_DEPENDS_ON);
-                if (dependsOnTasks != null) {
-                    task.dependsOn(dependsOnTasks);
-                }
-                Object description = actualArgs.get(Task.TASK_DESCRIPTION);
-                if (description != null) {
-                    task.setDescription(description.toString());
-                }
-                Object group = actualArgs.get(Task.TASK_GROUP);
-                if (group != null) {
-                    task.setGroup(group.toString());
-                }
-                Object action = actualArgs.get(Task.TASK_ACTION);
-                if (action instanceof Action) {
-                    Action<? super Task> taskAction = Cast.uncheckedCast(action);
-                    task.doFirst(taskAction);
-                } else if (action != null) {
-                    Closure closure = (Closure) action;
-                    task.doFirst(closure);
-                }
+                    Object dependsOnTasks = actualArgs.get(Task.TASK_DEPENDS_ON);
+                    if (dependsOnTasks != null) {
+                        task.dependsOn(dependsOnTasks);
+                    }
+                    Object description = actualArgs.get(Task.TASK_DESCRIPTION);
+                    if (description != null) {
+                        task.setDescription(description.toString());
+                    }
+                    Object group = actualArgs.get(Task.TASK_GROUP);
+                    if (group != null) {
+                        task.setGroup(group.toString());
+                    }
+                    Object action = actualArgs.get(Task.TASK_ACTION);
+                    if (action instanceof Action) {
+                        Action<? super Task> taskAction = Cast.uncheckedCast(action);
+                        task.doFirst(taskAction);
+                    } else if (action != null) {
+                        Closure closure = (Closure) action;
+                        task.doFirst(closure);
+                    }
 
-                addTask(task, replace);
-                context.setResult(REALIZE_RESULT);
-                return task;
+                    addTask(task, replace);
+                    configureAction.execute(task);
+                    context.setResult(REALIZE_RESULT);
+                    return task;
+                } catch (Throwable t) {
+                    throw taskCreationException(name, t);
+                }
             }
         });
     }
@@ -201,36 +220,44 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     private <T extends Task> void addTask(T task, boolean replaceExisting) {
         String name = task.getName();
 
-        DefaultTaskProvider<? extends Task> placeholderProvider = (DefaultTaskProvider) placeholders.remove(name);
-        if (placeholderProvider != null) {
-            placeholderProvider.removed = true;
-            if (!replaceExisting) {
-                if (modelNode != null) {
-                    modelNode.removeLink(name);
-                }
-                warnAboutPlaceholderDeprecation(name);
-            }
-        }
-
         if (replaceExisting) {
             Task existing = findByNameWithoutRules(name);
             if (existing != null) {
-                remove(existing);
+                DeprecationLogger.nagUserOfDeprecated("Replacing a task that may have been used by other plugins",
+                    "Use a different name for this task ('" + name + "') or avoid creating the original task you are trying to replace.");
+                removeInternal(existing);
             } else {
-                DefaultTaskProvider<? extends Task> taskProvider = (DefaultTaskProvider) findByNameLaterWithoutRules(name);
+                TaskCreatingProvider<? extends Task> taskProvider = Cast.uncheckedCast(findByNameLaterWithoutRules(name));
                 if (taskProvider != null) {
-                    taskProvider.removed = true;
+                    removeInternal(taskProvider);
+
+                    final Action<? super T> onCreate;
+                    if (!taskProvider.getType().isAssignableFrom(task.getClass())) {
+                        DeprecationLogger.nagUserOfDeprecated(
+                            "Replacing an existing task with an incompatible type",
+                            "Use a different name for this task ('" + name + "'), use a compatible type (" + ((TaskInternal)task).getTaskIdentity().type.getName() + ") or avoid creating the original task you are trying to replace.");
+                        onCreate = getEventRegister().getAddActions();
+                    } else {
+                        onCreate = Cast.uncheckedCast(taskProvider.getOnCreateActions().mergeFrom(getEventRegister().getAddActions()));
+                    }
+
+                    add(task, onCreate);
+                    return; // Exit early as we are reusing the create actions from the provider
+                } else {
+                    DeprecationLogger.nagUserOfDeprecated(
+                        "Unnecessarily replacing a task that does not exist",
+                        "Try using create() or register() directly instead. You attempted to replace a task named '" + name + "', but no task exists with that name already.");
                 }
             }
         } else if (hasWithName(name)) {
-            duplicateTask(name);
+            failOnDuplicateTask(name);
         }
 
-        add(task);
+        addInternal(task);
     }
 
-    private <T extends Task> T duplicateTask(String task) {
-        throw new InvalidUserDataException(String.format("Cannot add task '%s' as a task with that name already exists.", task));
+    private void failOnDuplicateTask(String task) {
+        throw new DuplicateTaskException(String.format("Cannot add task '%s' as a task with that name already exists.", task));
     }
 
     public <U extends Task> U maybeCreate(String name, Class<U> type) throws InvalidUserDataException {
@@ -242,25 +269,37 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     }
 
     public Task create(Map<String, ?> options, Closure configureClosure) throws InvalidUserDataException {
-        return create(options).configure(configureClosure);
+        assertMutable("create(Map<String, ?>, Closure)");
+        return doCreate(options, ConfigureUtil.configureUsing(configureClosure));
     }
 
     @Override
     public <T extends Task> T create(String name, Class<T> type) {
-        return create(name, type, NO_ARGS);
+        assertMutable("create(String, Class)");
+        return doCreate(name, type, NO_ARGS, Actions.doNothing());
     }
 
     @Override
     public <T extends Task> T create(final String name, final Class<T> type, final Object... constructorArgs) throws InvalidUserDataException {
+        assertMutable("create(String, Class, Object...)");
+        return doCreate(name, type, constructorArgs, Actions.doNothing());
+    }
+
+    private <T extends Task> T doCreate(final String name, final Class<T> type, final Object[] constructorArgs, final Action<? super T> configureAction) throws InvalidUserDataException {
         final TaskIdentity<T> identity = TaskIdentity.create(name, type, project);
         return buildOperationExecutor.call(new CallableBuildOperation<T>() {
             @Override
             public T call(BuildOperationContext context) {
-                T task = createTask(identity, constructorArgs);
-                statistics.eagerTask(type);
-                addTask(task, false);
-                context.setResult(REALIZE_RESULT);
-                return task;
+                try {
+                    T task = createTask(identity, constructorArgs);
+                    statistics.eagerTask(type);
+                    addTask(task, false);
+                    configureAction.execute(task);
+                    context.setResult(REALIZE_RESULT);
+                    return task;
+                } catch (Throwable t) {
+                    throw taskCreationException(name, t);
+                }
             }
 
             @Override
@@ -270,7 +309,7 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         });
     }
 
-    private <T extends Task> T createTask(TaskIdentity<T> identity, Object... constructorArgs) throws InvalidUserDataException {
+    private <T extends Task> T createTask(TaskIdentity<T> identity, Object[] constructorArgs) throws InvalidUserDataException {
         for (int i = 0; i < constructorArgs.length; i++) {
             if (constructorArgs[i] == null) {
                 throw new NullPointerException(String.format("Received null for %s constructor argument #%s", identity.type.getName(), i + 1));
@@ -280,13 +319,13 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     }
 
     public Task create(String name) {
-        return create(name, DefaultTask.class);
+        assertMutable("create(String)");
+        return doCreate(name, DefaultTask.class, NO_ARGS, Actions.doNothing());
     }
 
     public Task create(String name, Action<? super Task> configureAction) throws InvalidUserDataException {
-        Task task = create(name);
-        configureAction.execute(task);
-        return task;
+        assertMutable("create(String, Action)");
+        return doCreate(name, DefaultTask.class, NO_ARGS, configureAction);
     }
 
     public Task maybeCreate(String name) {
@@ -298,14 +337,17 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     }
 
     public Task replace(String name) {
+        assertMutable("replace(String)");
         return replace(name, DefaultTask.class);
     }
 
     public Task create(String name, Closure configureClosure) {
-        return create(name).configure(configureClosure);
+        assertMutable("create(String, Closure)");
+        return doCreate(name, DefaultTask.class, NO_ARGS, ConfigureUtil.configureUsing(configureClosure));
     }
 
     public <T extends Task> T create(String name, Class<T> type, Action<? super T> configuration) throws InvalidUserDataException {
+        assertMutable("create(String, Class, Action)");
         T task = create(name, type);
         configuration.execute(task);
         return task;
@@ -313,32 +355,37 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
 
     @Override
     public TaskProvider<Task> register(String name, Action<? super Task> configurationAction) throws InvalidUserDataException {
+        assertMutable("register(String, Action)");
         return Cast.uncheckedCast(register(name, DefaultTask.class, configurationAction));
     }
 
     @Override
     public <T extends Task> TaskProvider<T> register(String name, Class<T> type, Action<? super T> configurationAction) throws InvalidUserDataException {
+        assertMutable("register(String, Class, Action)");
         return registerTask(name, type, configurationAction, NO_ARGS);
     }
 
     @Override
     public <T extends Task> TaskProvider<T> register(String name, Class<T> type) throws InvalidUserDataException {
+        assertMutable("register(String, Class)");
         return register(name, type, NO_ARGS);
     }
 
     @Override
     public TaskProvider<Task> register(String name) throws InvalidUserDataException {
+        assertMutable("register(String)");
         return Cast.uncheckedCast(register(name, DefaultTask.class));
     }
 
     @Override
     public <T extends Task> TaskProvider<T> register(String name, Class<T> type, Object... constructorArgs) {
+        assertMutable("register(String, Class, Object...)");
         return registerTask(name, type, null, constructorArgs);
     }
 
     private <T extends Task> TaskProvider<T> registerTask(final String name, final Class<T> type, @Nullable final Action<? super T> configurationAction, final Object... constructorArgs) {
         if (hasWithName(name)) {
-            duplicateTask(name);
+            failOnDuplicateTask(name);
         }
         final TaskIdentity<T> identity = TaskIdentity.create(name, type, project);
         TaskProvider<T> provider = buildOperationExecutor.call(new CallableBuildOperation<TaskProvider<T>>() {
@@ -349,10 +396,10 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
 
             @Override
             public TaskProvider<T> call(BuildOperationContext context) {
-                DefaultTaskProvider<T> provider = Cast.uncheckedCast(getInstantiator()
+                TaskProvider<T> provider = Cast.uncheckedCast(getInstantiator()
                     .newInstance(TaskCreatingProvider.class, DefaultTaskContainer.this, identity, configurationAction, constructorArgs)
                 );
-                addLater(provider);
+                addLaterInternal(provider);
                 context.setResult(REGISTER_RESULT);
                 return provider;
             }
@@ -366,14 +413,19 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     }
 
     public <T extends Task> T replace(final String name, final Class<T> type) {
+        assertMutable("replace(String, Class)");
         final TaskIdentity<T> identity = TaskIdentity.create(name, type, project);
         return buildOperationExecutor.call(new CallableBuildOperation<T>() {
             @Override
             public T call(BuildOperationContext context) {
-                T task = taskFactory.create(identity);
-                addTask(task, true);
-                context.setResult(REALIZE_RESULT);
-                return task;
+                try {
+                    T task = taskFactory.create(identity);
+                    addTask(task, true);
+                    context.setResult(REALIZE_RESULT);
+                    return task;
+                } catch (Throwable t) {
+                    throw taskCreationException(name, t);
+                }
             }
 
             @Override
@@ -422,7 +474,7 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
 
     @Override
     public NamedEntityInstantiator<Task> getEntityInstantiator() {
-        return taskFactory;
+        return taskInstantiator;
     }
 
     public DynamicObject getTasksAsDynamicObject() {
@@ -432,19 +484,16 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     @Override
     public SortedSet<String> getNames() {
         SortedSet<String> names = super.getNames();
-        if (placeholders.isEmpty() && modelNode == null) {
+        if (modelNode == null) {
             return names;
-        }
-        TreeSet<String> allNames = new TreeSet<String>(names);
-        allNames.addAll(placeholders.keySet());
-        if (modelNode != null) {
+        } else {
+            TreeSet<String> allNames = new TreeSet<String>(names);
             allNames.addAll(modelNode.getLinkNames());
+            return allNames;
         }
-        return allNames;
     }
 
     public void realize() {
-        flushPlaceholders();
         if (modelNode != null) {
             project.getModelRegistry().realizeNode(modelNode.getPath());
         }
@@ -455,15 +504,6 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         project.fireDeferredConfiguration();
         if (modelNode != null) {
             project.getModelRegistry().atStateOrLater(modelNode.getPath(), ModelNode.State.SelfClosed);
-        }
-    }
-
-    private void flushPlaceholders() {
-        // @formatter:off
-        for (Iterator<TaskProvider<?>> iterator = placeholders.values().iterator(); iterator.hasNext();) {
-            // @formatter:on
-            iterator.next().get();
-            iterator.remove();
         }
     }
 
@@ -479,11 +519,6 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
      * @return true if this method _may_ have done some work.
      */
     private boolean maybeCreateTasks(String name) {
-        TaskProvider<?> placeholder = placeholders.remove(name);
-        if (placeholder != null) {
-            placeholder.get();
-            return true;
-        }
         if (modelNode != null && modelNode.hasLink(name)) {
             realizeTask(MODEL_PATH.child(name), ModelNode.State.Initialized);
             return true;
@@ -499,43 +534,11 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
         if (!maybeCreateTasks(name)) {
             return null;
         }
-        placeholders.remove(name);
         return super.findByNameWithoutRules(name);
     }
 
     private Task realizeTask(ModelPath taskPath, ModelNode.State minState) {
         return project.getModelRegistry().atStateOrLater(taskPath, ModelType.of(Task.class), minState);
-    }
-
-    public <T extends Task> void addPlaceholderAction(final String placeholderName, final Class<T> taskType, final Action<? super T> configure) {
-        if (findByNameWithoutRules(placeholderName) == null) {
-            final TaskIdentity<T> identity = TaskIdentity.create(placeholderName, taskType, project);
-            buildOperationExecutor.run(new RunnableBuildOperation() {
-                @Override
-                public void run(BuildOperationContext context) {
-                    TaskCreatingProvider<T> provider = Cast.uncheckedCast(getInstantiator()
-                        .newInstance(TaskCreatingProvider.class, DefaultTaskContainer.this, identity, configure, NO_ARGS)
-                    );
-                    placeholders.put(placeholderName, provider);
-                    deferredElementKnown(placeholderName, provider);
-                    context.setResult(REGISTER_RESULT);
-                }
-
-                @Override
-                public BuildOperationDescriptor.Builder description() {
-                    return registerDescriptor(identity);
-                }
-            });
-        } else {
-            warnAboutPlaceholderDeprecation(placeholderName);
-        }
-    }
-
-    private void warnAboutPlaceholderDeprecation(String placeholderName) {
-        DeprecationLogger.nagUserOfDeprecated(
-            "Creating a custom task named '" + placeholderName + "'",
-            "You can configure the existing task using the '" + placeholderName + " { }' syntax or create your custom task under a different name.'"
-        );
     }
 
     public <U extends Task> NamedDomainObjectContainer<U> containerWithType(Class<U> type) {
@@ -551,94 +554,141 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
     }
 
     @Override
-    public void whenElementKnown(Action<? super ElementInfo<Task>> action) {
-        super.whenElementKnown(action);
-        for (Map.Entry<String, TaskProvider<?>> entry : placeholders.entrySet()) {
-            deferredElementKnown(entry.getKey(), entry.getValue());
-        }
+    public <S extends Task> TaskCollection<S> withType(Class<S> type) {
+        Instantiator instantiator = getInstantiator();
+        return Cast.uncheckedCast(instantiator.newInstance(DefaultRealizableTaskCollection.class, type, super.withType(type), modelNode, instantiator));
     }
 
     @Override
-    public <S extends Task> TaskCollection<S> withType(Class<S> type) {
-        Instantiator instantiator = getInstantiator();
-        return Cast.uncheckedCast(instantiator.newInstance(RealizableTaskCollection.class, type, super.withType(type), modelNode, instantiator));
+    public boolean remove(Object o) {
+        warnAboutRemoveMethodDeprecation("remove(Object)");
+        return removeInternal(o);
+    }
+
+    private boolean removeInternal(Object o) {
+        return super.remove(o);
+    }
+
+    @Override
+    public boolean removeAll(Collection<?> c) {
+        warnAboutRemoveMethodDeprecation("removeAll(Collection)");
+        return super.removeAll(c);
+    }
+
+    @Override
+    public void clear() {
+        warnAboutRemoveMethodDeprecation("clear()");
+        super.clear();
+    }
+
+    @Override
+    public boolean retainAll(Collection<?> target) {
+        warnAboutRemoveMethodDeprecation("retainAll(Collection)");
+        return super.retainAll(target);
+    }
+
+    @Override
+    public Iterator<Task> iterator() {
+        final Iterator<Task> delegate = super.iterator();
+        return new Iterator<Task>() {
+            @Override
+            public boolean hasNext() {
+                return delegate.hasNext();
+            }
+
+            @Override
+            public Task next() {
+                return delegate.next();
+            }
+
+            @Override
+            public void remove() {
+                warnAboutRemoveMethodDeprecation("iterator()#remove()");
+                delegate.remove();
+            }
+        };
+    }
+
+    @Override
+    public Action<? super Task> whenObjectRemoved(Action<? super Task> action) {
+        warnAboutRemoveMethodDeprecation("whenObjectRemoved(Action)");
+        return super.whenObjectRemoved(action);
+    }
+
+    @Override
+    public void whenObjectRemoved(Closure action) {
+        warnAboutRemoveMethodDeprecation("whenObjectRemoved(Closure)");
+        super.whenObjectRemoved(action);
+    }
+
+    private void warnAboutRemoveMethodDeprecation(String methodName) {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("TaskContainer." + methodName, "Prefer disabling the task instead, see Task.setEnabled(boolean).");
     }
 
     // Cannot be private due to reflective instantiation
-    public class TaskCreatingProvider<I extends Task> extends DefaultTaskProvider<I> {
+    public class TaskCreatingProvider<I extends Task> extends AbstractDomainObjectCreatingProvider<I> implements TaskProvider<I> {
+        private final TaskIdentity<I> identity;
         private Object[] constructorArgs;
-        private I task;
-        private Throwable cause;
-        private ImmutableActionSet<I> onCreate;
 
         public TaskCreatingProvider(TaskIdentity<I> identity, @Nullable Action<? super I> configureAction, Object... constructorArgs) {
-            super(identity);
+            super(identity.name, identity.type, configureAction);
+            this.identity = identity;
             this.constructorArgs = constructorArgs;
-            onCreate = ImmutableActionSet.<I>empty().mergeFrom(getEventRegister().getAddActions());
             statistics.lazyTask();
-            if (configureAction != null) {
-                configure(configureAction);
-            }
+        }
+
+        public ImmutableActionSet<I> getOnCreateActions() {
+            return onCreate;
         }
 
         @Override
-        public void configure(final Action<? super I> action) {
-            if (task != null) {
-                // Already realized, just run the action now
-                action.execute(task);
-                return;
-            }
-            // Collect any container level add actions then add the task specific action
-            onCreate = onCreate.mergeFrom(getEventRegister().getAddActions()).add(action);
+        public boolean maybeVisitBuildDependencies(TaskDependencyResolveContext context) {
+            context.add(get());
+            return true;
         }
 
         @Override
-        public I getOrNull() {
-            if (cause != null) {
-                throw createIllegalStateException();
-            }
-            if (task == null) {
-                task = getType().cast(findByNameWithoutRules(getName()));
-                if (task == null) {
-                    buildOperationExecutor.run(new RunnableBuildOperation() {
-                        @Override
-                        public void run(BuildOperationContext context) {
-                            try {
-                                // Collect any container level add actions added since the last call to configure()
-                                onCreate = onCreate.mergeFrom(getEventRegister().getAddActions());
-
-                                // Create the task
-                                task = createTask(identity, constructorArgs);
-                                realized(TaskCreatingProvider.this);
-                                statistics.lazyTaskRealized(getType());
-
-                                // Register the task
-                                add(task, onCreate);
-                                // TODO removing this stuff from the store should be handled through some sort of decoration
-                                context.setResult(REALIZE_RESULT);
-                            } catch (RuntimeException ex) {
-                                cause = ex;
-                                throw createIllegalStateException();
-                            } finally {
-                                // Discard state that is no longer required
-                                constructorArgs = null;
-                                onCreate = ImmutableActionSet.empty();
-                            }
-                        }
-
-                        @Override
-                        public BuildOperationDescriptor.Builder description() {
-                            return realizeDescriptor(identity, false, false);
-                        }
-                    });
+        protected void tryCreate() {
+            buildOperationExecutor.run(new RunnableBuildOperation() {
+                @Override
+                public void run(BuildOperationContext context) {
+                    try {
+                        TaskCreatingProvider.super.tryCreate();
+                        // TODO removing this stuff from the store should be handled through some sort of decoration
+                        context.setResult(REALIZE_RESULT);
+                    } finally {
+                        constructorArgs = null;
+                    }
                 }
-            }
-            return task;
+
+                @Override
+                public BuildOperationDescriptor.Builder description() {
+                    return realizeDescriptor(identity, false, false);
+                }
+            });
         }
 
-        private IllegalStateException createIllegalStateException() {
-            return new IllegalStateException(String.format("Could not create task '%s' (%s)", getName(), getType().getSimpleName()), cause);
+        @Override
+        protected I createDomainObject() {
+            return createTask(identity, constructorArgs);
         }
+
+        @Override
+        protected void onLazyDomainObjectRealized() {
+            statistics.lazyTaskRealized(getType());
+        }
+
+        @Override
+        protected RuntimeException domainObjectCreationException(Throwable cause) {
+            return taskCreationException(getName(), cause);
+        }
+    }
+
+    private RuntimeException taskCreationException(String name, Throwable cause) {
+        if (cause instanceof DuplicateTaskException) {
+            return (RuntimeException) cause;
+        }
+        return new TaskCreationException(String.format("Could not create task '%s'.", project.identityPath(name)), cause);
     }
 
     private static BuildOperationDescriptor.Builder realizeDescriptor(TaskIdentity<?> identity, boolean replacement, boolean eager) {
@@ -651,10 +701,68 @@ public class DefaultTaskContainer extends DefaultTaskCollection<Task> implements
             .details(new RegisterDetails(identity));
     }
 
+    @Deprecated
+    @Override
+    public boolean add(Task o) {
+        DeprecationLogger.nagUserOfReplacedMethodInvocation("TaskContainer.add()", "TaskContainer.register()");
+        return addInternal(o);
+    }
+
+    @Deprecated
+    @Override
+    public boolean addAll(Collection<? extends Task> c) {
+        DeprecationLogger.nagUserOfDiscontinuedMethodInvocation("TaskContainer.addAll()");
+        return addAllInternal(c);
+    }
+
+    @Override
+    public void addLater(Provider<? extends Task> provider) {
+        throw new UnsupportedOperationException("Adding a task provider directly to the task container is not supported.  Use the register() method instead.");
+    }
+
+    @Override
+    public void addAllLater(Provider<? extends Iterable<Task>> provider) {
+        throw new UnsupportedOperationException("Adding a task provider directly to the task container is not supported.  Use the register() method instead.");
+    }
+
+    @Override
+    public boolean addInternal(Task task) {
+        return super.add(task);
+    }
+
+    @Override
+    public boolean addAllInternal(Collection<? extends Task> task) {
+        return super.addAll(task);
+    }
+
+    private void addLaterInternal(Provider<? extends Task> provider) {
+        super.addLater(provider);
+    }
+
     private static final RegisterTaskBuildOperationType.Result REGISTER_RESULT = new RegisterTaskBuildOperationType.Result() {
     };
     private static final RealizeTaskBuildOperationType.Result REALIZE_RESULT = new RealizeTaskBuildOperationType.Result() {
     };
+
+    @Contextual
+    private static class TaskCreationException extends GradleException {
+        TaskCreationException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    private static class DuplicateTaskException extends InvalidUserDataException {
+        public DuplicateTaskException(String message) {
+            super(message);
+        }
+    }
+
+    @Contextual
+    private static class IncompatibleTaskTypeException extends InvalidUserDataException {
+        public IncompatibleTaskTypeException(String message) {
+            super(message);
+        }
+    }
 
     private static final class RealizeDetails implements RealizeTaskBuildOperationType.Details {
 

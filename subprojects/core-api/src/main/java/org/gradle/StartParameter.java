@@ -37,6 +37,7 @@ import org.gradle.internal.concurrent.DefaultParallelismConfiguration;
 import org.gradle.internal.installation.CurrentGradleInstallation;
 import org.gradle.internal.installation.GradleInstallation;
 import org.gradle.internal.logging.DefaultLoggingConfiguration;
+import org.gradle.util.DeprecationLogger;
 
 import javax.annotation.Nullable;
 import java.io.File;
@@ -354,7 +355,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @return the tasks to execute in this build. Never returns null.
      */
-    @Incubating
     public List<TaskExecutionRequest> getTaskRequests() {
         return taskRequests;
     }
@@ -365,7 +365,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @param taskParameters the tasks to execute in this build.
      */
-    @Incubating
     public void setTaskRequests(Iterable<? extends TaskExecutionRequest> taskParameters) {
         this.taskRequests = Lists.newArrayList(taskParameters);
     }
@@ -538,7 +537,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @return All init scripts, including explicit init scripts and implicit init scripts.
      */
-    @Incubating
     public List<File> getAllInitScripts() {
         CompositeInitScriptFinder initScriptFinder = new CompositeInitScriptFinder(
             new UserHomeInitScriptFinder(getGradleUserHomeDir()), new DistributionInitScriptFinder(gradleHomeDir)
@@ -650,23 +648,30 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     }
 
     /**
-     * Specifies whether the build scripts should be recompiled.
+     * Specifies whether to force the build scripts to be recompiled.
+     *
+     * @deprecated This flag is no longer used.
      */
+    @Deprecated
     public boolean isRecompileScripts() {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("StartParameter.isRecompileScripts()");
         return recompileScripts;
     }
 
     /**
-     * Specifies whether the build scripts should be recompiled.
+     * Specifies whether to force the build scripts to be recompiled.
+     *
+     * @deprecated This flag is no longer used and simply defaults to 'false'.
      */
+    @Deprecated
     public void setRecompileScripts(boolean recompileScripts) {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("StartParameter.setRecompileScripts()");
         this.recompileScripts = recompileScripts;
     }
 
     /**
      * {@inheritDoc}
      */
-    @Incubating
     @Override
     public boolean isParallelProjectExecutionEnabled() {
         return parallelismConfiguration.isParallelProjectExecutionEnabled();
@@ -675,7 +680,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     /**
      * {@inheritDoc}
      */
-    @Incubating
     @Override
     public void setParallelProjectExecutionEnabled(boolean parallelProjectExecution) {
         parallelismConfiguration.setParallelProjectExecutionEnabled(parallelProjectExecution);
@@ -722,7 +726,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     /**
      * {@inheritDoc}
      */
-    @Incubating
     @Override
     public int getMaxWorkerCount() {
         return parallelismConfiguration.getMaxWorkerCount();
@@ -731,7 +734,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
     /**
      * {@inheritDoc}
      */
-    @Incubating
     @Override
     public void setMaxWorkerCount(int maxWorkerCount) {
         parallelismConfiguration.setMaxWorkerCount(maxWorkerCount);
@@ -786,27 +788,22 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
         this.configureOnDemand = configureOnDemand;
     }
 
-    @Incubating
     public boolean isContinuous() {
         return continuous;
     }
 
-    @Incubating
     public void setContinuous(boolean enabled) {
         this.continuous = enabled;
     }
 
-    @Incubating
     public void includeBuild(File includedBuild) {
         includedBuilds.add(includedBuild);
     }
 
-    @Incubating
     public void setIncludedBuilds(List<File> includedBuilds) {
         this.includedBuilds = includedBuilds;
     }
 
-    @Incubating
     public List<File> getIncludedBuilds() {
         return Collections.unmodifiableList(includedBuilds);
     }
@@ -816,7 +813,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @since 3.4
      */
-    @Incubating
     public boolean isBuildScan() {
         return buildScan;
     }
@@ -826,7 +822,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @since 3.4
      */
-    @Incubating
     public void setBuildScan(boolean buildScan) {
         this.buildScan = buildScan;
     }
@@ -836,7 +831,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @since 3.4
      */
-    @Incubating
     public boolean isNoBuildScan() {
         return noBuildScan;
     }
@@ -846,7 +840,6 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      *
      * @since 3.4
      */
-    @Incubating
     public void setNoBuildScan(boolean noBuildScan) {
         this.noBuildScan = noBuildScan;
     }
@@ -855,9 +848,11 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      * Returns true when console is interactive.
      *
      * @since 4.3
+     * @deprecated This flag is no longer used and simply defaults to 'false'.
      */
-    @Incubating
+    @Deprecated
     public boolean isInteractive() {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("StartParameter.isInteractive()");
         return interactive;
     }
 
@@ -865,9 +860,11 @@ public class StartParameter implements LoggingConfiguration, ParallelismConfigur
      * Specifies whether console is interactive.
      *
      * @since 4.3
+     * @deprecated This flag is no longer used.
      */
-    @Incubating
+    @Deprecated
     public void setInteractive(boolean interactive) {
+        DeprecationLogger.nagUserOfDiscontinuedMethod("StartParameter.setInteractive()");
         this.interactive = interactive;
     }
 

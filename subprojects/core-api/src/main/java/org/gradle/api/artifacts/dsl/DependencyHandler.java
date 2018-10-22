@@ -329,7 +329,6 @@ public interface DependencyHandler {
      * @return The dependency.
      * @since 2.6
      */
-    @Incubating
     Dependency gradleTestKit();
 
     /**
@@ -366,7 +365,6 @@ public interface DependencyHandler {
      * @return the component metadata handler for this project
      * @since 1.8
      */
-    @Incubating
     ComponentMetadataHandler getComponents();
 
     /**
@@ -377,7 +375,6 @@ public interface DependencyHandler {
      * @param configureAction the action to use to configure module metadata
      * @since 1.8
      */
-    @Incubating
     void components(Action<? super ComponentMetadataHandler> configureAction);
 
     /**
@@ -387,7 +384,6 @@ public interface DependencyHandler {
      * @return the component module metadata handler for this project
      * @since 2.2
      */
-    @Incubating
     ComponentModuleMetadataHandler getModules();
 
     /**
@@ -398,7 +394,6 @@ public interface DependencyHandler {
      * @param configureAction the action to use to configure module metadata
      * @since 2.2
      */
-    @Incubating
     void modules(Action<? super ComponentModuleMetadataHandler> configureAction);
 
     /**
@@ -406,7 +401,6 @@ public interface DependencyHandler {
      *
      * @since 2.0
      */
-    @Incubating
     ArtifactResolutionQuery createArtifactResolutionQuery();
 
     /**
@@ -416,7 +410,6 @@ public interface DependencyHandler {
      *
      * @since 3.4
      */
-    @Incubating
     AttributesSchema attributesSchema(Action<? super AttributesSchema> configureAction);
 
     /**
@@ -425,7 +418,6 @@ public interface DependencyHandler {
      *
      * @since 3.4
      */
-    @Incubating
     AttributesSchema getAttributesSchema();
 
     /**
@@ -448,6 +440,55 @@ public interface DependencyHandler {
      * @see org.gradle.api.artifacts.transform.ArtifactTransform
      * @since 3.5
      */
-    @Incubating
     void registerTransform(Action<? super VariantTransform> registrationAction);
+
+    /**
+     * Declares a dependency on a platform. If the target coordinates represent multiple
+     * potential components, the platform component will be selected, instead of the library.
+     *
+     * @param notation the coordinates of the platform
+     *
+     * @since 5.0
+     */
+    @Incubating
+    Dependency platform(Object notation);
+
+    /**
+     * Declares a dependency on a platform. If the target coordinates represent multiple
+     * potential components, the platform component will be selected, instead of the library.
+     *
+     * @param notation the coordinates of the platform
+     * @param configureAction the dependency configuration block
+     *
+     * @since 5.0
+     */
+    @Incubating
+    Dependency platform(Object notation, Action<? super Dependency> configureAction);
+
+    /**
+     * Declares a dependency on an enforced platform. If the target coordinates represent multiple
+     * potential components, the platform component will be selected, instead of the library.
+     * An enforced platform is a platform for which the direct dependencies are forced, meaning
+     * that they would override any other version found in the graph.
+     *
+     * @param notation the coordinates of the platform
+     *
+     * @since 5.0
+     */
+    @Incubating
+    Dependency enforcedPlatform(Object notation);
+
+    /**
+     * Declares a dependency on an enforced platform. If the target coordinates represent multiple
+     * potential components, the platform component will be selected, instead of the library.
+     * An enforced platform is a platform for which the direct dependencies are forced, meaning
+     * that they would override any other version found in the graph.
+     *
+     * @param notation the coordinates of the platform
+     * @param configureAction the dependency configuration block
+     *
+     * @since 5.0
+     */
+    @Incubating
+    Dependency enforcedPlatform(Object notation, Action<? super Dependency> configureAction);
 }

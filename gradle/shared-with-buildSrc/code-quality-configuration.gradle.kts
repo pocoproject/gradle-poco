@@ -32,13 +32,12 @@ configureCodenarc(codeQualityConfigDir)
 configureCodeQualityTasks()
 
 fun Project.configureCheckstyle(codeQualityConfigDir: File) {
-    apply {
-        plugin("checkstyle")
-    }
+    apply(plugin = "checkstyle")
 
     val checkStyleConfigDir = codeQualityConfigDir.resolve("checkstyle")
     configure<CheckstyleExtension> {
         configDir = checkStyleConfigDir
+        toolVersion = "8.12"
 
         plugins.withType<GroovyBasePlugin> {
             java.sourceSets.all {
@@ -62,9 +61,7 @@ fun getIntegrationTestFixturesRule(): Class<*>? {
 }
 
 fun Project.configureCodenarc(codeQualityConfigDir: File) {
-    apply {
-        plugin("codenarc")
-    }
+    apply(plugin = "codenarc")
 
     dependencies {
         "codenarc"("org.codenarc:CodeNarc:1.0")
@@ -75,7 +72,6 @@ fun Project.configureCodenarc(codeQualityConfigDir: File) {
         if (ruleClass != null) {
             "codenarc"(files(ruleClass.protectionDomain!!.codeSource!!.location))
             "codenarc"(embeddedKotlin("stdlib"))
-            "codenarc"(embeddedKotlin("runtime"))
         }
     }
 
@@ -94,10 +90,8 @@ fun Project.configureCodenarc(codeQualityConfigDir: File) {
 
 fun Project.configureCodeQualityTasks() {
     val codeQualityTasks = tasks.matching { it is CodeNarc || it is Checkstyle }
-    tasks {
-        "codeQuality" {
-            dependsOn(codeQualityTasks)
-        }
+    tasks.register("codeQuality").configure {
+        dependsOn(codeQualityTasks)
     }
     tasks.withType(Test::class.java).configureEach {
         shouldRunAfter(codeQualityTasks)
@@ -116,8 +110,9 @@ open class CodeNarcRule : ComponentMetadataRule {
         context.details.allVariants {
             withDependencies {
                 removeAll { it.group == "org.codehaus.groovy" }
-                add("org.codehaus.groovy:groovy-all") {
-                    version { prefer("2.4.12") }
+                add("org.gradle.groovy:groovy-all") {
+                    // TODO This must match the version number in dependencies.gradle
+                    version { prefer("1.0-" + groovy.lang.GroovySystem.getVersion()) }
                     because("We use groovy-all everywhere")
                 }
             }

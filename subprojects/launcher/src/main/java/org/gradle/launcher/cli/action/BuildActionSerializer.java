@@ -111,14 +111,12 @@ public class BuildActionSerializer {
             encoder.writeBoolean(startParameter.isContinueOnFailure());
             encoder.writeBoolean(startParameter.isOffline());
             encoder.writeBoolean(startParameter.isRefreshDependencies());
-            encoder.writeBoolean(startParameter.isRecompileScripts());
             encoder.writeBoolean(startParameter.isBuildCacheEnabled());
             encoder.writeBoolean(startParameter.isBuildCacheDebugLogging());
             encoder.writeBoolean(startParameter.isConfigureOnDemand());
             encoder.writeBoolean(startParameter.isContinuous());
             encoder.writeBoolean(startParameter.isBuildScan());
             encoder.writeBoolean(startParameter.isNoBuildScan());
-            encoder.writeBoolean(startParameter.isInteractive());
             encoder.writeBoolean(startParameter.isWriteDependencyLocks());
 
             // Deprecations (these should just be rendered on the client instead of being sent to the daemon to send them back again)
@@ -183,14 +181,12 @@ public class BuildActionSerializer {
             startParameter.setContinueOnFailure(decoder.readBoolean());
             startParameter.setOffline(decoder.readBoolean());
             startParameter.setRefreshDependencies(decoder.readBoolean());
-            startParameter.setRecompileScripts(decoder.readBoolean());
             startParameter.setBuildCacheEnabled(decoder.readBoolean());
             startParameter.setBuildCacheDebugLogging(decoder.readBoolean());
             startParameter.setConfigureOnDemand(decoder.readBoolean());
             startParameter.setContinuous(decoder.readBoolean());
             startParameter.setBuildScan(decoder.readBoolean());
             startParameter.setNoBuildScan(decoder.readBoolean());
-            startParameter.setInteractive(decoder.readBoolean());
             startParameter.setWriteDependencyLocks(decoder.readBoolean());
 
             for (String warning : stringSetSerializer.read(decoder)) {

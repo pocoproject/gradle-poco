@@ -17,25 +17,26 @@
 package org.gradle.workers.internal
 
 import org.gradle.api.internal.InstantiatorFactory
-import org.gradle.api.internal.file.FileResolver
+import org.gradle.internal.file.PathToFileResolver
 import org.gradle.internal.operations.BuildOperationExecutor
 import org.gradle.internal.work.AsyncWorkTracker
 import org.gradle.internal.work.ConditionalExecution
 import org.gradle.internal.work.ConditionalExecutionQueue
-import org.gradle.internal.work.ConditionalExecutionQueueFactory
 import org.gradle.internal.work.WorkerLeaseRegistry
 import org.gradle.process.internal.worker.child.WorkerDirectoryProvider
+import org.gradle.testing.internal.util.Specification
 import org.gradle.util.RedirectStdOutAndErr
 import org.gradle.util.UsesNativeServices
 import org.gradle.workers.IsolationMode
 import org.gradle.workers.WorkerConfiguration
 import org.junit.Rule
-import spock.lang.Specification
+import org.junit.rules.TemporaryFolder
 import spock.lang.Unroll
 
 @UsesNativeServices
 class DefaultWorkerExecutorTest extends Specification {
     @Rule RedirectStdOutAndErr output = new RedirectStdOutAndErr()
+    @Rule TemporaryFolder temporaryFolder = new TemporaryFolder()
 
     def workerDaemonFactory = Mock(WorkerFactory)
     def inProcessWorkerFactory = Mock(WorkerFactory)
@@ -43,11 +44,13 @@ class DefaultWorkerExecutorTest extends Specification {
     def buildOperationWorkerRegistry = Mock(WorkerLeaseRegistry)
     def buildOperationExecutor = Mock(BuildOperationExecutor)
     def asyncWorkTracker = Mock(AsyncWorkTracker)
-    def fileResolver = Mock(FileResolver)
-    def workerDirectoryProvider = Mock(WorkerDirectoryProvider)
+    def fileResolver = Mock(PathToFileResolver)
+    def workerDirectoryProvider = Stub(WorkerDirectoryProvider) {
+        getWorkingDirectory() >> { temporaryFolder.root }
+    }
     def runnable = Mock(Runnable)
     def instantiatorFactory = Mock(InstantiatorFactory)
-    def executionQueueFactory = Mock(ConditionalExecutionQueueFactory)
+    def executionQueueFactory = Mock(WorkerExecutionQueueFactory)
     def executionQueue = Mock(ConditionalExecutionQueue)
     def worker = Mock(Worker)
     ConditionalExecution task
@@ -56,7 +59,7 @@ class DefaultWorkerExecutorTest extends Specification {
     def setup() {
         _ * fileResolver.resolve(_ as File) >> { files -> files[0] }
         _ * fileResolver.resolve(_ as String) >> { files -> new File(files[0]) }
-        _ * executionQueueFactory.create(_, _) >> executionQueue
+        _ * executionQueueFactory.create() >> executionQueue
         workerExecutor = new DefaultWorkerExecutor(workerDaemonFactory, inProcessWorkerFactory, noIsolationWorkerFactory, fileResolver, buildOperationWorkerRegistry, buildOperationExecutor, asyncWorkTracker, workerDirectoryProvider, executionQueueFactory)
     }
 

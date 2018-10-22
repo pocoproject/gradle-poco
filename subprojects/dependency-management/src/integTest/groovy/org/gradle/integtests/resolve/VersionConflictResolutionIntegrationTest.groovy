@@ -28,6 +28,7 @@ class VersionConflictResolutionIntegrationTest extends AbstractIntegrationSpec {
         settingsFile << """
             rootProject.name = 'test'
 """
+        new ResolveTestFixture(buildFile).addDefaultVariantDerivationStrategy()
     }
 
 
@@ -199,7 +200,7 @@ task resolve {
 }
 """
 
-        def resolve = new ResolveTestFixture(buildFile)
+        def resolve = new ResolveTestFixture(buildFile).expectDefaultConfiguration("runtime")
         resolve.prepare()
 
         when:
@@ -213,6 +214,59 @@ task resolve {
                 }
                 module("org:baz:1.0") {
                     module("org:foo:1.4.4").byConflictResolution("between versions 1.3.3 and 1.4.4")
+                }
+            }
+        }
+    }
+
+    void "re-selects target version for previously resolved then evicted selector"() {
+        def depOld = mavenRepo.module("org", "dep", "2.0").publish()
+        def depNew = mavenRepo.module("org", "dep", "2.5").publish()
+
+        def controlOld = mavenRepo.module("org", "control", "1.0").dependsOn(depNew).publish()
+        def controlNew = mavenRepo.module("org", "control", "1.2").dependsOn(depNew).publish()
+        def controlNewBringer = mavenRepo.module("org", "control-1.2-bringer", "1.0").dependsOn(controlNew).publish()
+
+        mavenRepo.module("org", "one", "1.0").dependsOn(controlOld).publish()
+
+        def depOldBringer = mavenRepo.module("org", "dep-2.0-bringer", "1.0").dependsOn(depOld).publish()
+        // Note: changing the order of the following dependencies makes the test pass
+        mavenRepo.module("org", "two", "1.0").dependsOn(controlNewBringer).dependsOn(depOldBringer).publish()
+
+        buildFile << """
+repositories {
+    maven { url "${mavenRepo.uri}" }
+}
+
+configurations { compile }
+
+dependencies {
+    compile 'org:one:1.0'
+    compile 'org:two:1.0'
+}
+"""
+
+        def resolve = new ResolveTestFixture(buildFile).expectDefaultConfiguration("runtime")
+        resolve.prepare()
+
+        when:
+        run("checkDeps")
+
+        then:
+        resolve.expectGraph {
+            root(":", ":test:") {
+                module("org:one:1.0") {
+                    edge("org:control:1.0", "org:control:1.2") {
+                        edge("org:dep:2.5", "org:dep:2.5")
+                    }
+                }
+                module("org:two:1.0") {
+                    module("org:dep-2.0-bringer:1.0") {
+                        edge("org:dep:2.0", "org:dep:2.5").byConflictResolution("between versions 2.0 and 2.5")
+                    }
+                    module("org:control-1.2-bringer:1.0") {
+                        module("org:control:1.2")
+                    }
                 }
             }
         }
@@ -237,7 +291,7 @@ dependencies {
 }
 """
 
-        def resolve = new ResolveTestFixture(buildFile)
+        def resolve = new ResolveTestFixture(buildFile).expectDefaultConfiguration("runtime")
         resolve.prepare()
 
         when:
@@ -410,7 +464,7 @@ project(':tool') {
 
 	configurations.all {
 	    resolutionStrategy {
-	        force 'org:foo:1.4+'
+	        force 'org:foo:[1.4, 1.5)'
 	        failOnVersionConflict()
 	    }
 	}
@@ -675,7 +729,7 @@ dependencies {
 }
 """
 
-        def resolve = new ResolveTestFixture(buildFile)
+        def resolve = new ResolveTestFixture(buildFile).expectDefaultConfiguration("runtime")
         resolve.prepare()
 
         when:
@@ -713,7 +767,7 @@ dependencies {
 }
 """
 
-        def resolve = new ResolveTestFixture(buildFile)
+        def resolve = new ResolveTestFixture(buildFile).expectDefaultConfiguration("runtime")
         resolve.prepare()
 
         when:
@@ -1193,7 +1247,7 @@ task checkDeps(dependsOn: configurations.compile) {
         noExceptionThrown()
     }
 
-    def "merges range selector with sub-version selector"() {
+    def "range selector should not win over sub-version selector"() {
         given:
         (1..10).each {
             mavenRepo.module("org", "leaf", "1.$it").publish()
@@ -1214,7 +1268,7 @@ task checkDeps(dependsOn: configurations.compile) {
             task checkDeps {
                 doLast {
                     def files = configurations.conf*.name.sort()
-                    assert files == ['a-1.0.jar', 'b-1.0.jar', 'leaf-1.6.jar']
+                    assert files == ['a-1.0.jar', 'b-1.0.jar', 'leaf-1.10.jar']
                 }
             }
         """
@@ -1568,7 +1622,7 @@ task checkDeps(dependsOn: configurations.compile) {
         mavenRepo.module('org', 'baz', '1.2').dependsOn(foo12).publish()
         mavenRepo.module('org', 'bar', '1.1').dependsOn(baz11).publish()
 
-        ResolveTestFixture resolve = new ResolveTestFixture(buildFile, "conf")
+        ResolveTestFixture resolve = new ResolveTestFixture(buildFile, "conf").expectDefaultConfiguration("runtime")
         buildFile << """
             repositories {
                 maven { url "${mavenRepo.uri}" }
@@ -1642,4 +1696,89 @@ task checkDeps(dependsOn: configurations.compile) {
         then:
         noExceptionThrown()
     }
+
+    @Issue("gradle/gradle#6403")
+    def "shouldn't fail when forcing a dynamic version in resolution strategy"() {
+
+        given:
+        mavenRepo.module("org", "moduleA", "1.1").publish()
+
+        buildFile << """
+            repositories {
+                maven { url "${mavenRepo.uri}" }
+            }
+            configurations {
+                conf { 
+                   resolutionStrategy {
+                      force "org:moduleA:1.+"
+                      failOnVersionConflict() 
+                   }
+                }
+            }
+            
+            dependencies {
+               conf("org:moduleA:1.+")
+               conf("org:moduleA:1.1")
+            }
+        """
+
+        when:
+        run 'dependencies', '--configuration', 'conf'
+
+        then:
+        noExceptionThrown()
+
+
+    }
+
+    @Unroll('optional dependency marked as no longer pending reverts to pending if hard edge disappears (remover has constraint: #dependsOptional, root has constraint: #constraintsOptional)')
+    def 'optional dependency marked as no longer pending reverts to pending if hard edge disappears (remover has constraint: #dependsOptional, root has constraint: #constraintsOptional)'() {
+        given:
+        def optional = mavenRepo.module('org', 'optional', '1.0').publish()
+        def main = mavenRepo.module('org', 'main', '1.0').dependsOn(optional, optional: true).publish()
+        mavenRepo.module('org.a', 'root', '1.0').dependsOn(main).dependsOn(optional).publish()
+        def root11 = mavenRepo.module('org.a', 'root', '1.1').dependsOn(main).publish()
+        def bom = mavenRepo.module("org", "bom", "1.0")
+        bom.hasPackaging('pom')
+        bom.dependencyConstraint(root11)
+        if (dependsOptional) {
+            bom.dependencyConstraint(optional)
+        }
+        bom.publish()
+
+        buildFile << """
+apply plugin: 'java'
+
+repositories {
+    maven {
+        name 'repo'
+        url '${mavenRepo.uri}'
+    }
+}
+
+dependencies {
+    implementation 'org.a:root'
+    implementation platform('org:bom:1.0')
+    constraints {
+        implementation 'org.a:root:1.0'
+        if ($constraintsOptional) {
+            implementation 'org:optional:1.0'
+        }
+    }
+}
+"""
+        when:
+        succeeds 'dependencies', '--configuration', 'compileClasspath'
+
+        then:
+        outputDoesNotContain('org:optional')
+
+        where:
+        dependsOptional | constraintsOptional
+        true            | true
+        true            | false
+        false           | true
+        false           | false
+    }
+
 }

@@ -19,12 +19,11 @@ package org.gradle.workers.internal;
 import com.google.common.collect.ImmutableSet;
 import org.gradle.api.Action;
 import org.gradle.api.Transformer;
-import org.gradle.api.internal.file.FileResolver;
 import org.gradle.internal.classloader.ClasspathUtil;
 import org.gradle.internal.classloader.FilteringClassLoader;
-import org.gradle.internal.concurrent.Stoppable;
 import org.gradle.internal.exceptions.Contextual;
 import org.gradle.internal.exceptions.DefaultMultiCauseException;
+import org.gradle.internal.file.PathToFileResolver;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.operations.BuildOperationRef;
 import org.gradle.internal.resources.ResourceLock;
@@ -32,7 +31,7 @@ import org.gradle.internal.work.AbstractConditionalExecution;
 import org.gradle.internal.work.AsyncWorkCompletion;
 import org.gradle.internal.work.AsyncWorkTracker;
 import org.gradle.internal.work.ConditionalExecutionQueue;
-import org.gradle.internal.work.ConditionalExecutionQueueFactory;
+import org.gradle.internal.work.DefaultConditionalExecutionQueue;
 import org.gradle.internal.work.NoAvailableWorkerLeaseException;
 import org.gradle.internal.work.WorkerLeaseRegistry;
 import org.gradle.internal.work.WorkerLeaseRegistry.WorkerLease;
@@ -49,25 +48,25 @@ import java.io.File;
 import java.util.List;
 import java.util.concurrent.Callable;
 
-public class DefaultWorkerExecutor implements WorkerExecutor, Stoppable {
+public class DefaultWorkerExecutor implements WorkerExecutor {
     private final ConditionalExecutionQueue<DefaultWorkResult> executionQueue;
     private final WorkerFactory daemonWorkerFactory;
     private final WorkerFactory isolatedClassloaderWorkerFactory;
     private final WorkerFactory noIsolationWorkerFactory;
-    private final FileResolver fileResolver;
+    private final PathToFileResolver fileResolver;
     private final WorkerLeaseRegistry workerLeaseRegistry;
     private final BuildOperationExecutor buildOperationExecutor;
     private final AsyncWorkTracker asyncWorkTracker;
     private final WorkerDirectoryProvider workerDirectoryProvider;
 
     public DefaultWorkerExecutor(WorkerFactory daemonWorkerFactory, WorkerFactory isolatedClassloaderWorkerFactory, WorkerFactory noIsolationWorkerFactory,
-                                 FileResolver fileResolver, WorkerLeaseRegistry workerLeaseRegistry, BuildOperationExecutor buildOperationExecutor,
-                                 AsyncWorkTracker asyncWorkTracker, WorkerDirectoryProvider workerDirectoryProvider, ConditionalExecutionQueueFactory conditionalExecutionQueueFactory) {
+                                 PathToFileResolver fileResolver, WorkerLeaseRegistry workerLeaseRegistry, BuildOperationExecutor buildOperationExecutor,
+                                 AsyncWorkTracker asyncWorkTracker, WorkerDirectoryProvider workerDirectoryProvider, WorkerExecutionQueueFactory workerExecutionQueueFactory) {
         this.daemonWorkerFactory = daemonWorkerFactory;
         this.isolatedClassloaderWorkerFactory = isolatedClassloaderWorkerFactory;
         this.noIsolationWorkerFactory = noIsolationWorkerFactory;
         this.fileResolver = fileResolver;
-        this.executionQueue = conditionalExecutionQueueFactory.create("WorkerExecutor Queue", DefaultWorkResult.class);
+        this.executionQueue = workerExecutionQueueFactory.create();
         this.workerLeaseRegistry = workerLeaseRegistry;
         this.buildOperationExecutor = buildOperationExecutor;
         this.asyncWorkTracker = asyncWorkTracker;
@@ -75,20 +74,21 @@ public class DefaultWorkerExecutor implements WorkerExecutor, Stoppable {
     }
 
     @Override
-    public void stop() {
-        executionQueue.stop();
-    }
-
-    @Override
     public void submit(Class<? extends Runnable> actionClass, Action<? super WorkerConfiguration> configAction) {
         WorkerConfiguration configuration = new DefaultWorkerConfiguration(fileResolver);
+        File workingDirectory = workerDirectoryProvider.getWorkingDirectory();
+        configuration.getForkOptions().setWorkingDir(workingDirectory);
         configAction.execute(configuration);
         String description = configuration.getDisplayName() != null ? configuration.getDisplayName() : actionClass.getName();
+
+        if (!workingDirectory.equals(configuration.getForkOptions().getWorkingDir())) {
+            throw new WorkExecutionException(description + ": setting the working directory of a worker is not supported.");
+        }
 
         // Serialize parameters in this thread prior to starting work in a separate thread
         ActionExecutionSpec spec;
         try {
-            spec = new SerializingActionExecutionSpec(actionClass, description, configuration.getForkOptions().getWorkingDir(), configuration.getParams());
+            spec = new SerializingActionExecutionSpec(actionClass, description, configuration.getParams());
         } catch (Throwable t) {
             throw new WorkExecutionException(description, t);
         }
@@ -137,11 +137,19 @@ public class DefaultWorkerExecutor implements WorkerExecutor, Stoppable {
         }
     }
 
+    /**
+     * Wait for any outstanding work to complete.  Note that if there is uncompleted work associated
+     * with the current build operation, we'll also temporarily expand the thread pool of the execution queue.
+     * This is to avoid a thread starvation scenario (see {@link DefaultConditionalExecutionQueue#expand(boolean)}
+     * for further details).
+     */
     @Override
     public void await() throws WorkerExecutionException {
         BuildOperationRef currentOperation = buildOperationExecutor.getCurrentOperation();
         try {
-            executionQueue.expand();
+            if (asyncWorkTracker.hasUncompletedWork(currentOperation)) {
+                executionQueue.expand();
+            }
             asyncWorkTracker.waitForCompletion(currentOperation, false);
         } catch (DefaultMultiCauseException e) {
             throw workerExecutionException(e.getCauses());
@@ -222,7 +230,7 @@ public class DefaultWorkerExecutor implements WorkerExecutor, Stoppable {
 
         JavaForkOptions forkOptions = new DefaultJavaForkOptions(fileResolver);
         userForkOptions.copyTo(forkOptions);
-        forkOptions.setWorkingDir(workerDirectoryProvider.getIdleWorkingDirectory());
+        forkOptions.setWorkingDir(workerDirectoryProvider.getWorkingDirectory());
 
         return new DaemonForkOptionsBuilder(fileResolver)
                         .javaForkOptions(forkOptions)
@@ -252,8 +260,15 @@ public class DefaultWorkerExecutor implements WorkerExecutor, Stoppable {
 
     @Contextual
     private static class WorkExecutionException extends RuntimeException {
+        WorkExecutionException(String description) {
+            super(toMessage(description));
+        }
         WorkExecutionException(String description, Throwable cause) {
-            super("A failure occurred while executing " + description, cause);
+            super(toMessage(description), cause);
+        }
+
+        private static String toMessage(String description) {
+            return "A failure occurred while executing " + description;
         }
     }
 

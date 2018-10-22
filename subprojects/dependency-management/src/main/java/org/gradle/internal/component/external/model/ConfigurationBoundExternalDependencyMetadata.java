@@ -45,6 +45,7 @@ public class ConfigurationBoundExternalDependencyMetadata implements ModuleDepen
     private final ExternalDependencyDescriptor dependencyDescriptor;
     private final String reason;
     private final boolean isTransitive;
+    private final boolean isConstraint;
 
     private boolean alwaysUseAttributeMatching;
 
@@ -54,6 +55,7 @@ public class ConfigurationBoundExternalDependencyMetadata implements ModuleDepen
         this.dependencyDescriptor = dependencyDescriptor;
         this.reason = reason;
         this.isTransitive = dependencyDescriptor.isTransitive();
+        this.isConstraint = dependencyDescriptor.isConstraint();
     }
 
     public ConfigurationBoundExternalDependencyMetadata(ConfigurationMetadata configuration, ModuleComponentIdentifier componentId, ExternalDependencyDescriptor dependencyDescriptor) {
@@ -63,6 +65,10 @@ public class ConfigurationBoundExternalDependencyMetadata implements ModuleDepen
     public ConfigurationBoundExternalDependencyMetadata alwaysUseAttributeMatching() {
         this.alwaysUseAttributeMatching = true;
         return this;
+    }
+
+    public ExternalDependencyDescriptor getDependencyDescriptor() {
+        return dependencyDescriptor;
     }
 
     /**
@@ -129,6 +135,10 @@ public class ConfigurationBoundExternalDependencyMetadata implements ModuleDepen
         return new ConfigurationBoundExternalDependencyMetadata(configuration, componentId, dependencyDescriptor, reason);
     }
 
+    public ConfigurationBoundExternalDependencyMetadata withDescriptor(ExternalDependencyDescriptor descriptor) {
+        return new ConfigurationBoundExternalDependencyMetadata(configuration, componentId, descriptor);
+    }
+
     private ModuleDependencyMetadata withRequested(ModuleComponentSelector newSelector) {
         ExternalDependencyDescriptor newDelegate = dependencyDescriptor.withRequested(newSelector);
         return new ConfigurationBoundExternalDependencyMetadata(configuration, componentId, newDelegate);
@@ -150,8 +160,8 @@ public class ConfigurationBoundExternalDependencyMetadata implements ModuleDepen
     }
 
     @Override
-    public boolean isPending() {
-        return dependencyDescriptor.isOptional();
+    public boolean isConstraint() {
+        return isConstraint;
     }
 
     @Override

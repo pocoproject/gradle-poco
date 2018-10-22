@@ -17,7 +17,6 @@
 package org.gradle.integtests.samples.dependencymanagement
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.RepoScriptBlockUtil
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.integtests.fixtures.UsesSample
 import org.junit.Rule
@@ -28,10 +27,10 @@ class SamplesDeclaringRepositoriesIntegrationTest extends AbstractIntegrationSpe
     Sample sample = new Sample(testDirectoryProvider)
 
     def setup() {
-        executer.usingInitScript(RepoScriptBlockUtil.createMirrorInitScript())
+        executer.withRepositoryMirrors()
     }
 
-    @UsesSample("userguide/dependencyManagement/declaringRepositories/publicRepository")
+    @UsesSample("userguide/dependencyManagement/declaringRepositories/publicRepository/groovy")
     def "can declare JCenter repository and resolve binary dependency"() {
         executer.inDirectory(sample.dir)
 
@@ -42,7 +41,7 @@ class SamplesDeclaringRepositoriesIntegrationTest extends AbstractIntegrationSpe
         sample.dir.file('build/libs/guava-23.0.jar').isFile()
     }
 
-    @UsesSample("userguide/dependencyManagement/declaringRepositories/customRepository")
+    @UsesSample("userguide/dependencyManagement/declaringRepositories/customRepository/groovy")
     def "can declare repository with custom URL"() {
         executer.inDirectory(sample.dir)
 
@@ -50,7 +49,7 @@ class SamplesDeclaringRepositoriesIntegrationTest extends AbstractIntegrationSpe
         succeeds('checkRepositories')
     }
 
-    @UsesSample("userguide/dependencyManagement/declaringRepositories/multipleRepositories")
+    @UsesSample("userguide/dependencyManagement/declaringRepositories/multipleRepositories/groovy")
     def "can declare multiple repositories and resolve binary dependency"() {
         executer.inDirectory(sample.dir)
 

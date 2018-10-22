@@ -39,8 +39,10 @@ import org.gradle.api.internal.initialization.ClassLoaderScope
 import org.gradle.api.internal.initialization.DefaultScriptHandler
 import org.gradle.api.internal.initialization.ScriptClassPathResolver
 import org.gradle.api.internal.plugins.PluginRegistry
+import org.gradle.api.internal.project.CrossProjectConfigurator
 import org.gradle.api.internal.project.DefaultAntBuilderFactory
 import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.api.internal.project.ProjectStateRegistry
 import org.gradle.api.internal.project.taskfactory.ITaskFactory
 import org.gradle.api.internal.tasks.DefaultTaskContainerFactory
 import org.gradle.api.internal.tasks.TaskContainerInternal
@@ -120,6 +122,8 @@ class ProjectScopeServicesTest extends Specification {
         parent.get(TaskStatistics) >> new TaskStatistics()
         parent.get(TextResourceLoader) >> Mock(TextResourceLoader)
         parent.get(BuildOperationExecutor) >> Mock(BuildOperationExecutor)
+        parent.get(CrossProjectConfigurator) >> Mock(CrossProjectConfigurator)
+        parent.get(ProjectStateRegistry) >> Mock(ProjectStateRegistry)
         registry = new ProjectScopeServices(parent, project, loggingManagerInternalFactory)
     }
 

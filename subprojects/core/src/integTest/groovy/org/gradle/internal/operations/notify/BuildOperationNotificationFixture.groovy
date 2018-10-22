@@ -50,7 +50,31 @@ class BuildOperationNotificationFixture {
     }
 
     void has(boolean started, Class<?> type, Map<String, ?> payload) {
-        has(started, type, payload ? { it == payload } : { true })
+        has(started, type, payload ? payloadEquals(payload) : { true } as Predicate)
+    }
+
+    private static Predicate<? super Map<String, ?>> payloadEquals(Map<String, ?> expectedPayload) {
+        { actualPayload ->
+            if (actualPayload.keySet() != expectedPayload.keySet()) {
+                return false
+            }
+            for (String key : actualPayload.keySet()) {
+                if (!testValue(expectedPayload[key], actualPayload[key])) {
+                    return false
+                }
+            }
+            true
+        } as Predicate
+    }
+
+    private static boolean testValue(expectedValue, actualValue) {
+        if (expectedValue instanceof Closure) {
+            expectedValue.call(actualValue)
+        } else if (expectedValue instanceof Predicate) {
+            expectedValue.apply(actualValue)
+        } else {
+            expectedValue == actualValue
+        }
     }
 
     void has(boolean started, Class<?> type, Predicate<? super Map<String, ?>> payloadTest) {
@@ -77,13 +101,7 @@ class BuildOperationNotificationFixture {
 
     String registerListener() {
         listenerClass() + """
-        registrar.registerBuildScopeListener(listener)
-        """
-    }
-
-    String registerListenerWithDrainRecordings() {
-        listenerClass() + """
-        registrar.registerBuildScopeListenerAndReceiveStoredOperations(listener)
+        registrar.register(listener)
         """
     }
 
@@ -97,7 +115,7 @@ class BuildOperationNotificationFixture {
                 void started(${BuildOperationStartedNotification.name} startedNotification) {
             
                     def details = startedNotification.notificationOperationDetails
-                    if (details instanceof org.gradle.internal.execution.ExecuteTaskBuildOperationType.Details) {
+                    if (details instanceof org.gradle.api.internal.tasks.execution.ExecuteTaskBuildOperationType.Details) {
                         details = [taskPath: details.taskPath, buildPath: details.buildPath, taskClass: details.taskClass.name]
                     } else  if (details instanceof org.gradle.api.internal.plugins.ApplyPluginBuildOperationType.Details) {
                         details = [pluginId: details.pluginId, pluginClass: details.pluginClass.name, targetType: details.targetType, targetPath: details.targetPath, buildPath: details.buildPath]
@@ -108,6 +126,11 @@ class BuildOperationNotificationFixture {
                             detailsType: startedNotification.notificationOperationDetails.getClass().getInterfaces()[0].getName(),
                             details: details, 
                             started: startedNotification.notificationOperationStartedTimestamp))
+                }
+                
+                @Override
+                void progress(${BuildOperationProgressNotification.name} progressNotification){
+                    // Do nothing
                 }
             
                 @Override

@@ -22,7 +22,7 @@ import org.gradle.api.artifacts.ModuleDependency
 import org.gradle.api.attributes.Attribute
 import org.gradle.api.internal.artifacts.DefaultExcludeRule
 import org.gradle.api.internal.attributes.ImmutableAttributes
-import org.gradle.util.TestUtil
+import org.gradle.util.AttributeTestUtil
 import org.gradle.util.WrapUtil
 import spock.lang.Specification
 
@@ -37,7 +37,7 @@ abstract class AbstractModuleDependencySpec extends Specification {
     protected ExternalModuleDependency createDependency(String group, String name, String version) {
         def dependency = createDependency(group, name, version, null)
         if (dependency instanceof AbstractModuleDependency) {
-            dependency.attributesFactory = TestUtil.attributesFactory()
+            dependency.attributesFactory = AttributeTestUtil.attributesFactory()
         }
         dependency
     }
@@ -49,7 +49,9 @@ abstract class AbstractModuleDependencySpec extends Specification {
         dependency.group == "org.gradle"
         dependency.name == "gradle-core"
         dependency.version == "4.4-beta2"
-        dependency.versionConstraint.preferredVersion == "4.4-beta2"
+        dependency.versionConstraint.preferredVersion == ""
+        dependency.versionConstraint.requiredVersion == "4.4-beta2"
+        dependency.versionConstraint.strictVersion == ""
         dependency.versionConstraint.rejectedVersions == []
         dependency.transitive
         dependency.artifacts.isEmpty()

@@ -23,7 +23,9 @@ import org.gradle.api.internal.artifacts.component.ComponentIdentifierFactory
 import org.gradle.api.internal.artifacts.configurations.ConfigurationsProvider
 import org.gradle.api.internal.artifacts.configurations.DependencyMetaDataProvider
 import org.gradle.api.internal.artifacts.configurations.MutationValidator
+import org.gradle.api.internal.artifacts.dsl.dependencies.DependencyLockingProvider
 import org.gradle.api.internal.artifacts.dsl.dependencies.ProjectFinder
+import org.gradle.api.internal.project.ProjectStateRegistry
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
 import spock.lang.Specification
 import spock.lang.Unroll
@@ -40,6 +42,8 @@ class DefaultRootComponentMetadataBuilderTest extends Specification {
     def configurationsProvider = Stub(ConfigurationsProvider) {
         getAll() >> ([] as Set)
     }
+    ProjectStateRegistry projectStateRegistry = Mock()
+    DependencyLockingProvider dependencyLockingProvider = Mock()
 
     def mid = DefaultModuleIdentifier.newId('foo', 'bar')
 
@@ -49,7 +53,9 @@ class DefaultRootComponentMetadataBuilderTest extends Specification {
         moduleIdentifierFactory,
         projectFinder,
         configurationComponentMetaDataBuilder,
-        configurationsProvider)
+        configurationsProvider,
+        projectStateRegistry,
+        dependencyLockingProvider)
 
     def "caches root component metadata"() {
         componentIdentifierFactory.createComponentIdentifier(_) >> {

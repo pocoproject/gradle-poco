@@ -18,18 +18,36 @@ package org.gradle.gradlebuild.profiling.buildscan
 import com.gradle.scan.plugin.BuildScanExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
-import org.gradle.api.internal.GradleInternal
 import org.gradle.api.plugins.quality.Checkstyle
 import org.gradle.api.plugins.quality.CodeNarc
 import org.gradle.api.reporting.Reporting
 import org.gradle.gradlebuild.BuildEnvironment.isCiServer
 import org.gradle.internal.classloader.ClassLoaderHierarchyHasher
-import org.gradle.kotlin.dsl.*
+import org.gradle.kotlin.dsl.apply
+import org.gradle.kotlin.dsl.support.serviceOf
+import org.gradle.kotlin.dsl.the
 import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
-import kotlin.concurrent.thread
+import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
+import kotlin.collections.component1
+import kotlin.collections.component2
+import kotlin.collections.filter
+import kotlin.collections.forEach
 
 
+const val serverUrl = "https://e.grdev.net"
+
+
+private
+const val gitCommitName = "Git Commit ID"
+
+
+private
+const val ciBuildTypeName = "CI Build Type"
+
+
+@Suppress("unused") // consumed as plugin gradlebuild.buildscan
 open class BuildScanPlugin : Plugin<Project> {
 
     private
@@ -48,11 +66,6 @@ open class BuildScanPlugin : Plugin<Project> {
 
         extractCheckstyleAndCodenarcData()
         extractBuildCacheData()
-    }
-
-    private
-    fun buildScan(configure: BuildScanExtension.() -> Unit) {
-        buildScan.apply(configure)
     }
 
     private
@@ -78,7 +91,10 @@ open class BuildScanPlugin : Plugin<Project> {
                         codenarcPackage.getElementsByTag("File").flatMap { file ->
                             file.getElementsByTag("Violation").map { violation ->
                                 val filePath = rootProject.relativePath(file.attr("name"))
-                                val message = violation.getElementsByTag("Message").first() ?: violation.getElementsByTag("SourceLine").first()
+                                val message = violation.run {
+                                    getElementsByTag("Message").first()
+                                        ?: getElementsByTag("SourceLine").first()
+                                }
                                 "$filePath:${violation.attr("lineNumber")} \u2192 ${message.text()}"
                             }
                         }
@@ -95,59 +111,57 @@ open class BuildScanPlugin : Plugin<Project> {
         if (isCiServer) {
             buildScan {
                 tag("CI")
-                tag(System.getenv("TEAMCITY_BUILDCONF_NAME"))
                 link("TeamCity Build", System.getenv("BUILD_URL"))
                 value("Build ID", System.getenv("BUILD_ID"))
+                setCommitId(System.getenv("BUILD_VCS_NUMBER"))
+
+                whenEnvIsSet("BUILD_TYPE_ID") { buildType ->
+                    value(ciBuildTypeName, buildType)
+                    link("Build Type Scans", customValueSearchUrl(mapOf(ciBuildTypeName to buildType)))
+                }
             }
-            setCommitId(System.getenv("BUILD_VCS_NUMBER"))
         } else {
             buildScan.tag("LOCAL")
         }
     }
 
     private
-    fun Project.extractVcsData() {
-
-        fun fork(action: () -> Unit) = thread {
-            try {
-                action()
-            } catch (e: Exception) {
-                rootProject.logger.warn("Build scan user data async exec failed", e)
-            }
+    fun BuildScanExtension.whenEnvIsSet(envName: String, action: BuildScanExtension.(envValue: String) -> Unit) {
+        val envValue: String? = System.getenv(envName)
+        if (!envValue.isNullOrEmpty()) {
+            action(envValue!!)
         }
+    }
 
-        val threads = listOf(
+    private
+    fun Project.extractVcsData() {
+        buildScan {
 
-            fork {
-                system("git", "rev-parse", "--verify", "HEAD").let { commitId ->
-                    setCommitId(commitId)
+            if (!isCiServer) {
+                background {
+                    system("git", "rev-parse", "--verify", "HEAD").let { commitId ->
+                        setCommitId(commitId)
+                    }
                 }
-            },
+            }
 
-            fork {
+            background {
                 system("git", "status", "--porcelain").let { status ->
                     if (status.isNotEmpty()) {
-                        buildScan {
-                            tag("dirty")
-                            value("Git Status", status)
-                        }
+                        tag("dirty")
+                        value("Git Status", status)
                     }
                 }
-            },
+            }
 
-            fork {
+            background {
                 system("git", "rev-parse", "--abbrev-ref", "HEAD").let { branchName ->
                     if (branchName.isNotEmpty() && branchName != "HEAD") {
-                        buildScan {
-                            tag(branchName)
-                            value("Git Branch Name", branchName)
-                        }
+                        tag(branchName)
+                        value("Git Branch Name", branchName)
                     }
                 }
-            })
-
-        buildScan.buildFinished {
-            awaitAll(threads)
+            }
         }
     }
 
@@ -159,13 +173,15 @@ open class BuildScanPlugin : Plugin<Project> {
             val tasksToInvestigate = System.getProperty("cache.investigate.tasks", ":baseServices:classpathManifest")
                 .split(",")
 
-            buildScan.buildFinished {
-                allprojects.flatMap { gradle.taskGraph.allTasks }
-                    .filter { it.state.executed && it.path in tasksToInvestigate }
-                    .forEach { task ->
-                        val hasher = (gradle as GradleInternal).services.get(ClassLoaderHierarchyHasher::class.java)
-                        Visitor(buildScan, hasher, task).visit(task::class.java.classLoader)
-                    }
+            gradle.taskGraph.whenReady {
+                buildScan.buildFinished {
+                    gradle.taskGraph.allTasks
+                        .filter { it.state.executed && it.path in tasksToInvestigate }
+                        .forEach { task ->
+                            val hasher = gradle.serviceOf<ClassLoaderHierarchyHasher>()
+                            Visitor(buildScan, hasher, task).visit(task::class.java.classLoader)
+                        }
+                }
             }
         }
     }
@@ -192,25 +208,40 @@ open class BuildScanPlugin : Plugin<Project> {
     }
 
     private
-    fun Project.setCommitId(commitId: String) =
-        buildScan {
-            value("Git Commit ID", commitId)
-            link("Source", "https://github.com/gradle/gradle/commit/" + commitId)
-        }
+    fun BuildScanExtension.setCommitId(commitId: String) {
+        value(gitCommitName, commitId)
+        link("Source", "https://github.com/gradle/gradle/commit/$commitId")
+        link("Git Commit Scans", customValueSearchUrl(mapOf(gitCommitName to commitId)))
+        link("CI CompileAll Scan", customValueSearchUrl(mapOf(gitCommitName to commitId)) + "&search.tags=CompileAll")
+    }
+
+    private
+    inline fun buildScan(configure: BuildScanExtension.() -> Unit) {
+        buildScan.apply(configure)
+    }
 }
 
 
 private
-fun Project.system(vararg args: String): String =
-    ProcessBuilder(args.toList())
-        .directory(rootDir)
-        .start()
-        .run {
-            assert(waitFor() == 0)
-            inputStream.bufferedReader().use { it.readText().trim() }
-        }
+fun Project.system(vararg args: String): String {
+    val out = ByteArrayOutputStream()
+    exec {
+        commandLine(*args)
+        standardOutput = out
+    }
+    return String(out.toByteArray()).trim()
+}
 
 
 private
-fun awaitAll(threads: Iterable<Thread>) =
-    threads.forEach(Thread::join)
+fun customValueSearchUrl(search: Map<String, String>): String {
+    val query = search.map { (name, value) ->
+        "search.names=${name.urlEncode()}&search.values=${value.urlEncode()}"
+    }.joinToString("&")
+
+    return "$serverUrl/scans?$query"
+}
+
+
+private
+fun String.urlEncode() = URLEncoder.encode(this, Charsets.UTF_8.name())

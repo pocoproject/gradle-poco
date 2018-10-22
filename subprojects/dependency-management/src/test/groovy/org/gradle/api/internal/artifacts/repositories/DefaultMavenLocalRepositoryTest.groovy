@@ -22,13 +22,15 @@ import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.ModuleMeta
 import org.gradle.api.internal.artifacts.repositories.metadata.MavenMutableModuleMetadataFactory
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransportFactory
-import org.gradle.api.internal.changedetection.state.isolation.IsolatableFactory
 import org.gradle.api.internal.file.FileResolver
 import org.gradle.api.internal.filestore.ivy.ArtifactIdentifierFileStore
+import org.gradle.api.model.ObjectFactory
 import org.gradle.internal.logging.progress.ProgressLoggerFactory
 import org.gradle.internal.resource.ExternalResourceRepository
 import org.gradle.internal.resource.local.FileResourceRepository
 import org.gradle.internal.resource.local.LocallyAvailableResourceFinder
+import org.gradle.util.AttributeTestUtil
+import org.gradle.util.SnapshotTestUtil
 import org.gradle.util.TestUtil
 import spock.lang.Specification
 
@@ -42,8 +44,7 @@ class DefaultMavenLocalRepositoryTest extends Specification {
     final ModuleMetadataParser metadataParser = Stub()
     final AuthenticationContainer authenticationContainer = Stub()
     final ImmutableModuleIdentifierFactory moduleIdentifierFactory = Mock()
-    final MavenMutableModuleMetadataFactory mavenMetadataFactory = new MavenMutableModuleMetadataFactory(moduleIdentifierFactory, TestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
-    final IsolatableFactory isolatableFactory = TestUtil.valueSnapshotter()
+    final MavenMutableModuleMetadataFactory mavenMetadataFactory = new MavenMutableModuleMetadataFactory(moduleIdentifierFactory, AttributeTestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
 
     final DefaultMavenArtifactRepository repository = new DefaultMavenLocalArtifactRepository(resolver,
         transportFactory,
@@ -57,7 +58,8 @@ class DefaultMavenLocalRepositoryTest extends Specification {
         Mock(FileResourceRepository),
         TestUtil.featurePreviews(),
         mavenMetadataFactory,
-        TestUtil.valueSnapshotter()
+        SnapshotTestUtil.valueSnapshotter(),
+        Mock(ObjectFactory)
     )
     final ProgressLoggerFactory progressLoggerFactory = Mock()
 

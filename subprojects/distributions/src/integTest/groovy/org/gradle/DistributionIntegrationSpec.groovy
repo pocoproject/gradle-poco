@@ -16,8 +16,11 @@
 
 package org.gradle
 
+import org.apache.commons.io.IOUtils
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.test.fixtures.archive.JarTestFixture
 import org.gradle.test.fixtures.file.TestFile
+import org.gradle.util.GUtil
 import org.gradle.util.GradleVersion
 import org.gradle.util.PreconditionVerifier
 import org.junit.Rule
@@ -37,8 +40,22 @@ abstract class DistributionIntegrationSpec extends AbstractIntegrationSpec {
 
     abstract String getDistributionLabel()
 
+    /**
+     * Change this whenever you add or remove a new subproject.
+     */
+    int getCoreLibJarsCount() {
+        24
+    }
+
+    /**
+     * Change this if you added or removed dependencies.
+     */
+    int getThirdPartyLibJarsCount() {
+        180
+    }
+
     int getLibJarsCount() {
-        194
+        coreLibJarsCount + thirdPartyLibJarsCount
     }
 
     def "no duplicate entries"() {
@@ -110,9 +127,9 @@ abstract class DistributionIntegrationSpec extends AbstractIntegrationSpec {
 
         // Core libs
         def coreLibs = contentsDir.file("lib").listFiles().findAll {
-            it.name.startsWith("gradle-") && !it.name.startsWith("gradle-kotlin-dsl")
+            it.name.startsWith("gradle-") && !it.name.startsWith("gradle-api-metadata") && !it.name.startsWith("gradle-kotlin-dsl")
         }
-        assert coreLibs.size() == 22
+        assert coreLibs.size() == coreLibJarsCount
         coreLibs.each { assertIsGradleJar(it) }
 
         def toolingApiJar = contentsDir.file("lib/gradle-tooling-api-${baseVersion}.jar")
@@ -143,6 +160,9 @@ abstract class DistributionIntegrationSpec extends AbstractIntegrationSpec {
         // Docs
         contentsDir.file('getting-started.html').assertIsFile()
 
+        // Others
+        assertIsGradleApiMetadataJar(contentsDir.file("lib/gradle-api-metadata-${baseVersion}.jar"))
+
         // Jars that must not be shipped
         assert !contentsDir.file("lib/tools.jar").exists()
         assert !contentsDir.file("lib/plugins/tools.jar").exists()
@@ -152,5 +172,17 @@ abstract class DistributionIntegrationSpec extends AbstractIntegrationSpec {
         jar.assertIsFile()
         assertThat(jar.manifest.mainAttributes.getValue('Implementation-Version'), equalTo(baseVersion))
         assertThat(jar.manifest.mainAttributes.getValue('Implementation-Title'), equalTo('Gradle'))
+    }
+
+    private static void assertIsGradleApiMetadataJar(TestFile jar) {
+        new JarTestFixture(jar.canonicalFile).with {
+            def apiDeclaration = GUtil.loadProperties(IOUtils.toInputStream(content("gradle-api-declaration.properties")))
+            assert apiDeclaration.size() == 2
+            assert apiDeclaration.getProperty("includes").contains(":org/gradle/api/**:")
+            assert apiDeclaration.getProperty("excludes").split(":").size() == 1
+            def parameterNames = GUtil.loadProperties(IOUtils.toInputStream(content("gradle-api-parameter-names.properties")))
+            assert parameterNames.size() > 2900
+            assert parameterNames["org.gradle.api.DomainObjectCollection.withType(java.lang.Class,org.gradle.api.Action)"] == "type,configureAction"
+        }
     }
 }

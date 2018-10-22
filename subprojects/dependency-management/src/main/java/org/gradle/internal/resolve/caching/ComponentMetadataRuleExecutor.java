@@ -22,29 +22,38 @@ import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.ResolvedModuleVersion;
 import org.gradle.api.internal.artifacts.configurations.dynamicversion.CachePolicy;
 import org.gradle.api.internal.changedetection.state.InMemoryCacheDecoratorFactory;
-import org.gradle.api.internal.changedetection.state.ValueSnapshotter;
 import org.gradle.cache.CacheRepository;
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata;
 import org.gradle.internal.serialize.Serializer;
+import org.gradle.internal.snapshot.ValueSnapshotter;
 import org.gradle.util.BuildCommencedTimeProvider;
 
 import java.io.Serializable;
 
 public class ComponentMetadataRuleExecutor extends CrossBuildCachingRuleExecutor<ModuleComponentResolveMetadata, ComponentMetadataContext, ModuleComponentResolveMetadata> {
 
-    private final static Transformer<Serializable, ModuleComponentResolveMetadata> KEY_TO_SNAPSHOTTABLE = new Transformer<Serializable, ModuleComponentResolveMetadata>() {
-        @Override
-        public Serializable transform(ModuleComponentResolveMetadata moduleMetadata) {
-            return moduleMetadata.getContentHash().asBigInteger();
-        }
-    };
+    private static Transformer<Serializable, ModuleComponentResolveMetadata> getKeyToSnapshotableTransformer() {
+        return new Transformer<Serializable, ModuleComponentResolveMetadata>() {
+            @Override
+            public Serializable transform(ModuleComponentResolveMetadata moduleMetadata) {
+                return moduleMetadata.getOriginalContentHash().asHexString();
+            }
+        };
+    }
+
+    private final Serializer<ModuleComponentResolveMetadata> componentMetadataContextSerializer;
 
     public ComponentMetadataRuleExecutor(CacheRepository cacheRepository,
                                          InMemoryCacheDecoratorFactory cacheDecoratorFactory,
                                          ValueSnapshotter snapshotter,
                                          BuildCommencedTimeProvider timeProvider,
                                          Serializer<ModuleComponentResolveMetadata> componentMetadataContextSerializer) {
-        super("md-rule", cacheRepository, cacheDecoratorFactory, snapshotter, timeProvider, createValidator(timeProvider), KEY_TO_SNAPSHOTTABLE, componentMetadataContextSerializer);
+        super("md-rule", cacheRepository, cacheDecoratorFactory, snapshotter, timeProvider, createValidator(timeProvider), getKeyToSnapshotableTransformer(), componentMetadataContextSerializer);
+        this.componentMetadataContextSerializer = componentMetadataContextSerializer;
+    }
+
+    public Serializer<ModuleComponentResolveMetadata> getComponentMetadataContextSerializer() {
+        return componentMetadataContextSerializer;
     }
 
     private static EntryValidator<ModuleComponentResolveMetadata> createValidator(final BuildCommencedTimeProvider timeProvider) {

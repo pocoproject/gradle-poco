@@ -29,10 +29,10 @@ import org.gradle.internal.component.model.DefaultIvyArtifactName
 import org.gradle.internal.component.model.DependencyMetadata
 import org.gradle.internal.component.model.ModuleSource
 import org.gradle.internal.hash.HashValue
-import org.gradle.util.TestUtil
+import org.gradle.util.AttributeTestUtil
 
 class DefaultMutableIvyModuleResolveMetadataTest extends AbstractMutableModuleComponentResolveMetadataTest {
-    private final IvyMutableModuleMetadataFactory ivyMetadataFactory = new IvyMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory())
+    private final IvyMutableModuleMetadataFactory ivyMetadataFactory = new IvyMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), AttributeTestUtil.attributesFactory())
 
     @Override
     AbstractMutableModuleComponentResolveMetadata createMetadata(ModuleComponentIdentifier id, List<Configuration> configurations, List<DependencyMetadata> dependencies) {
@@ -75,7 +75,7 @@ class DefaultMutableIvyModuleResolveMetadataTest extends AbstractMutableModuleCo
         runtime.artifacts.name.name == ["runtime.jar"]
         runtime.excludes.empty
         def defaultConfig = immutable.getConfiguration("default")
-        defaultConfig.hierarchy == ["default", "runtime"]
+        defaultConfig.hierarchy as List == ["default", "runtime"]
         defaultConfig.transitive
         defaultConfig.visible
         defaultConfig.artifacts.name.name == ["api.jar", "runtime.jar"]
@@ -148,7 +148,7 @@ class DefaultMutableIvyModuleResolveMetadataTest extends AbstractMutableModuleCo
         immutable.changing
         immutable.missing
         immutable.statusScheme == ["1", "2", "3"]
-        immutable.contentHash == contentHash
+        immutable.originalContentHash == contentHash
         immutable.excludes == excludes
 
         def copy = immutable.asMutable()

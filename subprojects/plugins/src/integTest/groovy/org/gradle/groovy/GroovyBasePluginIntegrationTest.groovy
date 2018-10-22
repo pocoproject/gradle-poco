@@ -109,6 +109,7 @@ task verify {
         fails "compileGroovy"
 
         then:
+        failure.assertHasDescription("Execution failed for task ':compileGroovy'.")
         failure.assertHasCause "Cannot infer Groovy class path because no Groovy Jar was found on class path: "
     }
 
@@ -120,13 +121,14 @@ task verify {
 
             sourceSets {
                 main {
-                    groovy.outputDir = new File(buildDir,'bin')
+                    groovy.outputDir = file("$buildDir/bin")
                 }
             }
 
             task assertDirectoriesAreEquals {
                 doLast {
                     assert sourceSets.main.groovy.outputDir == compileGroovy.destinationDir
+                    assert sourceSets.main.groovy.outputDir == file("$buildDir/bin")
                 }
             }
         '''

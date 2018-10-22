@@ -17,12 +17,13 @@
 package org.gradle.vcs.internal
 
 import org.gradle.api.internal.artifacts.configurations.ResolveConfigurationDependenciesBuildOperationType
+import org.gradle.execution.taskgraph.NotifyTaskGraphWhenReadyBuildOperationType
 import org.gradle.initialization.ConfigureBuildBuildOperationType
 import org.gradle.initialization.LoadBuildBuildOperationType
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.BuildOperationsFixture
 import org.gradle.internal.taskgraph.CalculateTaskGraphBuildOperationType
-import org.gradle.util.CollectionUtils
+import org.gradle.launcher.exec.RunBuildBuildOperationType
 import org.gradle.vcs.fixtures.GitFileRepository
 import org.junit.Rule
 import spock.lang.Unroll
@@ -68,7 +69,7 @@ class SourceDependencyBuildOperationIntegrationTest extends AbstractIntegrationS
         succeeds("assemble")
 
         then:
-        def root = CollectionUtils.single(operations.roots())
+        def root = operations.root(RunBuildBuildOperationType)
 
         def resolve = operations.first(ResolveConfigurationDependenciesBuildOperationType) { r -> r.details.buildPath == ":" && r.details.projectPath == ":" && r.details.configurationName == "compileClasspath" }
         resolve
@@ -107,6 +108,15 @@ class SourceDependencyBuildOperationIntegrationTest extends AbstractIntegrationS
         runTasksOps[0].parentId == root.id
         runTasksOps[1].displayName == "Run tasks (:${buildName})"
         runTasksOps[1].parentId == root.id
+
+        def graphNotifyOps = operations.all(NotifyTaskGraphWhenReadyBuildOperationType)
+        graphNotifyOps.size() == 2
+        graphNotifyOps[0].displayName == 'Notify task graph whenReady listeners'
+        graphNotifyOps[0].details.buildPath == ':'
+        graphNotifyOps[0].parentId == runTasksOps[0].id
+        graphNotifyOps[1].displayName == "Notify task graph whenReady listeners (:${buildName})"
+        graphNotifyOps[1].details.buildPath == ":${buildName}"
+        graphNotifyOps[1].parentId == runTasksOps[1].id
 
         where:
         settings                     | buildName | display

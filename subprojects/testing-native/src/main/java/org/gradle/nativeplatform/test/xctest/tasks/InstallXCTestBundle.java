@@ -26,11 +26,14 @@ import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.internal.file.FileOperations;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputDirectory;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SkipWhenEmpty;
 import org.gradle.api.tasks.TaskAction;
 import org.gradle.internal.nativeintegration.filesystem.FileSystem;
@@ -52,8 +55,16 @@ import java.util.concurrent.Callable;
  */
 @Incubating
 public class InstallXCTestBundle extends DefaultTask {
-    private final DirectoryProperty installDirectory = newOutputDirectory();
-    private final RegularFileProperty bundleBinaryFile = newInputFile();
+    private final DirectoryProperty installDirectory;
+    private final RegularFileProperty bundleBinaryFile;
+
+    public InstallXCTestBundle() {
+        ObjectFactory objectFactory = getProject().getObjects();
+        installDirectory = objectFactory.directoryProperty();
+        bundleBinaryFile = objectFactory.fileProperty();
+        // A work around for not being able to skip the task when an input _file_ does not exist
+        dependsOn(bundleBinaryFile);
+    }
 
     @Inject
     protected SwiftStdlibToolLocator getSwiftStdlibToolLocator() {
@@ -105,11 +116,11 @@ public class InstallXCTestBundle extends DefaultTask {
 
         File outputFile = new File(bundleDir, "Contents/Info.plist");
 
-        Files.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        Files.asCharSink(outputFile, Charset.forName("UTF-8")).write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             + "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
             + "<plist version=\"1.0\">\n"
             + "<dict/>\n"
-            + "</plist>", outputFile, Charset.forName("UTF-8"));
+            + "</plist>");
 
         getProject().exec(new Action<ExecSpec>() {
             @Override
@@ -151,6 +162,7 @@ public class InstallXCTestBundle extends DefaultTask {
     @SkipWhenEmpty
     @Nullable
     @Optional
+    @PathSensitive(PathSensitivity.NAME_ONLY)
     @InputFile
     protected File getBundleBinary() {
         RegularFile bundle = getBundleBinaryFile().get();

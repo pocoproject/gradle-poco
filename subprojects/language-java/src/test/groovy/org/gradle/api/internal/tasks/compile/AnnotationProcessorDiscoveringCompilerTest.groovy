@@ -16,17 +16,20 @@
 
 package org.gradle.api.internal.tasks.compile
 
+import org.gradle.api.InvalidUserDataException
+import org.gradle.api.file.ProjectLayout
 import org.gradle.api.internal.tasks.compile.processing.AnnotationProcessorDeclaration
 import org.gradle.api.internal.tasks.compile.processing.AnnotationProcessorDetector
 import org.gradle.api.internal.tasks.compile.processing.IncrementalAnnotationProcessorType
 import org.gradle.api.tasks.compile.CompileOptions
 import org.gradle.language.base.internal.compile.Compiler
 import org.gradle.util.TestUtil
+import spock.lang.Issue
 import spock.lang.Specification
 
 class AnnotationProcessorDiscoveringCompilerTest extends Specification {
     JavaCompileSpec spec = new DefaultJavaCompileSpec().with {
-        compileOptions = new CompileOptions(TestUtil.objectFactory())
+        compileOptions = new CompileOptions(Stub(ProjectLayout), TestUtil.objectFactory())
         it
     }
     AnnotationProcessorDetector detector = Stub(AnnotationProcessorDetector)
@@ -100,5 +103,18 @@ class AnnotationProcessorDiscoveringCompilerTest extends Specification {
 
         then:
         spec.effectiveAnnotationProcessors == [new AnnotationProcessorDeclaration("Foo", IncrementalAnnotationProcessorType.UNKNOWN)] as Set
+    }
+
+    @Issue("gradle/gradle#1471")
+    def "fails when -processor is the last compiler arg"() {
+        given:
+        spec.compileOptions.compilerArgs = ["-Xthing", "-processor"]
+
+        when:
+        compiler.execute(spec)
+
+        then:
+        def e = thrown(InvalidUserDataException)
+        e.message == 'No processor specified for compiler argument -processor in requested compiler args: -Xthing -processor'
     }
 }

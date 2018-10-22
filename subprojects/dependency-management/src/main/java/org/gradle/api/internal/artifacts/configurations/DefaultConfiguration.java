@@ -23,6 +23,7 @@ import org.gradle.api.Action;
 import org.gradle.api.Describable;
 import org.gradle.api.DomainObjectSet;
 import org.gradle.api.InvalidUserDataException;
+import org.gradle.api.Project;
 import org.gradle.api.artifacts.ArtifactCollection;
 import org.gradle.api.artifacts.ArtifactView;
 import org.gradle.api.artifacts.ConfigurablePublishArtifact;
@@ -52,6 +53,7 @@ import org.gradle.api.capabilities.Capability;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.internal.CompositeDomainObjectSet;
 import org.gradle.api.internal.DefaultDomainObjectSet;
+import org.gradle.api.internal.DocumentationRegistry;
 import org.gradle.api.internal.DomainObjectContext;
 import org.gradle.api.internal.artifacts.ConfigurationResolver;
 import org.gradle.api.internal.artifacts.DefaultDependencyConstraintSet;
@@ -80,13 +82,14 @@ import org.gradle.api.internal.file.FileCollectionFactory;
 import org.gradle.api.internal.file.FileCollectionInternal;
 import org.gradle.api.internal.file.FileSystemSubset;
 import org.gradle.api.internal.project.ProjectInternal;
+import org.gradle.api.internal.project.ProjectState;
+import org.gradle.api.internal.project.ProjectStateRegistry;
 import org.gradle.api.internal.tasks.AbstractTaskDependency;
 import org.gradle.api.internal.tasks.TaskDependencyResolveContext;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.api.tasks.TaskDependency;
 import org.gradle.initialization.ProjectAccessListener;
-import org.gradle.internal.Actions;
 import org.gradle.internal.Cast;
 import org.gradle.internal.Describables;
 import org.gradle.internal.DisplayName;
@@ -105,10 +108,10 @@ import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.typeconversion.NotationParser;
 import org.gradle.listener.ClosureBackedMethodInvocationDispatch;
 import org.gradle.util.CollectionUtils;
+import org.gradle.util.DeprecationLogger;
 import org.gradle.util.Path;
 import org.gradle.util.WrapUtil;
 
-import javax.annotation.Nullable;
 import java.io.File;
 import java.util.Collection;
 import java.util.Collections;
@@ -159,6 +162,7 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
     private Factory<ResolutionStrategyInternal> resolutionStrategyFactory;
     private ResolutionStrategyInternal resolutionStrategy;
     private final FileCollectionFactory fileCollectionFactory;
+    private final DocumentationRegistry documentationRegistry;
 
     private final Set<MutationValidator> childMutationValidators = Sets.newHashSet();
     private final MutationValidator parentMutationValidator = new MutationValidator() {
@@ -181,12 +185,13 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
     private boolean transitive = true;
     private Set<Configuration> extendsFrom = new LinkedHashSet<Configuration>();
     private String description;
-    private Set<ExcludeRule> excludeRules = new LinkedHashSet<ExcludeRule>();
+    private final Set<Object> excludeRules = new LinkedHashSet<Object>();
+    private Set<ExcludeRule> parsedExcludeRules;
 
+    private final ProjectStateRegistry.SafeExclusiveLock resolutionLock;
     private final Object observationLock = new Object();
-    private InternalState observedState = UNRESOLVED;
-    private final Object resolutionLock = new Object();
-    private InternalState resolvedState = UNRESOLVED;
+    private volatile InternalState observedState = UNRESOLVED;
+    private volatile InternalState resolvedState = UNRESOLVED;
     private boolean insideBeforeResolve;
 
     private ResolverResults cachedResolverResults;
@@ -199,6 +204,8 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
     private final DomainObjectContext domainObjectContext;
     private final ImmutableAttributesFactory attributesFactory;
     private final FileCollection intrinsicFiles;
+
+    private final ProjectStateRegistry projectStateRegistry;
 
     private final DisplayName displayName;
 
@@ -217,7 +224,9 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
                                 NotationParser<Object, ConfigurablePublishArtifact> artifactNotationParser,
                                 NotationParser<Object, Capability> capabilityNotationParser,
                                 ImmutableAttributesFactory attributesFactory,
-                                RootComponentMetadataBuilder rootComponentMetadataBuilder
+                                RootComponentMetadataBuilder rootComponentMetadataBuilder,
+                                ProjectStateRegistry projectStateRegistry,
+                                DocumentationRegistry documentationRegistry
 
     ) {
         this.identityPath = domainObjectContext.identityPath(name);
@@ -239,20 +248,23 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
         this.configurationAttributes = attributesFactory.mutable();
         this.domainObjectContext = domainObjectContext;
         this.intrinsicFiles = new ConfigurationFileCollection(Specs.<Dependency>satisfyAll());
+        this.projectStateRegistry = projectStateRegistry;
+        this.documentationRegistry = documentationRegistry;
+        this.resolutionLock = projectStateRegistry.newExclusiveOperationLock();
         this.resolvableDependencies = instantiator.newInstance(ConfigurationResolvableDependencies.class, this);
 
         displayName = Describables.memoize(new ConfigurationDescription(identityPath));
 
         this.ownDependencies = new DefaultDomainObjectSet<Dependency>(Dependency.class);
-        this.ownDependencies.beforeChange(validateMutationType(this, MutationType.DEPENDENCIES));
+        this.ownDependencies.beforeCollectionChanges(validateMutationType(this, MutationType.DEPENDENCIES));
         this.ownDependencyConstraints = new DefaultDomainObjectSet<DependencyConstraint>(DependencyConstraint.class);
-        this.ownDependencyConstraints.beforeChange(validateMutationType(this, MutationType.DEPENDENCIES));
+        this.ownDependencyConstraints.beforeCollectionChanges(validateMutationType(this, MutationType.DEPENDENCIES));
 
         this.dependencies = new DefaultDependencySet(Describables.of(displayName, "dependencies"), this, ownDependencies);
         this.dependencyConstraints = new DefaultDependencyConstraintSet(Describables.of(displayName, "dependency constraints"), ownDependencyConstraints);
 
         this.ownArtifacts = new DefaultDomainObjectSet<PublishArtifact>(PublishArtifact.class);
-        this.ownArtifacts.beforeChange(validateMutationType(this, MutationType.ARTIFACTS));
+        this.ownArtifacts.beforeCollectionChanges(validateMutationType(this, MutationType.ARTIFACTS));
 
         this.artifacts = new DefaultPublishArtifactSet(Describables.of(displayName, "artifacts"), ownArtifacts, fileCollectionFactory);
 
@@ -275,16 +287,14 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
     }
 
     public State getState() {
-        synchronized (resolutionLock) {
-            if (resolvedState == ARTIFACTS_RESOLVED || resolvedState == GRAPH_RESOLVED) {
-                if (cachedResolverResults.hasError()) {
-                    return State.RESOLVED_WITH_FAILURES;
-                } else {
-                    return State.RESOLVED;
-                }
+        if (resolvedState == ARTIFACTS_RESOLVED || resolvedState == GRAPH_RESOLVED) {
+            if (cachedResolverResults.hasError()) {
+                return State.RESOLVED_WITH_FAILURES;
             } else {
-                return State.UNRESOLVED;
+                return State.RESOLVED;
             }
+        } else {
+            return State.UNRESOLVED;
         }
     }
 
@@ -503,16 +513,36 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
         return cachedResolverResults.getResolvedConfiguration();
     }
 
-    private void resolveToStateOrLater(InternalState requestedState) {
-        assertResolvingAllowed();
-        synchronized (resolutionLock) {
-            if (requestedState == GRAPH_RESOLVED || requestedState == ARTIFACTS_RESOLVED) {
-                resolveGraphIfRequired(requestedState);
-            }
-            if (requestedState == ARTIFACTS_RESOLVED) {
-                resolveArtifactsIfRequired();
-            }
+    private void resolveToStateOrLater(final InternalState requestedState) {
+        assertIsResolvable();
+
+        if (!hasMutableProjectState()) {
+            // We don't have mutable access to the project, so we throw a deprecation warning and then continue with
+            // lenient locking to prevent deadlocks in user-managed threads.
+            DeprecationLogger.nagUserOfDeprecatedBehaviour("The configuration " + identityPath.toString() + " was resolved without accessing the project in a safe manner.  This may happen when a configuration is resolved from a thread not managed by Gradle or from a different project.  See " + documentationRegistry.getDocumentationFor("troubleshooting_dependency_resolution", "configuration_resolution_constraints") + " for more details.");
+            projectStateRegistry.withLenientState(new Runnable() {
+                @Override
+                public void run() {
+                    resolveExclusively(requestedState);
+                }
+            });
+        } else {
+            resolveExclusively(requestedState);
         }
+    }
+
+    private void resolveExclusively(InternalState requestedState) {
+        resolutionLock.withLock(new Runnable() {
+            @Override
+            public void run() {
+                if (requestedState == GRAPH_RESOLVED || requestedState == ARTIFACTS_RESOLVED) {
+                    resolveGraphIfRequired(requestedState);
+                }
+                if (requestedState == ARTIFACTS_RESOLVED) {
+                    resolveArtifactsIfRequired();
+                }
+            }
+        });
     }
 
     private void resolveGraphIfRequired(final InternalState requestedState) {
@@ -522,6 +552,7 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
             }
             return;
         }
+
         buildOperationExecutor.run(new RunnableBuildOperation() {
             @Override
             public void run(BuildOperationContext context) {
@@ -530,7 +561,9 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
 
                 final ResolvableDependenciesInternal incoming = (ResolvableDependenciesInternal) getIncoming();
                 performPreResolveActions(incoming);
-                cachedResolverResults = new DefaultResolverResults();
+                if (cachedResolverResults == null) {
+                    cachedResolverResults = new DefaultResolverResults();
+                }
                 resolver.resolveGraph(DefaultConfiguration.this, cachedResolverResults);
                 dependenciesModified = false;
                 resolvedState = GRAPH_RESOLVED;
@@ -539,26 +572,43 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
                 markParentsObserved(requestedState);
                 markReferencedProjectConfigurationsObserved(requestedState);
 
-                dependencyResolutionListeners.getSource().afterResolve(incoming);
-                // Discard listeners
-                dependencyResolutionListeners.removeAll();
-                captureBuildOperationResult(context, incoming);
+                if (!cachedResolverResults.hasError()) {
+                    dependencyResolutionListeners.getSource().afterResolve(incoming);
+                    // Discard listeners
+                    dependencyResolutionListeners.removeAll();
+                }
+                captureBuildOperationResult(context);
             }
 
-            private void captureBuildOperationResult(BuildOperationContext context, final ResolvableDependenciesInternal incoming) {
+            private void captureBuildOperationResult(BuildOperationContext context) {
                 Throwable failure = cachedResolverResults.getFailure();
                 if (failure != null) {
                     context.failed(failure);
                 }
-                context.setResult(new ResolveConfigurationResolutionBuildOperationResult(incoming, failure != null));
+                // When dependency resolution has failed, we don't want the build operation listeners to fail as well
+                // because:
+                // 1. the `failed` method will have been called with the user facing error
+                // 2. such an error may still lead to a valid dependency graph
+                context.setResult(new ResolveConfigurationResolutionBuildOperationResult(cachedResolverResults.getResolutionResult()));
             }
 
             @Override
             public BuildOperationDescriptor.Builder description() {
                 String displayName = "Resolve dependencies of " + identityPath;
+                Path projectPath = domainObjectContext.getProjectPath();
+                String projectPathString = domainObjectContext.isScript() ? null : (projectPath == null ? null : projectPath.getPath());
                 return BuildOperationDescriptor.displayName(displayName)
                     .progressDisplayName(displayName)
-                    .details(new OperationDetails());
+                    .details(new ResolveConfigurationResolutionBuildOperationDetails(
+                        getName(),
+                        domainObjectContext.isScript(),
+                        getDescription(),
+                        domainObjectContext.getBuildPath().getPath(),
+                        projectPathString,
+                        isVisible(),
+                        isTransitive(),
+                        resolver.getRepositories()
+                    ));
             }
         });
     }
@@ -593,7 +643,7 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
     }
 
     public TaskDependency getBuildDependencies() {
-        assertResolvingAllowed();
+        assertIsResolvable();
         return intrinsicFiles.getBuildDependencies();
     }
 
@@ -667,25 +717,64 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
         if (allArtifacts != null) {
             return;
         }
-        this.inheritedArtifacts = CompositeDomainObjectSet.create(PublishArtifact.class, ownArtifacts);
-        for (Configuration configuration : this.extendsFrom) {
-            inheritedArtifacts.addCollection(configuration.getAllArtifacts());
+        DisplayName displayName = Describables.of(this.displayName, "all artifacts");
+
+        if (!canBeMutated && extendsFrom.isEmpty()) {
+            // No further mutation is allowed and there's no parent: the artifact set corresponds to this configuration own artifacts
+            this.allArtifacts = new DefaultPublishArtifactSet(displayName, ownArtifacts, fileCollectionFactory);
+            return;
         }
-        this.allArtifacts = new DefaultPublishArtifactSet(Describables.of(displayName, "all artifacts"), inheritedArtifacts, fileCollectionFactory);
+
+        if (canBeMutated) {
+            // If the configuration can still be mutated, we need to create a composite
+            inheritedArtifacts = CompositeDomainObjectSet.create(PublishArtifact.class, ownArtifacts);
+        }
+        for (Configuration configuration : this.extendsFrom) {
+            PublishArtifactSet allArtifacts = configuration.getAllArtifacts();
+            if (inheritedArtifacts!= null || !allArtifacts.isEmpty()) {
+                if (inheritedArtifacts == null) {
+                    // This configuration cannot be mutated, but some parent configurations provide artifacts
+                    inheritedArtifacts = CompositeDomainObjectSet.create(PublishArtifact.class, ownArtifacts);
+                }
+                inheritedArtifacts.addCollection(allArtifacts);
+            }
+        }
+        if (inheritedArtifacts != null) {
+            this.allArtifacts = new DefaultPublishArtifactSet(displayName, inheritedArtifacts, fileCollectionFactory);
+        } else {
+            this.allArtifacts = new DefaultPublishArtifactSet(displayName, ownArtifacts, fileCollectionFactory);
+        }
     }
 
     public Set<ExcludeRule> getExcludeRules() {
-        return Collections.unmodifiableSet(excludeRules);
+        initExcludeRules();
+        return Collections.unmodifiableSet(parsedExcludeRules);
+    }
+
+    /**
+     * Synchronize read access to excludes. Mutation does not need to be thread-safe.
+     */
+    private synchronized void initExcludeRules() {
+        if (parsedExcludeRules == null) {
+            NotationParser<Object, ExcludeRule> parser = ExcludeRuleNotationConverter.parser();
+            parsedExcludeRules = Sets.newLinkedHashSet();
+            for (Object excludeRule : excludeRules) {
+                parsedExcludeRules.add(parser.parseNotation(excludeRule));
+            }
+        }
     }
 
     public void setExcludeRules(Set<ExcludeRule> excludeRules) {
         validateMutation(MutationType.DEPENDENCIES);
-        this.excludeRules = excludeRules;
+        parsedExcludeRules = null;
+        this.excludeRules.clear();
+        this.excludeRules.addAll(excludeRules);
     }
 
     public DefaultConfiguration exclude(Map<String, String> excludeRuleArgs) {
         validateMutation(MutationType.DEPENDENCIES);
-        excludeRules.add(ExcludeRuleNotationConverter.parser().parseNotation(excludeRuleArgs));
+        parsedExcludeRules = null;
+        excludeRules.add(excludeRuleArgs);
         return this;
     }
 
@@ -750,7 +839,7 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
         Factory<ResolutionStrategyInternal> childResolutionStrategy = resolutionStrategy != null ? Factories.constant(resolutionStrategy.copy()) : resolutionStrategyFactory;
         DefaultConfiguration copiedConfiguration = instantiator.newInstance(DefaultConfiguration.class, domainObjectContext, newName,
             configurationsProvider, resolver, listenerManager, metaDataProvider, childResolutionStrategy, projectAccessListener, projectFinder, fileCollectionFactory, buildOperationExecutor, instantiator, artifactNotationParser, capabilityNotationParser, attributesFactory,
-            rootComponentMetadataBuilder);
+            rootComponentMetadataBuilder, projectStateRegistry, documentationRegistry);
         configurationsProvider.setTheOnlyConfiguration(copiedConfiguration);
         // state, cachedResolvedConfiguration, and extendsFrom intentionally not copied - must re-resolve copy
         // copying extendsFrom could mess up dependencies when copy was re-resolved
@@ -939,31 +1028,6 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
         }
     }
 
-    private static class ResolveConfigurationResolutionBuildOperationResult implements ResolveConfigurationDependenciesBuildOperationType.Result {
-
-        private static final Action<? super Throwable> FAIL_SAFE = Actions.doNothing();
-
-        private final ResolvableDependenciesInternal incoming;
-        private final boolean failSafe;
-
-        public ResolveConfigurationResolutionBuildOperationResult(ResolvableDependenciesInternal incoming, boolean failSafe) {
-            this.incoming = incoming;
-            this.failSafe = failSafe;
-        }
-
-        @Override
-        public ResolvedComponentResult getRootComponent() {
-            if (failSafe) {
-                // When fail safe, we don't want the build operation listeners to fail whenever resolution throws an error
-                // because:
-                // 1. the `failed` method will have been called with the user facing error
-                // 2. such an error still leads to a valid dependency graph
-                return incoming.getResolutionResult(FAIL_SAFE).getRoot();
-            }
-            return incoming.getResolutionResult().getRoot();
-        }
-    }
-
     private class ConfigurationFileCollection extends AbstractFileCollection {
         private final Spec<? super Dependency> dependencySpec;
         private final AttributeContainerInternal viewAttributes;
@@ -973,7 +1037,7 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
         private SelectedArtifactSet selectedArtifacts;
 
         private ConfigurationFileCollection(Spec<? super Dependency> dependencySpec) {
-            assertResolvingAllowed();
+            assertIsResolvable();
             this.dependencySpec = dependencySpec;
             this.viewAttributes = configurationAttributes;
             this.componentSpec = Specs.satisfyAll();
@@ -1004,7 +1068,7 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
 
         @Override
         public TaskDependency getBuildDependencies() {
-            assertResolvingAllowed();
+            assertIsResolvable();
             return new ConfigurationTaskDependency(dependencySpec, viewAttributes, componentSpec, allowNoMatchingVariants, lenient);
         }
 
@@ -1029,7 +1093,6 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
 
         private SelectedArtifactSet getSelectedArtifacts() {
             if (selectedArtifacts == null) {
-                assertResolvingAllowed();
                 resolveToStateOrLater(ARTIFACTS_RESOLVED);
                 selectedArtifacts = cachedResolverResults.getVisitedArtifacts().select(dependencySpec, viewAttributes, componentSpec, allowNoMatchingVariants);
             }
@@ -1050,8 +1113,21 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
         throw new DefaultLenientConfiguration.ArtifactResolveException(type, getIdentityPath().toString(), getDisplayName(), failures);
     }
 
+    private boolean hasMutableProjectState() {
+        if (domainObjectContext.getProjectPath() != null) {
+            Project project = projectFinder.findProject(domainObjectContext.getProjectPath().getPath());
+            if (project != null) {
+                ProjectState projectState = projectStateRegistry.stateFor(project);
+                if (!projectState.hasMutableState()) {
+                    return false;
+                }
+            }
+        }
 
-    private void assertResolvingAllowed() {
+        return true;
+    }
+
+    private void assertIsResolvable() {
         if (!canBeResolved) {
             throw new IllegalStateException("Resolving configuration '" + name + "' directly is not allowed");
         }
@@ -1440,7 +1516,7 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
         }
 
         ConfigurationArtifactCollection(AttributeContainerInternal attributes, Spec<? super ComponentIdentifier> componentFilter, boolean lenient, boolean allowNoMatchingVariants) {
-            assertResolvingAllowed();
+            assertIsResolvable();
             this.viewAttributes = attributes.asImmutable();
             this.componentFilter = componentFilter;
             this.fileCollection = new ConfigurationFileCollection(Specs.<Dependency>satisfyAll(), viewAttributes, this.componentFilter, lenient, allowNoMatchingVariants);
@@ -1504,81 +1580,35 @@ public class DefaultConfiguration extends AbstractFileCollection implements Conf
 
         @Override
         public void visitDependencies(final TaskDependencyResolveContext context) {
-            synchronized (resolutionLock) {
-                if (getResolutionStrategy().resolveGraphToDetermineTaskDependencies()) {
-                    // Force graph resolution as this is required to calculate build dependencies
-                    resolveToStateOrLater(GRAPH_RESOLVED);
-                }
-                ResolverResults results;
-                if (getState() == State.UNRESOLVED) {
-                    // Traverse graph
-                    results = new DefaultResolverResults();
-                    resolver.resolveBuildDependencies(DefaultConfiguration.this, results);
-                } else {
-                    // Otherwise, already have a result, so reuse it
-                    results = cachedResolverResults;
-                }
-                SelectedArtifactSet selected = results.getVisitedArtifacts().select(dependencySpec, requestedAttributes, componentIdentifierSpec, allowNoMatchingVariants);
-                final Set<Throwable> failures = new LinkedHashSet<Throwable>();
-                selected.collectBuildDependencies(new BuildDependenciesVisitor() {
-                    @Override
-                    public void visitFailure(Throwable failure) {
-                        failures.add(failure);
-                    }
-
-                    @Override
-                    public void visitDependency(Object dep) {
-                        context.add(dep);
-                    }
-                });
-                if (!lenient) {
-                    rethrowFailure("task dependencies", failures);
-                }
+            if (getResolutionStrategy().resolveGraphToDetermineTaskDependencies()) {
+                // Force graph resolution as this is required to calculate build dependencies
+                resolveToStateOrLater(GRAPH_RESOLVED);
             }
-        }
-    }
-
-    private class OperationDetails implements ResolveConfigurationDependenciesBuildOperationType.Details {
-
-        @Override
-        public String getConfigurationName() {
-            return getName();
-        }
-
-        @Nullable
-        @Override
-        public String getProjectPath() {
-            if (isScriptConfiguration()) {
-                return null;
+            ResolverResults results;
+            if (getState() == State.UNRESOLVED) {
+                // Traverse graph
+                results = new DefaultResolverResults();
+                resolver.resolveBuildDependencies(DefaultConfiguration.this, results);
             } else {
-                Path projectPath = domainObjectContext.getProjectPath();
-                return projectPath == null ? null : projectPath.getPath();
+                // Otherwise, already have a result, so reuse it
+                results = cachedResolverResults;
             }
-        }
+            SelectedArtifactSet selected = results.getVisitedArtifacts().select(dependencySpec, requestedAttributes, componentIdentifierSpec, allowNoMatchingVariants);
+            final Set<Throwable> failures = new LinkedHashSet<Throwable>();
+            selected.collectBuildDependencies(new BuildDependenciesVisitor() {
+                @Override
+                public void visitFailure(Throwable failure) {
+                    failures.add(failure);
+                }
 
-        @Override
-        public boolean isScriptConfiguration() {
-            return domainObjectContext.isScript();
-        }
-
-        @Override
-        public String getConfigurationDescription() {
-            return getDescription();
-        }
-
-        @Override
-        public String getBuildPath() {
-            return domainObjectContext.getBuildPath().getPath();
-        }
-
-        @Override
-        public boolean isConfigurationVisible() {
-            return isVisible();
-        }
-
-        @Override
-        public boolean isConfigurationTransitive() {
-            return isTransitive();
+                @Override
+                public void visitDependency(Object dep) {
+                    context.add(dep);
+                }
+            });
+            if (!lenient) {
+                rethrowFailure("task dependencies", failures);
+            }
         }
     }
 

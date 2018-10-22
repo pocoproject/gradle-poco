@@ -17,6 +17,7 @@
 package org.gradle.internal.component.model;
 
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.DependencyConstraintMetadata;
@@ -46,13 +47,13 @@ public class DependencyMetadataRules {
     private static final Spec<ModuleDependencyMetadata> DEPENDENCY_FILTER = new Spec<ModuleDependencyMetadata>() {
         @Override
         public boolean isSatisfiedBy(ModuleDependencyMetadata dep) {
-            return !dep.isPending();
+            return !dep.isConstraint();
         }
     };
     private static final Spec<ModuleDependencyMetadata> DEPENDENCY_CONSTRAINT_FILTER = new Spec<ModuleDependencyMetadata>() {
         @Override
         public boolean isSatisfiedBy(ModuleDependencyMetadata dep) {
-            return dep.isPending();
+            return dep.isConstraint();
         }
     };
 
@@ -82,10 +83,10 @@ public class DependencyMetadataRules {
     }
 
     public <T extends ModuleDependencyMetadata> List<T> execute(VariantResolveMetadata variant, List<T> dependencies) {
-        List<T> calculatedDependencies = new ArrayList<T>();
+        ImmutableList.Builder<T> calculatedDependencies = new ImmutableList.Builder<>();
         calculatedDependencies.addAll(executeDependencyRules(variant, dependencies));
         calculatedDependencies.addAll(executeDependencyConstraintRules(variant, dependencies));
-        return calculatedDependencies;
+        return calculatedDependencies.build();
     }
 
     private <T extends ModuleDependencyMetadata> List<T> executeDependencyRules(VariantResolveMetadata variant, List<T> dependencies) {

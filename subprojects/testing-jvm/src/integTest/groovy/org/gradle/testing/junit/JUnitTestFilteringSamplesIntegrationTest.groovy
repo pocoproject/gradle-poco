@@ -18,7 +18,6 @@ package org.gradle.testing.junit
 
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
 import org.gradle.integtests.fixtures.MultiVersionIntegrationSpec
-import org.gradle.integtests.fixtures.RepoScriptBlockUtil
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.integtests.fixtures.TargetCoverage
 import org.junit.Rule
@@ -30,10 +29,10 @@ import static org.gradle.testing.fixture.JUnitCoverage.JUNIT_VINTAGE_JUPITER
 @TargetCoverage({ JUNIT_4_LATEST + JUNIT_VINTAGE_JUPITER })
 class JUnitTestFilteringSamplesIntegrationTest extends MultiVersionIntegrationSpec {
 
-    @Rule Sample sample = new Sample(temporaryFolder, 'testing/filtering')
+    @Rule Sample sample = new Sample(temporaryFolder, 'testing/filtering/groovy')
 
     def setup() {
-        executer.usingInitScript(RepoScriptBlockUtil.createMirrorInitScript())
+        executer.withRepositoryMirrors()
     }
 
     def "uses test filter"() {

@@ -17,7 +17,6 @@
 package org.gradle.language.base.plugins;
 
 import org.gradle.api.Action;
-import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
@@ -34,8 +33,7 @@ import java.util.concurrent.Callable;
 /**
  * <p>A {@link org.gradle.api.Plugin} which defines a basic project lifecycle.</p>
  */
-@Incubating
-public class LifecycleBasePlugin implements Plugin<ProjectInternal> {
+public class LifecycleBasePlugin implements Plugin<Project> {
     public static final String CLEAN_TASK_NAME = "clean";
     public static final String ASSEMBLE_TASK_NAME = "assemble";
     public static final String CHECK_TASK_NAME = "check";
@@ -44,8 +42,9 @@ public class LifecycleBasePlugin implements Plugin<ProjectInternal> {
     public static final String VERIFICATION_GROUP = "verification";
 
     @Override
-    public void apply(final ProjectInternal project) {
-        addClean(project);
+    public void apply(final Project project) {
+        final ProjectInternal projectInternal = (ProjectInternal) project;
+        addClean(projectInternal);
         addCleanRule(project);
         addAssemble(project);
         addCheck(project);
@@ -83,7 +82,7 @@ public class LifecycleBasePlugin implements Plugin<ProjectInternal> {
         project.getTasks().addRule(new CleanRule(project.getTasks()));
     }
 
-    private void addAssemble(ProjectInternal project) {
+    private void addAssemble(Project project) {
         project.getTasks().register(ASSEMBLE_TASK_NAME, new Action<Task>() {
             @Override
             public void execute(Task assembleTask) {
@@ -93,7 +92,7 @@ public class LifecycleBasePlugin implements Plugin<ProjectInternal> {
         });
     }
 
-    private void addCheck(ProjectInternal project) {
+    private void addCheck(Project project) {
         project.getTasks().register(CHECK_TASK_NAME, new Action<Task>() {
             @Override
             public void execute(Task checkTask) {
@@ -103,7 +102,7 @@ public class LifecycleBasePlugin implements Plugin<ProjectInternal> {
         });
     }
 
-    private void addBuild(final ProjectInternal project) {
+    private void addBuild(final Project project) {
         project.getTasks().register(BUILD_TASK_NAME, new Action<Task>() {
             @Override
             public void execute(Task buildTask) {

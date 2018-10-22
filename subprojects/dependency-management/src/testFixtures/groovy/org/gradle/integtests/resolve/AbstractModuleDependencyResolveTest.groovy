@@ -28,7 +28,7 @@ import org.junit.runner.RunWith
 abstract class AbstractModuleDependencyResolveTest extends AbstractHttpDependencyResolutionTest {
     ResolveTestFixture resolve
 
-    private final RemoteRepositorySpec repoSpec = new RemoteRepositorySpec()
+    protected final RemoteRepositorySpec repoSpec = new RemoteRepositorySpec()
 
     boolean useIvy() {
         GradleMetadataResolveRunner.useIvy()
@@ -47,7 +47,7 @@ abstract class AbstractModuleDependencyResolveTest extends AbstractHttpDependenc
     }
 
     boolean usesJavaLibraryVariants() {
-        GradleMetadataResolveRunner.isGradleMetadataEnabled() || (useMaven() && isExperimentalEnabled())
+        GradleMetadataResolveRunner.isGradleMetadataEnabled() || useMaven()
     }
 
     String getTestConfiguration() { 'conf' }
@@ -154,7 +154,6 @@ abstract class AbstractModuleDependencyResolveTest extends AbstractHttpDependenc
         resolve.expectDefaultConfiguration(usesJavaLibraryVariants() ? "runtime" : "default")
         settingsFile << "rootProject.name = '$rootProjectName'"
         if (GradleMetadataResolveRunner.experimentalResolveBehaviorEnabled) {
-            FeaturePreviewsFixture.enableImprovedPomSupport(settingsFile)
             FeaturePreviewsFixture.enableGradleMetadata(settingsFile)
         }
         resolve.prepare()
@@ -165,6 +164,7 @@ abstract class AbstractModuleDependencyResolveTest extends AbstractHttpDependenc
                 $testConfiguration
             }
         """
+        resolve.addDefaultVariantDerivationStrategy()
     }
 
     void repository(@DelegatesTo(RemoteRepositorySpec) Closure<Void> spec) {

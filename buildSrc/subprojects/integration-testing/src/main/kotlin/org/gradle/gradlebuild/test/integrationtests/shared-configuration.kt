@@ -1,22 +1,18 @@
 package org.gradle.gradlebuild.test.integrationtests
 
-import accessors.eclipse
-import accessors.groovy
-import accessors.idea
-import accessors.java
 import org.gradle.api.Action
 import org.gradle.api.Project
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskProvider
+
+import org.gradle.kotlin.dsl.*
+
+import accessors.eclipse
+import accessors.groovy
+import accessors.idea
+import accessors.java
+
 import org.gradle.gradlebuild.java.AvailableJavaInstallations
-import org.gradle.kotlin.dsl.dependencies
-import org.gradle.kotlin.dsl.get
-import org.gradle.kotlin.dsl.getting
-import org.gradle.kotlin.dsl.invoke
-import org.gradle.kotlin.dsl.project
-import org.gradle.kotlin.dsl.the
-import org.gradle.kotlin.dsl.withType
-import org.gradle.kotlin.dsl.getValue
 import org.gradle.plugins.ide.eclipse.EclipsePlugin
 import org.gradle.plugins.ide.idea.IdeaPlugin
 
@@ -73,13 +69,19 @@ fun Project.createTasks(sourceSet: SourceSet, testType: TestType) {
     }
     // Use the default executer for the simply named task. This is what most developers will run when running check
     val testTask = createTestTask(prefix + "Test", defaultExecuter, sourceSet, testType, Action {})
+    // Create a variant of the test suite to force realization of component metadata
+    if (testType == TestType.INTEGRATION) {
+        val forceRealizeTestTask = createTestTask(prefix + "ForceRealizeTest", defaultExecuter, sourceSet, testType, Action {
+            systemProperties["org.gradle.integtest.force.realize.metadata"] = "true"
+        })
+    }
     tasks.named("check").configure { dependsOn(testTask) }
 }
 
 
 internal
-fun Project.createTestTask(name: String, executer: String, sourceSet: SourceSet, testType: TestType, extraConfig: Action<IntegrationTest>): TaskProvider<IntegrationTest> {
-    return tasks.register(name, IntegrationTest::class.java) {
+fun Project.createTestTask(name: String, executer: String, sourceSet: SourceSet, testType: TestType, extraConfig: Action<IntegrationTest>): TaskProvider<IntegrationTest> =
+    tasks.register(name, IntegrationTest::class) {
         description = "Runs ${testType.prefix} with $executer executer"
         systemProperties["org.gradle.integtest.executer"] = executer
         addDebugProperties()
@@ -88,7 +90,6 @@ fun Project.createTestTask(name: String, executer: String, sourceSet: SourceSet,
         libsRepository.required = testType.libRepoRequired
         extraConfig.execute(this)
     }
-}
 
 
 private
@@ -120,7 +121,8 @@ fun Project.configureIde(testType: TestType) {
     plugins.withType<IdeaPlugin> {
         idea {
             module {
-                testSourceDirs = testSourceDirs + sourceSet.groovy.srcDirs + sourceSet.resources.srcDirs
+                testSourceDirs = testSourceDirs + sourceSet.groovy.srcDirs
+                testResourceDirs = testResourceDirs + sourceSet.resources.srcDirs
                 scopes["TEST"]!!["plus"]!!.apply {
                     add(compile)
                     add(runtime)

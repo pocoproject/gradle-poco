@@ -23,11 +23,12 @@ import org.gradle.api.artifacts.transform.VariantTransformConfigurationException
 import org.gradle.api.internal.artifacts.VariantTransformRegistry;
 import org.gradle.api.internal.attributes.AttributeContainerInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributes;
-import org.gradle.api.internal.changedetection.state.isolation.Isolatable;
-import org.gradle.api.internal.changedetection.state.isolation.IsolatableFactory;
-import org.gradle.caching.internal.DefaultBuildCacheHasher;
 import org.gradle.internal.classloader.ClassLoaderHierarchyHasher;
 import org.gradle.internal.hash.HashCode;
+import org.gradle.internal.hash.Hasher;
+import org.gradle.internal.hash.Hashing;
+import org.gradle.internal.isolation.Isolatable;
+import org.gradle.internal.isolation.IsolatableFactory;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.model.internal.type.ModelType;
 
@@ -43,7 +44,7 @@ class UserCodeBackedTransformer implements VariantTransformRegistry.Registration
     private final TransformArtifactsAction transformer;
 
     public static UserCodeBackedTransformer create(ImmutableAttributes from, ImmutableAttributes to, Class<? extends ArtifactTransform> implementation, Object[] params, TransformedFileCache transformedFileCache, IsolatableFactory isolatableFactory, ClassLoaderHierarchyHasher classLoaderHierarchyHasher, Instantiator instantiator) {
-        DefaultBuildCacheHasher hasher = new DefaultBuildCacheHasher();
+        Hasher hasher = Hashing.newHasher();
         hasher.putString(implementation.getName());
         hasher.putHash(classLoaderHierarchyHasher.getClassLoaderHash(implementation.getClassLoader()));
 
@@ -109,5 +110,33 @@ class UserCodeBackedTransformer implements VariantTransformRegistry.Registration
     @Override
     public String toString() {
         return String.format("%s[%s => %s]@%s", transformer.getDisplayName(), from, to, inputsHash);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        UserCodeBackedTransformer that = (UserCodeBackedTransformer) o;
+
+        if (!from.equals(that.from)) {
+            return false;
+        }
+        if (!to.equals(that.to)) {
+            return false;
+        }
+        return inputsHash.equals(that.inputsHash);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = from.hashCode();
+        result = 31 * result + to.hashCode();
+        result = 31 * result + inputsHash.hashCode();
+        return result;
     }
 }

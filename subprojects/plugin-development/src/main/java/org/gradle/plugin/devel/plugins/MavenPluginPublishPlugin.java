@@ -46,16 +46,12 @@ class MavenPluginPublishPlugin implements Plugin<Project> {
 
     @Override
     public void apply(Project project) {
-        if (featurePreviews.isFeatureEnabled(FeaturePreviews.Feature.STABLE_PUBLISHING)) {
-            project.afterEvaluate(new Action<Project>() {
-                @Override
-                public void execute(final Project project) {
-                    configurePublishing(project);
-                }
-            });
-        } else {
-            configurePublishing(project);
-        }
+        project.afterEvaluate(new Action<Project>() {
+            @Override
+            public void execute(final Project project) {
+                configurePublishing(project);
+            }
+        });
     }
 
     private void configurePublishing(final Project project) {
@@ -67,13 +63,13 @@ class MavenPluginPublishPlugin implements Plugin<Project> {
                     return;
                 }
                 SoftwareComponent mainComponent = project.getComponents().getByName("java");
-                MavenPublication mainPublication = addMainPublication(publishing, pluginDevelopment, mainComponent);
+                MavenPublication mainPublication = addMainPublication(publishing, mainComponent);
                 addMarkerPublications(mainPublication, publishing, pluginDevelopment);
             }
         });
     }
 
-    private MavenPublication addMainPublication(PublishingExtension publishing, GradlePluginDevelopmentExtension pluginDevelopment, SoftwareComponent mainComponent) {
+    private MavenPublication addMainPublication(PublishingExtension publishing, SoftwareComponent mainComponent) {
         MavenPublication publication = publishing.getPublications().maybeCreate("pluginMaven", MavenPublication.class);
         publication.from(mainComponent);
         return publication;
@@ -106,5 +102,7 @@ class MavenPluginPublishPlugin implements Plugin<Project> {
                 version.setTextContent(coordinates.getVersion());
             }
         });
+        publication.getPom().getName().set(declaration.getDisplayName());
+        publication.getPom().getDescription().set(declaration.getDescription());
     }
 }

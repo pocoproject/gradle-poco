@@ -16,6 +16,12 @@
 
 package org.gradle.api.internal.tasks.testing.testng;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+
 import org.gradle.api.GradleException;
 import org.gradle.api.internal.tasks.testing.TestClassProcessor;
 import org.gradle.api.internal.tasks.testing.TestClassRunInfo;
@@ -36,13 +42,7 @@ import org.testng.ITestContext;
 import org.testng.ITestListener;
 import org.testng.TestNG;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-
-import static org.gradle.api.tasks.testing.testng.TestNGOptions.*;
+import static org.gradle.api.tasks.testing.testng.TestNGOptions.DEFAULT_CONFIG_FAILURE_POLICY;
 
 public class TestNGTestClassProcessor implements TestClassProcessor {
     private final List<Class<?>> testClasses = new ArrayList<Class<?>>();
@@ -120,14 +120,15 @@ public class TestNGTestClassProcessor implements TestClassProcessor {
         //this way, custom listeners are more powerful and, for example, they can change test status.
         for (String listenerClass : options.getListeners()) {
             try {
-                testNg.addListener(applicationClassLoader.loadClass(listenerClass).newInstance());
+                testNg.addListener(JavaReflectionUtil.newInstance(applicationClassLoader.loadClass(listenerClass)));
             } catch (Throwable e) {
                 throw new GradleException(String.format("Could not add a test listener with class '%s'.", listenerClass), e);
             }
         }
 
         if (!options.getIncludedTests().isEmpty() || !options.getIncludedTestsCommandLine().isEmpty()) {
-            testNg.addListener(new SelectedTestsFilter(options.getIncludedTests(), options.getIncludedTestsCommandLine()));
+            testNg.addListener(new SelectedTestsFilter(options.getIncludedTests(),
+                options.getExcludedTests(), options.getIncludedTestsCommandLine()));
         }
 
         if (!suiteFiles.isEmpty()) {
@@ -159,8 +160,9 @@ public class TestNGTestClassProcessor implements TestClassProcessor {
 
         private final TestSelectionMatcher matcher;
 
-        public SelectedTestsFilter(Set<String> includedTests, Set<String> includedTestsCommandLine) {
-            matcher = new TestSelectionMatcher(includedTests, includedTestsCommandLine);
+        public SelectedTestsFilter(Set<String> includedTests, Set<String> excludedTests,
+            Set<String> includedTestsCommandLine) {
+            matcher = new TestSelectionMatcher(includedTests, excludedTests, includedTestsCommandLine);
         }
 
         @Override

@@ -18,34 +18,45 @@ import org.gradle.gradlebuild.unittestandcompile.ModuleType
 
 val runtimeShadedPath = "$buildDir/runtime-api-info"
 
+configurations {
+    create("gradleApiRuntime") {
+        isVisible = false
+        isCanBeResolved = true
+        isCanBeConsumed = false
+        attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage::class.java, Usage.JAVA_RUNTIME))
+        attributes.attribute(Attribute.of("org.gradle.api", String::class.java), "runtime")
+    }
+    create("testKitPackages") {
+        isVisible = false
+        isCanBeResolved = true
+        isCanBeConsumed = false
+        attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage::class.java, Usage.JAVA_RUNTIME))
+    }
+}
+
 dependencies {
     compile(project(":distributionsDependencies"))
+    "gradleApiRuntime"(project(":"))
+    "testKitPackages"(project(":testKit"))
 }
 
 gradlebuildJava {
     moduleType = ModuleType.INTERNAL
 }
 
-tasks {
-    val generateGradleApiPackageList by creating(PackageListGenerator::class) {
-        classpath = files(
-            rootProject.configurations["externalModules"],
-            listOf(":core", ":dependencyManagement", ":pluginUse", ":toolingApi").map {
-                project(it).configurations.runtimeClasspath
-            },
-            project(":").configurations["gradlePlugins"])
-        outputFile = file("$runtimeShadedPath/api-relocated.txt")
-    }
+val generateGradleApiPackageList = tasks.register<PackageListGenerator>("generateGradleApiPackageList") {
+    classpath = configurations["gradleApiRuntime"]
+    outputFile = file("$runtimeShadedPath/api-relocated.txt")
+}
 
-    val generateTestKitPackageList by creating(PackageListGenerator::class) {
-        classpath = project(":testKit").configurations.compileClasspath
-        outputFile = file("$runtimeShadedPath/test-kit-relocated.txt")
-    }
+val generateTestKitPackageList = tasks.register<PackageListGenerator>("generateTestKitPackageList") {
+    classpath = configurations["testKitPackages"]
+    outputFile = file("$runtimeShadedPath/test-kit-relocated.txt")
+}
 
-    "jar"(Jar::class) {
-        into("org/gradle/api/internal/runtimeshaded") {
-            from(generateGradleApiPackageList)
-            from(generateTestKitPackageList)
-        }
+tasks.named<Jar>("jar") {
+    into("org/gradle/api/internal/runtimeshaded") {
+        from(generateGradleApiPackageList)
+        from(generateTestKitPackageList)
     }
 }

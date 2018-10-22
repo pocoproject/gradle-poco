@@ -38,7 +38,7 @@ class MavenUniqueSnapshotExternalResourceArtifactResolverTest extends Specificat
         def artifact = resolver.timestamp(originalArtifact)
 
         then:
-        with (artifact.id.componentIdentifier) {
+        with(artifact.id.componentIdentifier) {
             group == "group"
             module == "name"
             version == "1.0-SNAPSHOT"

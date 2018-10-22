@@ -124,7 +124,7 @@ allprojects {
         compare("lenient filtered first level dependencies", actualFirstLevel, expectedFirstLevel)
 
         def actualConfigurations = findLines(configDetails, 'configuration') as Set
-        def expectedConfigurations = graph.nodesWithoutRoot.collect { "[${it.moduleVersionId}]" }
+        def expectedConfigurations = graph.nodesWithoutRoot.collect { "[${it.moduleVersionId}]".toString() } - graph.virtualConfigurations.collect { "[${it}]".toString() }
         compare("configurations in graph", actualConfigurations, expectedConfigurations)
 
         def actualComponents = findLines(configDetails, 'component')
@@ -322,6 +322,7 @@ allprojects {
         private String defaultConfig
 
         final Set<NodeBuilder> constraints = new LinkedHashSet<>()
+        final Set<String> virtualConfigurations = []
 
         GraphBuilder(String defaultConfig) {
             this.defaultConfig = defaultConfig
@@ -335,6 +336,10 @@ allprojects {
             def nodes = new HashSet<>()
             visitDeps(root.deps, nodes, new HashSet<>())
             return nodes
+        }
+
+        void virtualConfiguration(String id) {
+            virtualConfigurations << id
         }
 
         private void visitDeps(List<EdgeBuilder> edges, Set<NodeBuilder> nodes, Set<NodeBuilder> seen) {
@@ -740,6 +745,15 @@ allprojects {
             this
         }
     }
+
+    /**
+     * Enables Maven derived variants, as if the Java plugin was applied
+     */
+    void addDefaultVariantDerivationStrategy() {
+        buildFile << """
+            allprojects { dependencies.components.variantDerivationStrategy = new org.gradle.internal.component.external.model.JavaEcosystemVariantDerivationStrategy() }
+        """
+    }
 }
 
 class GenerateGraphTask extends DefaultTask {
@@ -855,7 +869,7 @@ class GenerateGraphTask extends DefaultTask {
     def formatReason(ComponentSelectionReasonInternal reason) {
         def reasons = reason.descriptions.collect {
             if (it.hasCustomDescription() && it.cause != ComponentSelectionCause.REQUESTED) {
-                "${it.cause.defaultReason}: ${it.description}"
+                "${it.cause.defaultReason}: ${it.description}".replaceAll('\n', ' ')
             } else {
                 it.description
             }

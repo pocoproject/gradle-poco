@@ -351,7 +351,8 @@ task checkArtifacts {
         buildFile << """
             project(':a') {
                 task classes {
-                    ext.outputFile = newOutputFile()
+                    ext.outputFile = project.objects.fileProperty()
+                    outputs.file(outputFile)
                     outputFile.set(layout.buildDirectory.file("a.jar"))
                 }
                 artifacts {
@@ -383,7 +384,8 @@ task checkArtifacts {
         buildFile << """
             project(':a') {
                 task classes {
-                    ext.outputDir = newOutputDirectory()
+                    ext.outputDir = objects.directoryProperty()
+                    outputs.dir(outputDir)
                     outputDir.set(layout.buildDirectory.dir("classes"))
                 }
                 artifacts {
@@ -408,6 +410,56 @@ task checkArtifacts {
 
         then:
         result.assertTasksExecuted(":a:classes", ":b:checkArtifacts")
+    }
+
+    def "can define artifact using RegularFile type"() {
+        settingsFile << "include 'a', 'b'"
+        buildFile << """
+            project(':a') {
+                artifacts {
+                    compile layout.projectDirectory.file('someFile.txt')
+                }
+            }
+            project(':b') {
+                dependencies {
+                    compile project(':a')
+                }
+                task checkArtifacts {
+                    inputs.files configurations.compile
+                    doLast {
+                        assert configurations.compile.incoming.artifacts.collect { it.file.name } == ["someFile.txt"]
+                    }
+                }
+            }
+        """
+
+        expect:
+        succeeds ':b:checkArtifacts'
+    }
+
+    def "can define artifact using Directory type"() {
+        settingsFile << "include 'a', 'b'"
+        buildFile << """
+            project(':a') {
+                artifacts {
+                    compile layout.projectDirectory.dir('someDir')
+                }
+            }
+            project(':b') {
+                dependencies {
+                    compile project(':a')
+                }
+                task checkArtifacts {
+                    inputs.files configurations.compile
+                    doLast {
+                        assert configurations.compile.incoming.artifacts.collect { it.file.name } == ["someDir"]
+                    }
+                }
+            }
+        """
+
+        expect:
+        succeeds ':b:checkArtifacts'
     }
 
     // This isn't strictly supported and will be deprecated later

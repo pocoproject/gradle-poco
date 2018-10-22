@@ -16,10 +16,11 @@
 
 package org.gradle.workers.internal
 
-import spock.lang.Timeout
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
+import org.gradle.internal.work.DefaultConditionalExecutionQueue
 import spock.lang.Unroll
 
-@Timeout(120)
+@IntegrationTestTimeout(120)
 class WorkerExecutorNestingIntegrationTest extends AbstractWorkerExecutorIntegrationTest {
 
     @Unroll
@@ -131,6 +132,54 @@ class WorkerExecutorNestingIntegrationTest extends AbstractWorkerExecutorIntegra
 
         where:
         nestedIsolationMode << ISOLATION_MODES
+    }
+
+    def "does not leave more than max-workers threads running when work items submit more work"() {
+        def maxWorkers = 4
+
+        buildFile << """
+            ${getRunnableWithNesting("IsolationMode.NONE", "IsolationMode.NONE")}
+            task runInWorker(type: NestingWorkerTask) {
+                submissions = ${maxWorkers * 2}
+                childSubmissions = ${maxWorkers * 10}
+
+                doLast {
+                    def timeout = System.currentTimeMillis() + (${DefaultConditionalExecutionQueue.KEEP_ALIVE_TIME_MS} * 3)
+                    
+                    // Let the keep-alive time on the thread pool expire
+                    sleep(${DefaultConditionalExecutionQueue.KEEP_ALIVE_TIME_MS})
+
+                    def executorThreads = getWorkerExecutorThreads()
+                    while(System.currentTimeMillis() < timeout) {
+                        if (executorThreads.size() <= ${maxWorkers}) {
+                            break
+                        }
+                        sleep 100
+                        executorThreads = getWorkerExecutorThreads()
+                    }
+                        
+                    println "\\nWorker Executor threads:"
+                    executorThreads.each { println it }
+                    
+                    // Ensure that we don't leave any threads lying around
+                    assert executorThreads.size() <= ${maxWorkers}
+                }
+            }
+
+            def getWorkerExecutorThreads() {
+                def threadGroup = Thread.currentThread().threadGroup
+                def threads = new Thread[threadGroup.activeCount()]
+                threadGroup.enumerate(threads)                     
+                return threads.findAll { it?.name?.startsWith("${WorkerExecutionQueueFactory.QUEUE_DISPLAY_NAME}") } 
+            }
+        """.stripIndent()
+
+        when:
+        executer.withArguments("--max-workers=${maxWorkers}")
+        succeeds("runInWorker")
+
+        then:
+        result.groupedOutput.task(':runInWorker').output.contains("Hello World")
     }
 
     String getRunnableWithNesting(String isolationMode, String nestedIsolationMode) {

@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class LogContent {
-    private final static Pattern DEBUG_PREFIX = Pattern.compile("\\d{2}:\\d{2}:\\d{2}\\.\\d{3} \\[\\w+] \\[.+] ");
+    private final static Pattern DEBUG_PREFIX = Pattern.compile("\\d{2}:\\d{2}:\\d{2}\\.\\d{3} \\[\\w+] \\[.+?] ");
     private final static String PROGRESS_BAR_PATTERN = "<[-=(\u001b\\[\\d+[a-zA-Z;])]*> \\d+% (INITIALIZ|CONFIGUR|EXECUT|WAIT)ING( \\[((\\d+h )? \\d+m )?\\d+s\\])?";
     private final static String WORK_IN_PROGRESS_PATTERN = "\u001b\\[\\d+[a-zA-Z]> (IDLE|[:a-z][\\w\\s\\d:>/\\\\\\.]+)\u001b\\[\\d*[a-zA-Z]";
     private final static String DOWN_MOVEMENT_WITH_NEW_LINE_PATTERN = "\u001b\\[\\d+B\\n";
@@ -55,7 +55,9 @@ public class LogContent {
      * Creates a new instance, from raw characters.
      */
     public static LogContent of(String chars) {
-        return new LogContent(toLines(stripJavaIllegalAccessWarnings(stripWorkInProgressArea(chars))), false, null);
+        String stripped = stripWorkInProgressArea(chars);
+        LogContent raw = new LogContent(toLines(stripped), false, null);
+        return new LogContent(toLines(stripJavaIllegalAccessWarnings(stripped)), false, raw);
     }
 
     private static ImmutableList<String> toLines(String chars) {

@@ -24,6 +24,7 @@ import org.gradle.api.component.SoftwareComponent;
 import org.gradle.api.internal.FeaturePreviews;
 import org.gradle.api.publish.PublicationContainer;
 import org.gradle.api.publish.PublishingExtension;
+import org.gradle.api.publish.ivy.IvyModuleDescriptorDescription;
 import org.gradle.api.publish.ivy.IvyModuleDescriptorSpec;
 import org.gradle.api.publish.ivy.IvyPublication;
 import org.gradle.api.publish.ivy.internal.publication.IvyPublicationInternal;
@@ -48,16 +49,12 @@ class IvyPluginPublishingPlugin implements Plugin<Project> {
 
     @Override
     public void apply(Project project) {
-        if (featurePreviews.isFeatureEnabled(FeaturePreviews.Feature.STABLE_PUBLISHING)) {
-            project.afterEvaluate(new Action<Project>() {
-                @Override
-                public void execute(final Project project) {
-                    configurePublishing(project);
-                }
-            });
-        } else {
-            configurePublishing(project);
-        }
+        project.afterEvaluate(new Action<Project>() {
+            @Override
+            public void execute(final Project project) {
+                configurePublishing(project);
+            }
+        });
     }
 
     private void configurePublishing(final Project project) {
@@ -87,7 +84,7 @@ class IvyPluginPublishingPlugin implements Plugin<Project> {
         }
     }
 
-    private void createIvyMarkerPublication(PluginDeclaration declaration, final IvyPublication mainPublication, PublicationContainer publications) {
+    private void createIvyMarkerPublication(final PluginDeclaration declaration, final IvyPublication mainPublication, PublicationContainer publications) {
         String pluginId = declaration.getId();
         IvyPublicationInternal publication = (IvyPublicationInternal) publications.create(declaration.getName() + "PluginMarkerIvy", IvyPublication.class);
         publication.setAlias(true);
@@ -96,6 +93,12 @@ class IvyPluginPublishingPlugin implements Plugin<Project> {
         publication.descriptor(new Action<IvyModuleDescriptorSpec>() {
             @Override
             public void execute(IvyModuleDescriptorSpec descriptor) {
+                descriptor.description(new Action<IvyModuleDescriptorDescription>() {
+                    @Override
+                    public void execute(IvyModuleDescriptorDescription description) {
+                        description.getText().set(declaration.getDescription());
+                    }
+                });
                 descriptor.withXml(new Action<XmlProvider>() {
                     @Override
                     public void execute(XmlProvider xmlProvider) {

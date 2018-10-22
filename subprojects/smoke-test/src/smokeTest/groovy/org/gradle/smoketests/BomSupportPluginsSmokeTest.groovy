@@ -16,27 +16,28 @@
 
 package org.gradle.smoketests
 
-import org.gradle.integtests.fixtures.FeaturePreviewsFixture
 import org.gradle.integtests.fixtures.resolve.ResolveTestFixture
 import org.gradle.test.fixtures.file.TestFile
 import spock.lang.Unroll
-
 /**
  * https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-dependencies
  */
 class BomSupportPluginsSmokeTest extends AbstractSmokeTest {
-    static bomVersion = "2.0.3.RELEASE"
-    static bom = "'org.springframework.boot:spring-boot-dependencies:$bomVersion'"
+    static bomVersion = "2.0.4.RELEASE"
+    static bom = "'org.springframework.boot:spring-boot-dependencies:${bomVersion}'"
+    // This comes from the BOM
+    static springVersion = "5.0.8.RELEASE"
 
     @Unroll
     def 'bom support is provided by #bomSupportProvider'() {
         given:
+        def springVersion = springVersion
         def bomVersion = bomVersion
+
         def settingsFile = testProjectDir.newFile('settings.gradle')
         settingsFile << """
             rootProject.name = 'springbootproject'
         """
-        FeaturePreviewsFixture.enableImprovedPomSupport(settingsFile)
         def buildScript = """
             plugins {
                 id "java"
@@ -67,86 +68,76 @@ class BomSupportPluginsSmokeTest extends AbstractSmokeTest {
             module("org.hamcrest:hamcrest-core:1.3").byReason(reason3)
         }
         def springCoreDeps = {
-            module("org.springframework:spring-jcl:5.0.7.RELEASE")
+            module("org.springframework:spring-jcl:${springVersion}")
         }
         def springExpressionDeps = {
-            module("org.springframework:spring-core:5.0.7.RELEASE")
+            module("org.springframework:spring-core:${springVersion}")
         }
         def springBeansDeps = {
-            module("org.springframework:spring-core:5.0.7.RELEASE")
+            module("org.springframework:spring-core:${springVersion}")
         }
         def springAopDeps = {
-            module("org.springframework:spring-beans:5.0.7.RELEASE")
-            module("org.springframework:spring-core:5.0.7.RELEASE")
+            module("org.springframework:spring-beans:${springVersion}")
+            module("org.springframework:spring-core:${springVersion}")
         }
         def springContextDeps = {
-            module("org.springframework:spring-aop:5.0.7.RELEASE", directBomDependency ? {} : springAopDeps).byReason(reason3)
-            module("org.springframework:spring-beans:5.0.7.RELEASE", directBomDependency ? {} : springBeansDeps).byReason(reason3)
-            module("org.springframework:spring-core:5.0.7.RELEASE",)
-            module("org.springframework:spring-expression:5.0.7.RELEASE", directBomDependency ? {} : springExpressionDeps).byReason(reason3)
+            module("org.springframework:spring-aop:${springVersion}", springAopDeps).byReason(reason3)
+            module("org.springframework:spring-beans:${springVersion}", springBeansDeps).byReason(reason3)
+            module("org.springframework:spring-core:${springVersion}")
+            module("org.springframework:spring-expression:${springVersion}", springExpressionDeps).byReason(reason3)
         }
         def springTestDeps = {
-            module("org.springframework:spring-aop:5.0.7.RELEASE")
-            module("org.springframework:spring-beans:5.0.7.RELEASE")
-            module("org.springframework:spring-context:5.0.7.RELEASE")
-            module("org.springframework:spring-core:5.0.7.RELEASE")
-            module("junit:junit:4.12")
-            module("org.hamcrest:hamcrest-core:1.3")
+            module("org.springframework:spring-core:${springVersion}")
         }
         def springBootDeps = {
-            module("org.springframework:spring-core:5.0.7.RELEASE", directBomDependency ? {} : springCoreDeps).byReason(reason3)
-            module("org.springframework:spring-context:5.0.7.RELEASE", directBomDependency ? {} : springContextDeps).byReason(reason3)
-            module("org.springframework:spring-test:5.0.7.RELEASE")
-            module("junit:junit:4.12")
+            module("org.springframework:spring-core:${springVersion}", springCoreDeps).byReason(reason3)
+            module("org.springframework:spring-context:${springVersion}", springContextDeps).byReason(reason3)
         }
         def springBootAutoconfigureDeps = {
             module("org.springframework.boot:spring-boot:$bomVersion")
         }
         def springBootTestDeps = {
             module("org.springframework.boot:spring-boot:$bomVersion")
-            module("org.springframework:spring-test:5.0.7.RELEASE")
-            module("junit:junit:4.12")
-            module("org.hamcrest:hamcrest-core:1.3")
         }
         def springBootTestAutoconfigureDeps = {
             module("org.springframework.boot:spring-boot-test:$bomVersion")
             module("org.springframework.boot:spring-boot-autoconfigure:$bomVersion")
-            module("org.springframework:spring-test:5.0.7.RELEASE")
         }
 
         resolve.expectDefaultConfiguration('compile')
         resolve.expectGraph {
             root(':', ':springbootproject:') {
                 if (directBomDependency) {
-                    module("org.springframework.boot:spring-boot-dependencies:$bomVersion") {
-                        module("org.springframework:spring-core:5.0.7.RELEASE", springCoreDeps)
-                        module("org.springframework:spring-aop:5.0.7.RELEASE", springAopDeps)
-                        module("org.springframework:spring-beans:5.0.7.RELEASE", springBeansDeps)
-                        module("org.springframework:spring-context:5.0.7.RELEASE", springContextDeps)
-                        module("org.springframework:spring-expression:5.0.7.RELEASE", springExpressionDeps)
-                        module("org.springframework:spring-test:5.0.7.RELEASE")
-                        module("org.springframework:spring-jcl:5.0.7.RELEASE")
+                    module("org.springframework.boot:spring-boot-dependencies:$bomVersion:${bomSupportProvider == 'gradle' ? 'platform-compile' : 'compile'}") {
+                        module("org.springframework:spring-core:${springVersion}")
+                        module("org.springframework:spring-aop:${springVersion}")
+                        module("org.springframework:spring-beans:${springVersion}")
+                        module("org.springframework:spring-context:${springVersion}")
+                        module("org.springframework:spring-expression:${springVersion}")
+                        module("org.springframework:spring-test:${springVersion}")
+                        module("org.springframework:spring-jcl:${springVersion}")
                         module("org.springframework.boot:spring-boot:$bomVersion")
                         module("org.springframework.boot:spring-boot-test:$bomVersion")
                         module("org.springframework.boot:spring-boot-autoconfigure:$bomVersion")
                         module("org.springframework.boot:spring-boot-test-autoconfigure:$bomVersion")
                         module("junit:junit:4.12")
                         module("org.hamcrest:hamcrest-core:1.3")
-                    }.noArtifacts()
+                        noArtifacts()
+                    }
                 }
                 edge("org.springframework.boot:spring-boot-test-autoconfigure", "org.springframework.boot:spring-boot-test-autoconfigure:$bomVersion", springBootTestAutoconfigureDeps).byReason(reason1)
                 edge("org.springframework.boot:spring-boot-test", "org.springframework.boot:spring-boot-test:$bomVersion", springBootTestDeps).byReason(reason2)
                 edge("org.springframework.boot:spring-boot-autoconfigure", "org.springframework.boot:spring-boot-autoconfigure:$bomVersion", springBootAutoconfigureDeps).byReason(reason2)
                 edge("org.springframework.boot:spring-boot", "org.springframework.boot:spring-boot:$bomVersion", springBootDeps).byReason(reason2)
-                edge("org.springframework:spring-test", "org.springframework:spring-test:5.0.7.RELEASE", springTestDeps).byReason(reason2)
+                edge("org.springframework:spring-test", "org.springframework:spring-test:${springVersion}", springTestDeps).byReason(reason2)
                 edge("junit:junit", "junit:junit:4.12", junitDeps).byReason(reason2)
             }
         }
 
         where:
         bomSupportProvider                    | directBomDependency | reason1            | reason2            | reason3            | bomDeclaration                                        | dependencyManagementPlugin
-        "gradle"                              | true                | "requested"        | "requested"        | "requested"        | "dependencies { implementation $bom }"                | ""
-        "nebula recommender plugin"           | false               | "selected by rule" | "selected by rule" | "requested"        | "dependencyRecommendations { mavenBom module: $bom }" | "id 'nebula.dependency-recommender' version '5.1.0'"
-        "spring dependency management plugin" | false               | "selected by rule" | "selected by rule" | "selected by rule" | "dependencyManagement { imports { mavenBom $bom } }"  | "id 'io.spring.dependency-management' version '1.0.4.RELEASE'"
+        "gradle"                              | true                | "requested"        | "requested"        | "requested"        | "dependencies { implementation platform($bom) }"      | ""
+        "nebula recommender plugin"           | false               | "requested"        | "requested"        | "requested"        | "dependencyRecommendations { mavenBom module: $bom }" | "id 'nebula.dependency-recommender' version '${AbstractSmokeTest.TestedVersions.nebulaDependencyRecommender}'"
+        "spring dependency management plugin" | false               | "selected by rule" | "selected by rule" | "selected by rule" | "dependencyManagement { imports { mavenBom $bom } }"  | "id 'io.spring.dependency-management' version '${AbstractSmokeTest.TestedVersions.springDependencyManagement}'"
     }
 }

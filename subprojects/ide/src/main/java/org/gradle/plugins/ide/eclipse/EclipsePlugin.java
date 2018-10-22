@@ -25,6 +25,7 @@ import org.gradle.api.Action;
 import org.gradle.api.JavaVersion;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
+import org.gradle.api.Task;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.Dependency;
 import org.gradle.api.internal.ConventionMapping;
@@ -58,7 +59,6 @@ import org.gradle.plugins.ide.eclipse.model.internal.EclipseJavaVersionMapper;
 import org.gradle.plugins.ide.internal.IdeArtifactRegistry;
 import org.gradle.plugins.ide.internal.IdePlugin;
 import org.gradle.plugins.ide.internal.configurer.UniqueProjectNameProvider;
-import org.gradle.util.SingleMessageLogger;
 
 import javax.inject.Inject;
 import java.io.File;
@@ -103,12 +103,20 @@ public class EclipsePlugin extends IdePlugin {
         configureEclipseClasspath(project, model);
 
         applyEclipseWtpPluginOnWebProjects(project);
+
+        configureRootProjectTask(project);
     }
 
-    // No one should be calling this.
-    @Deprecated
-    public void performPostEvaluationActions() {
-        SingleMessageLogger.nagUserOfDiscontinuedMethod("performPostEvaluationActions");
+    private void configureRootProjectTask(Project project) {
+        // The `eclipse` task in the root project should generate Eclipse projects for all Gradle projects
+        if (project.getGradle().getParent() == null && project.getParent() == null) {
+            getLifecycleTask().configure(new Action<Task>() {
+                @Override
+                public void execute(Task task) {
+                    task.dependsOn(artifactRegistry.getIdeProjectFiles(EclipseProjectMetadata.class));
+                }
+            });
+        }
     }
 
     private void configureEclipseProject(final ProjectInternal project, final EclipseModel model) {

@@ -115,7 +115,6 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      * be declared.
      * @since 3.4
      */
-    @Incubating
     public static final String API_CONFIGURATION_NAME = "api";
 
     /**
@@ -123,7 +122,6 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      * a component should be declared.
      * @since 3.4
      */
-    @Incubating
     public static final String IMPLEMENTATION_CONFIGURATION_NAME = "implementation";
 
     /**
@@ -132,7 +130,6 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      *
      * @since 3.4
      */
-    @Incubating
     public static final String API_ELEMENTS_CONFIGURATION_NAME = "apiElements";
 
     /**
@@ -162,14 +159,12 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      * that should only be found at runtime.
      * @since 3.4
      */
-    @Incubating
     public static final String RUNTIME_ONLY_CONFIGURATION_NAME = "runtimeOnly";
 
     /**
      * The name of the runtime classpath configuration, used by a component to query its own runtime classpath.
      * @since 3.4
      */
-    @Incubating
     public static final String RUNTIME_CLASSPATH_CONFIGURATION_NAME = "runtimeClasspath";
 
     /**
@@ -177,14 +172,12 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      * to query the runtime dependencies of a component.
      * @since 3.4
      */
-    @Incubating
     public static final String RUNTIME_ELEMENTS_CONFIGURATION_NAME = "runtimeElements";
 
     /**
      * The name of the compile classpath configuration.
      * @since 3.4
      */
-    @Incubating
     public static final String COMPILE_CLASSPATH_CONFIGURATION_NAME = "compileClasspath";
 
     /**
@@ -200,7 +193,6 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      * The name of the test implementation dependencies configuration.
      * @since 3.4
      */
-    @Incubating
     public static final String TEST_IMPLEMENTATION_CONFIGURATION_NAME = "testImplementation";
 
     /**
@@ -221,14 +213,12 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      * The name of the test runtime only dependencies configuration.
      * @since 3.4
      */
-    @Incubating
     public static final String TEST_RUNTIME_ONLY_CONFIGURATION_NAME = "testRuntimeOnly";
 
     /**
      * The name of the test compile classpath configuration.
      * @since 3.4
      */
-    @Incubating
     public static final String TEST_COMPILE_CLASSPATH_CONFIGURATION_NAME = "testCompileClasspath";
 
     /**
@@ -242,7 +232,6 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
      * The name of the test runtime classpath configuration.
      * @since 3.4
      */
-    @Incubating
     public static final String TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME = "testRuntimeClasspath";
 
     private final ObjectFactory objectFactory;
@@ -317,8 +306,8 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
 
         project.getExtensions().getByType(DefaultArtifactPublicationSet.class).addCandidate(jarArtifact);
 
-        Provider<JavaCompile> javaCompile = project.getTasks().withType(JavaCompile.class).named(COMPILE_JAVA_TASK_NAME);
-        Provider<ProcessResources> processResources = project.getTasks().withType(ProcessResources.class).named(PROCESS_RESOURCES_TASK_NAME);
+        Provider<JavaCompile> javaCompile = project.getTasks().named(COMPILE_JAVA_TASK_NAME, JavaCompile.class);
+        Provider<ProcessResources> processResources = project.getTasks().named(PROCESS_RESOURCES_TASK_NAME, ProcessResources.class);
 
         addJar(apiElementConfiguration, jarArtifact);
         addJar(runtimeConfiguration, jarArtifact);
@@ -364,14 +353,14 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
     }
 
     private void configureBuild(Project project) {
-        project.getTasks().named(JavaBasePlugin.BUILD_NEEDED_TASK_NAME).configure(new Action<Task>() {
+        project.getTasks().named(JavaBasePlugin.BUILD_NEEDED_TASK_NAME, new Action<Task>() {
             @Override
             public void execute(Task task) {
                 addDependsOnTaskInOtherProjects(task, true,
                     JavaBasePlugin.BUILD_NEEDED_TASK_NAME, TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME);
             }
         });
-        project.getTasks().named(JavaBasePlugin.BUILD_DEPENDENTS_TASK_NAME).configure(new Action<Task>() {
+        project.getTasks().named(JavaBasePlugin.BUILD_DEPENDENTS_TASK_NAME, new Action<Task>() {
             @Override
             public void execute(Task task) {
                 addDependsOnTaskInOtherProjects(task, false,
@@ -403,7 +392,7 @@ public class JavaPlugin implements Plugin<ProjectInternal> {
                 test.setGroup(JavaBasePlugin.VERIFICATION_GROUP);
             }
         });
-        project.getTasks().named(JavaBasePlugin.CHECK_TASK_NAME).configure(new Action<Task>() {
+        project.getTasks().named(JavaBasePlugin.CHECK_TASK_NAME, new Action<Task>() {
             @Override
             public void execute(Task task) {
                 task.dependsOn(test);

@@ -26,6 +26,10 @@ import spock.lang.Issue
 
 @RunWith(FluidDependenciesResolveRunner)
 class ProjectDependencyResolveIntegrationTest extends AbstractIntegrationSpec {
+    def setup() {
+        new ResolveTestFixture(buildFile).addDefaultVariantDerivationStrategy()
+    }
+
     def "project dependency includes artifacts and transitive dependencies of default configuration in target project"() {
         given:
         mavenRepo.module("org.other", "externalA", "1.2").publish()
@@ -48,7 +52,10 @@ project(":a") {
         api "org.other:externalA:1.2"
         'default' "org.other:externalB:2.1"
     }
-    task jar(type: Jar) { baseName = 'a' }
+    task jar(type: Jar) {
+        baseName = 'a'
+        destinationDir = buildDir
+    }
     artifacts { api jar }
 }
 project(":b") {
@@ -131,6 +138,7 @@ allprojects {
     repositories { maven { url '$mavenRepo.uri' } }
 }
 project(":a") {
+    apply plugin: 'base'
     configurations {
         api
         runtime { extendsFrom api }
@@ -179,7 +187,7 @@ project(":b") {
                     variant('runtime')
                     module('org.other:externalA:1.2') {
                         byReason('also check dependency reasons')
-                        variant('default', ['org.gradle.status': 'release'])
+                        variant('runtime', ['org.gradle.status': 'release', 'org.gradle.component.category':'library', 'org.gradle.usage':'java-runtime'])
                     }
                 }
             }
@@ -194,6 +202,7 @@ project(":b") {
         and:
         buildFile << """
 project(':a') {
+    apply plugin: 'base'
     configurations {
         configA1
         configA2

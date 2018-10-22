@@ -16,17 +16,18 @@
 
 package org.gradle.caching.local.internal
 
-import org.gradle.cache.internal.DefaultPersistentDirectoryCache
+import org.gradle.cache.internal.DefaultPersistentDirectoryStore
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.BuildOperationsFixture
 import org.gradle.integtests.fixtures.DirectoryBuildCacheFixture
+import org.gradle.integtests.fixtures.cache.FileAccessTimeJournalFixture
 import org.gradle.integtests.fixtures.executer.ExecutionResult
 import spock.lang.Ignore
 import spock.lang.Unroll
 
 import java.util.concurrent.TimeUnit
 
-class DirectoryBuildCacheCleanupIntegrationTest extends AbstractIntegrationSpec implements DirectoryBuildCacheFixture {
+class DirectoryBuildCacheCleanupIntegrationTest extends AbstractIntegrationSpec implements DirectoryBuildCacheFixture, FileAccessTimeJournalFixture {
     private final static int MAX_CACHE_AGE_IN_DAYS = 7
 
     def operations = new BuildOperationsFixture(executer, testDirectoryProvider)
@@ -69,14 +70,17 @@ class DirectoryBuildCacheCleanupIntegrationTest extends AbstractIntegrationSpec 
     }
 
     def "cleans up entries"() {
-        // Make sure cache directory is initialized
-        run()
+        executer.requireIsolatedDaemons() // needs to stop daemon
+        requireOwnGradleUserHomeDir() // needs its own journal
+        run() // Make sure cache directory is initialized
+        run '--stop' // ensure daemon does not cache file access times in memory
         def lastCleanupCheck = gcFile().makeOlder().lastModified()
 
         when:
         def newTrashFile = cacheDir.file("0" * 32).createFile()
         def oldTrashFile = cacheDir.file("1" * 32).createFile()
-        oldTrashFile.lastModified = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(MAX_CACHE_AGE_IN_DAYS) * 2
+        writeLastFileAccessTimeToJournal(newTrashFile, System.currentTimeMillis())
+        writeLastFileAccessTimeToJournal(oldTrashFile, daysAgo(MAX_CACHE_AGE_IN_DAYS + 1))
         run()
         then:
         newTrashFile.assertIsFile()
@@ -124,7 +128,7 @@ class DirectoryBuildCacheCleanupIntegrationTest extends AbstractIntegrationSpec 
 
         // checkInterval-1 hours is not enough to trigger
         when:
-        gcFile().setLastModified(originalCheckTime - TimeUnit.HOURS.toMillis(DefaultPersistentDirectoryCache.CLEANUP_INTERVAL_IN_HOURS - 1))
+        gcFile().setLastModified(originalCheckTime - TimeUnit.HOURS.toMillis(DefaultPersistentDirectoryStore.CLEANUP_INTERVAL_IN_HOURS - 1))
         lastCleanupCheck = gcFile().lastModified()
         run()
         then:
@@ -132,14 +136,14 @@ class DirectoryBuildCacheCleanupIntegrationTest extends AbstractIntegrationSpec 
 
         // checkInterval hours is enough to trigger
         when:
-        gcFile().setLastModified(originalCheckTime - TimeUnit.HOURS.toMillis(DefaultPersistentDirectoryCache.CLEANUP_INTERVAL_IN_HOURS))
+        gcFile().setLastModified(originalCheckTime - TimeUnit.HOURS.toMillis(DefaultPersistentDirectoryStore.CLEANUP_INTERVAL_IN_HOURS))
         run()
         then:
         assertCacheWasCleanedUpSince(lastCleanupCheck)
 
         // More than checkInterval hours is enough to trigger
         when:
-        gcFile().setLastModified(originalCheckTime - TimeUnit.HOURS.toMillis(DefaultPersistentDirectoryCache.CLEANUP_INTERVAL_IN_HOURS * 10))
+        gcFile().setLastModified(originalCheckTime - TimeUnit.HOURS.toMillis(DefaultPersistentDirectoryStore.CLEANUP_INTERVAL_IN_HOURS * 10))
         run()
         then:
         assertCacheWasCleanedUpSince(lastCleanupCheck)

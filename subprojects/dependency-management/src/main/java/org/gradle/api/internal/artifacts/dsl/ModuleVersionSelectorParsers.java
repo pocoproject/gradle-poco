@@ -20,7 +20,6 @@ import org.gradle.api.IllegalDependencyNotation;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.internal.artifacts.DefaultModuleIdentifier;
-import org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint;
 import org.gradle.internal.exceptions.DiagnosticsVisitor;
 import org.gradle.internal.typeconversion.MapKey;
 import org.gradle.internal.typeconversion.MapNotationConverter;
@@ -36,7 +35,7 @@ import static org.gradle.api.internal.artifacts.DefaultModuleVersionSelector.new
 
 public class ModuleVersionSelectorParsers {
 
-    private static final NotationParserBuilder<ModuleVersionSelector> BUILDER = NotationParserBuilder
+    private static final NotationParserBuilder<Object, ModuleVersionSelector> BUILDER = NotationParserBuilder
             .toType(ModuleVersionSelector.class)
             .fromCharSequence(new StringConverter())
             .converter(new MapConverter());
@@ -49,7 +48,7 @@ public class ModuleVersionSelectorParsers {
         return builder().toComposite();
     }
 
-    private static NotationParserBuilder<ModuleVersionSelector> builder() {
+    private static NotationParserBuilder<Object, ModuleVersionSelector> builder() {
         return BUILDER;
     }
 
@@ -60,7 +59,7 @@ public class ModuleVersionSelectorParsers {
         }
 
         protected ModuleVersionSelector parseMap(@MapKey("group") String group, @MapKey("name") String name, @MapKey("version") String version) {
-            return newSelector(DefaultModuleIdentifier.newId(group, name), new DefaultImmutableVersionConstraint(version));
+            return newSelector(DefaultModuleIdentifier.newId(group, name), version);
         }
     }
 
@@ -85,7 +84,7 @@ public class ModuleVersionSelectorParsers {
                         "Invalid format: '" + notation + "'. Group, name and version cannot be empty. Correct example: "
                                 + "'org.gradle:gradle-core:1.0'");
             }
-            result.converted(newSelector(DefaultModuleIdentifier.newId(parsed.getGroup(), parsed.getName()), new DefaultImmutableVersionConstraint(parsed.getVersion())));
+            result.converted(newSelector(DefaultModuleIdentifier.newId(parsed.getGroup(), parsed.getName()), parsed.getVersion()));
         }
     }
 }

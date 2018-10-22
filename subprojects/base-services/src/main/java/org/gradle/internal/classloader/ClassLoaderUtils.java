@@ -30,28 +30,15 @@ import java.net.URL;
 import java.net.URLConnection;
 
 import static org.gradle.internal.reflect.JavaReflectionUtil.method;
-import static org.gradle.internal.reflect.JavaReflectionUtil.staticMethod;
 
 public abstract class ClassLoaderUtils {
     private static final ClassDefiner CLASS_DEFINER;
-    private static final JavaMethod<ClassLoader, Package[]> GET_PACKAGES_METHOD;
-    private static final JavaMethod<ClassLoader, Package> GET_PACKAGE_METHOD;
+
+    private static final ClassLoaderPackagesFetcher CLASS_LOADER_PACKAGES_FETCHER;
 
     static {
         CLASS_DEFINER = JavaVersion.current().isJava9Compatible() ? new LookupClassDefiner() : new ReflectionClassDefiner();
-        GET_PACKAGES_METHOD = method(ClassLoader.class, Package[].class, "getPackages");
-        // Since Java 9, getPackage() is deprecated, so we use getDefinedPackage() instead
-        GET_PACKAGE_METHOD = getMethodWithFallback(Package.class, new Class[]{String.class}, "getDefinedPackage", "getPackage");
-    }
-
-    private static <T> JavaMethod<ClassLoader, T> getMethodWithFallback(Class<T> clazz, Class<?>[] params, String firstChoice, String fallback) {
-        JavaMethod<ClassLoader, T> method;
-        try {
-            method = method(ClassLoader.class, clazz, firstChoice, params);
-        } catch (Throwable e) {
-            method = method(ClassLoader.class, clazz, fallback, params);
-        }
-        return method;
+        CLASS_LOADER_PACKAGES_FETCHER = JavaVersion.current().isJava9Compatible() ? new LookupPackagesFetcher() : new ReflectionPackagesFetcher();
     }
 
     /**
@@ -80,20 +67,80 @@ public abstract class ClassLoaderUtils {
         }
     }
 
-    public static JavaMethod<ClassLoader, Package[]> getPackagesMethod() {
-        return GET_PACKAGES_METHOD;
+    static Package[] getPackages(ClassLoader classLoader) {
+        return CLASS_LOADER_PACKAGES_FETCHER.getPackages(classLoader);
     }
 
-    public static JavaMethod<ClassLoader, Package> getPackageMethod() {
-        return GET_PACKAGE_METHOD;
+    static Package getPackage(ClassLoader classLoader, String name) {
+        return CLASS_LOADER_PACKAGES_FETCHER.getPackage(classLoader, name);
     }
 
     public static <T> Class<T> define(ClassLoader targetClassLoader, String className, byte[] clazzBytes) {
         return CLASS_DEFINER.defineClass(targetClassLoader, className, clazzBytes);
     }
 
+    public static <T> Class<T> defineDecorator(Class<?> decoratedClass, ClassLoader targetClassLoader, String className, byte[] clazzBytes) {
+        return CLASS_DEFINER.defineDecoratorClass(decoratedClass, targetClassLoader, className, clazzBytes);
+    }
+
+    /**
+     * Define a class into a class loader.
+     *
+     * On Java 8, the implementation is simply invoking {@link ClassLoader#defineClass} reflectively.
+     *
+     * Since Java 9, reflection is severely restrained, and a new API {@link MethodHandles.Lookup#defineClass} is introduced.
+     * However, this API can only "defines a class to the same class loader and in the same runtime package and protection domain as this lookup's lookup class",
+     * which means, we can only use this API safely in the decorating scenario where the decorated class acts as the lookup object.
+     *
+     * Otherwise, we have to use {@link MethodHandle} to invoke {@link ClassLoader#defineClass}. Fortunately, this is the rare case.
+     */
     private interface ClassDefiner {
         <T> Class<T> defineClass(ClassLoader classLoader, String className, byte[] classBytes);
+
+        <T> Class<T> defineDecoratorClass(Class<?> decoratedClass, ClassLoader classLoader, String className, byte[] classBytes);
+    }
+
+    private interface ClassLoaderPackagesFetcher {
+        Package[] getPackages(ClassLoader classLoader);
+
+        Package getPackage(ClassLoader classLoader, String name);
+    }
+
+    /**
+     * This class makes it a bit easier to use {@link MethodHandles.Lookup}.
+     * In order to access a method, a lookup object which is accessible to this method must be provided.
+     * Usually, this class and the target Gradle-managed class loader exist in the same module, so everything works.
+     * Otherwise, an {@link IllegalAccessException} will be thrown, and {@link ClassLoader} class will be used as the lookup object.
+     */
+    private static class AbstractClassLoaderLookuper {
+        protected MethodHandles.Lookup baseLookup;
+
+        protected AbstractClassLoaderLookuper() {
+            try {
+                baseLookup = MethodHandles.lookup();
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        protected <T> T invoke(ClassLoader classLoader, String methodName, MethodType methodType, Object... arguments) {
+            try {
+                MethodHandles.Lookup lookup = getLookupForClassLoader(classLoader);
+                MethodHandle methodHandle = lookup.findVirtual(ClassLoader.class, methodName, methodType);
+                return (T) methodHandle.bindTo(classLoader).invokeWithArguments(arguments);
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        private MethodHandles.Lookup getLookupForClassLoader(ClassLoader classLoader) throws IllegalAccessException {
+            try {
+                return MethodHandles.privateLookupIn(classLoader.getClass(), baseLookup);
+            } catch (IllegalAccessException e) {
+                // Fallback to ClassLoader's lookup
+                return MethodHandles.privateLookupIn(ClassLoader.class, baseLookup);
+            }
+        }
     }
 
     private static class ReflectionClassDefiner implements ClassDefiner {
@@ -107,45 +154,66 @@ public abstract class ClassLoaderUtils {
         public <T> Class<T> defineClass(ClassLoader classLoader, String className, byte[] classBytes) {
             return Cast.uncheckedCast(defineClassMethod.invoke(classLoader, className, classBytes, 0, classBytes.length));
         }
+
+        @Override
+        public <T> Class<T> defineDecoratorClass(Class<?> decoratedClass, ClassLoader classLoader, String className, byte[] classBytes) {
+            return defineClass(classLoader, className, classBytes);
+        }
     }
 
-    private static class LookupClassDefiner implements ClassDefiner {
-        private final Class methodHandlesLookupClass;
-        private final JavaMethod methodHandlesLookup;
-        private final JavaMethod methodHandlesPrivateLookupIn;
-        private final JavaMethod lookupFindVirtual;
-        private final MethodType defineClassMethodType;
+    private static class LookupClassDefiner extends AbstractClassLoaderLookuper implements ClassDefiner {
+        private MethodType defineClassMethodType = MethodType.methodType(Class.class, new Class[]{String.class, byte[].class, int.class, int.class});
 
-        private LookupClassDefiner() {
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> Class<T> defineDecoratorClass(Class<?> decoratedClass, ClassLoader classLoader, String className, byte[] classBytes) {
             try {
-                methodHandlesLookupClass = Class.forName("java.lang.invoke.MethodHandles$Lookup");
-            } catch (ClassNotFoundException e) {
+                // Lookup.defineClass can only define a class into same classloader as the lookup object
+                // we have to use the fallback defineClass() if they're not same, which is the case of ManagedProxyClassGenerator
+                if (decoratedClass.getClassLoader() == classLoader) {
+                    MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(decoratedClass, baseLookup);
+                    return (Class) lookup.defineClass(classBytes);
+                } else {
+                    return defineClass(classLoader, className, classBytes);
+                }
+            } catch (Throwable e) {
                 throw new RuntimeException(e);
             }
-            methodHandlesLookup = staticMethod(MethodHandles.class, methodHandlesLookupClass, "lookup");
-            methodHandlesPrivateLookupIn = staticMethod(MethodHandles.class, methodHandlesLookupClass, "privateLookupIn", Class.class, methodHandlesLookupClass);
-            lookupFindVirtual = method(methodHandlesLookupClass, MethodHandle.class, "findVirtual", Class.class, String.class, MethodType.class);
-            defineClassMethodType = MethodType.methodType(Class.class, new Class[]{String.class, byte[].class, int.class, int.class});
         }
 
-        /*
-            This method is equivalent to the following code but use reflection to compile on Java 7:
-
-            MethodHandles.Lookup baseLookup = MethodHandles.lookup();
-            MethodHandles.Lookup lookup = MethodHandles.privateLookupIn(ClassLoader.class, baseLookup);
-            MethodHandle defineClassMethodHandle = lookup.findVirtual(ClassLoader.class, "defineClass", defineClassMethodType);
-            handle.bindTo(classLoader).invokeWithArguments(className, classBytes, 0, classBytes.length));
-         */
         @Override
         public <T> Class<T> defineClass(ClassLoader classLoader, String className, byte[] classBytes) {
-            Object baseLookup = methodHandlesLookup.invoke(null);
-            Object lookup = methodHandlesPrivateLookupIn.invoke(null, ClassLoader.class, baseLookup);
-            MethodHandle defineClassMethodHandle = (MethodHandle) lookupFindVirtual.invoke(lookup, ClassLoader.class, "defineClass", defineClassMethodType);
-            try {
-                return Cast.uncheckedCast(defineClassMethodHandle.bindTo(classLoader).invokeWithArguments(className, classBytes, 0, classBytes.length));
-            } catch (Throwable throwable) {
-                throw new RuntimeException(throwable);
-            }
+            return invoke(classLoader, "defineClass", defineClassMethodType, className, classBytes, 0, classBytes.length);
+        }
+    }
+
+    private static class ReflectionPackagesFetcher implements ClassLoaderPackagesFetcher {
+        private static final JavaMethod<ClassLoader, Package[]> GET_PACKAGES_METHOD = method(ClassLoader.class, Package[].class, "getPackages");
+        private static final JavaMethod<ClassLoader, Package> GET_PACKAGE_METHOD = method(ClassLoader.class, Package.class, "getPackage", String.class);
+
+        @Override
+        public Package[] getPackages(ClassLoader classLoader) {
+            return GET_PACKAGES_METHOD.invoke(classLoader);
+        }
+
+        @Override
+        public Package getPackage(ClassLoader classLoader, String name) {
+            return GET_PACKAGE_METHOD.invoke(classLoader, name);
+        }
+    }
+
+    private static class LookupPackagesFetcher extends AbstractClassLoaderLookuper implements ClassLoaderPackagesFetcher {
+        private MethodType getPackagesMethodType = MethodType.methodType(Package[].class, new Class[]{});
+        private MethodType getDefinedPackageMethodType = MethodType.methodType(Package.class, new Class[]{String.class});
+
+        @Override
+        public Package[] getPackages(ClassLoader classLoader) {
+            return invoke(classLoader, "getPackages", getPackagesMethodType);
+        }
+
+        @Override
+        public Package getPackage(ClassLoader classLoader, String name) {
+            return invoke(classLoader, "getPackage", getDefinedPackageMethodType, name);
         }
     }
 }

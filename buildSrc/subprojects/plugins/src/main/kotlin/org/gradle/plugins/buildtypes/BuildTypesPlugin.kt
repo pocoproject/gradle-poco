@@ -10,7 +10,7 @@ import org.gradle.kotlin.dsl.*
 class BuildTypesPlugin : Plugin<Project> {
 
     override fun apply(project: Project): Unit = project.run {
-        val buildTypes = container(BuildType::class.java)
+        val buildTypes = container(BuildType::class)
         extensions.add("buildTypes", buildTypes)
         buildTypes.all {
             register(this)
@@ -36,7 +36,9 @@ class BuildTypesPlugin : Plugin<Project> {
             if (!isTaskHelpInvocation(invokedTaskNames, index)) {
                 buildType.active = true
                 buildType.onProjectProperties = { properties: ProjectProperties ->
-                    properties.forEach(project::setOrCreateProperty)
+                    properties.forEach { (name, value) ->
+                        project.setOrCreateProperty(name, value)
+                    }
                 }
                 afterEvaluate {
                     invokedTaskNames.removeAt(index)

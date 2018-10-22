@@ -20,7 +20,6 @@ package org.gradle.integtests.samples
 
 import org.gradle.integtests.fixtures.AbstractIntegrationTest
 import org.gradle.integtests.fixtures.DefaultTestExecutionResult
-import org.gradle.integtests.fixtures.RepoScriptBlockUtil
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.test.fixtures.file.TestFile
 import org.junit.Before
@@ -30,16 +29,16 @@ import org.junit.Test
 class SamplesJUnitIntegrationTest extends AbstractIntegrationTest {
 
     @Rule
-    public final Sample sample = new Sample(testDirectoryProvider, 'testing/junit')
+    public final Sample sample = new Sample(testDirectoryProvider, 'testing/junit/categories')
 
     @Before
     void setup() {
-        executer.usingInitScript(RepoScriptBlockUtil.createMirrorInitScript())
+        executer.withRepositoryMirrors()
     }
 
     @Test
     void categoriesSample() {
-        TestFile projectDir = sample.dir.file("categories")
+        TestFile projectDir = sample.dir.file("groovy")
 
         // Build and test projects
         executer.inDirectory(projectDir).withTasks('clean', 'build').run()

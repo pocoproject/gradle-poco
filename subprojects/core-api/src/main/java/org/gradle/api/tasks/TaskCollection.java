@@ -58,6 +58,9 @@ public interface TaskCollection<T extends Task> extends NamedDomainObjectSet<T> 
 
     /**
      * Adds an {@code Action} to be executed when a task is added to this collection.
+     * <p>
+     * Like {@link #all(Action)}, this method will cause all tasks in this container to be realized.
+     * </p>
      *
      * @param action The action to be executed
      * @return the supplied action
@@ -70,6 +73,7 @@ public interface TaskCollection<T extends Task> extends NamedDomainObjectSet<T> 
      * parameter.
      *
      * @param closure The closure to be called
+     * @see #whenTaskAdded(Action)
      */
     @SuppressWarnings("UnusedDeclaration")
     void whenTaskAdded(Closure closure);
@@ -90,4 +94,29 @@ public interface TaskCollection<T extends Task> extends NamedDomainObjectSet<T> 
      */
     @Incubating
     TaskProvider<T> named(String name) throws UnknownTaskException;
+
+    /**
+     * {@inheritDoc}
+     *
+     * @since 5.0
+     */
+    @Incubating
+    TaskProvider<T> named(String name, Action<? super T> configurationAction) throws UnknownTaskException;
+
+
+    /**
+     * {@inheritDoc}
+     *
+     * @since 5.0
+     */
+    @Incubating
+    <S extends T> TaskProvider<S> named(String name, Class<S> type) throws UnknownTaskException;
+
+    /**
+     * {@inheritDoc}
+     *
+     * @since 5.0
+     */
+    @Incubating
+    <S extends T> TaskProvider<S> named(String name, Class<S> type, Action<? super S> configurationAction) throws UnknownTaskException;
 }

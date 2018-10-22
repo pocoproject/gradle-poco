@@ -15,17 +15,40 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.selectors;
 
+import org.gradle.api.artifacts.component.ComponentSelector;
 import org.gradle.api.internal.artifacts.ResolvedVersionConstraint;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelector;
+import org.gradle.internal.resolve.ModuleVersionResolveException;
 import org.gradle.internal.resolve.result.ComponentIdResolveResult;
 
 public interface ResolvableSelectorState {
+    /**
+     * The raw component selector being resolved, after any substitution.
+     */
+    ComponentSelector getSelector();
+
+    /**
+     * The version constraint that applies to this selector, if any.
+     * Will return null for a project selector.
+     */
     ResolvedVersionConstraint getVersionConstraint();
 
     /**
      * Resolve the selector to a component identifier.
      */
     ComponentIdResolveResult resolve(VersionSelector allRejects);
+
+    /**
+     * Resolve the prefer constraint of the selector to a component identifier.
+     */
+    ComponentIdResolveResult resolvePrefer(VersionSelector allRejects);
+
+    /**
+     * Marks the selector as resolved with the passed in failure.
+     *
+     * @param failure the failure to record
+     */
+    void failed(ModuleVersionResolveException failure);
 
     /**
      * Mark the selector as resolved.
@@ -35,5 +58,7 @@ public interface ResolvableSelectorState {
     void markResolved();
 
     boolean isForce();
+
+    boolean isFromLock();
 
 }

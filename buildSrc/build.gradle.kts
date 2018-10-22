@@ -14,28 +14,23 @@
  * limitations under the License.
  */
 
-import org.gradle.api.internal.project.ProjectInternal
-import org.gradle.jvm.toolchain.internal.JavaInstallationProbe
 import org.gradle.plugins.ide.idea.model.IdeaModel
+
+import org.gradle.kotlin.dsl.plugins.dsl.KotlinDslPlugin
+
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 import java.io.File
 import java.util.Properties
-import kotlin.coroutines.experimental.EmptyCoroutineContext.plus
-
-buildscript {
-    project.apply {
-        from("$rootDir/../gradle/shared-with-buildSrc/mirrors.gradle.kts")
-    }
-}
 
 plugins {
     `kotlin-dsl`
-    id("org.gradle.kotlin.ktlint-convention") version "0.1.8" apply false
+    id("org.gradle.kotlin.ktlint-convention") version "0.1.15" apply false
 }
 
 subprojects {
 
-    apply { plugin("java-library") }
+    apply(plugin = "java-library")
 
     if (file("src/main/groovy").isDirectory || file("src/test/groovy").isDirectory) {
 
@@ -47,10 +42,13 @@ subprojects {
         applyKotlinProjectConventions()
     }
 
-    apply {
-        plugin("idea")
-        plugin("eclipse")
+    configure<JavaPluginExtension> {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
+    
+    apply(plugin = "idea")
+    apply(plugin = "eclipse")
 
     configure<IdeaModel> {
         module.name = "buildSrc-${this@subprojects.name}"
@@ -62,25 +60,42 @@ subprojects {
 
     afterEvaluate {
         if (tasks.withType<ValidateTaskProperties>().isEmpty()) {
-            tasks.create<ValidateTaskProperties>("validateTaskProperties") {
+            val validateTaskProperties = tasks.register("validateTaskProperties", ValidateTaskProperties::class.java) {
                 outputFile.set(project.the<ReportingExtension>().baseDirectory.file("task-properties/report.txt"))
 
-                val mainSourceSet = project.java.sourceSets[SourceSet.MAIN_SOURCE_SET_NAME]
+                val mainSourceSet = project.sourceSets[SourceSet.MAIN_SOURCE_SET_NAME]
                 classes = mainSourceSet.output.classesDirs
                 classpath = mainSourceSet.compileClasspath
                 dependsOn(mainSourceSet.output)
-
-                project.tasks["check"].dependsOn(this)
             }
+            tasks.named("check").configure { dependsOn(validateTaskProperties) }
         }
+    }
+
+    tasks.withType<ValidateTaskProperties> {
+        failOnWarning = true
     }
 }
 
 allprojects {
     repositories {
-        maven(url = "https://repo.gradle.org/gradle/libs-releases")
-        maven(url = "https://repo.gradle.org/gradle/libs-snapshots")
         gradlePluginPortal()
+        maven {
+            name = "Gradle libs"
+            url = uri("https://repo.gradle.org/gradle/libs")
+        }
+        maven {
+            name = "Gradle snapshot libs"
+            url = uri("https://repo.gradle.org/gradle/libs-snapshots")
+        }
+        maven {
+            name = "kotlin-eap"
+            url = uri("https://dl.bintray.com/kotlin/kotlin-eap")
+        }
+        maven {
+            name = "kotlin-dev"
+            url = uri("https://dl.bintray.com/kotlin/kotlin-dev")
+        }
     }
 }
 
@@ -90,10 +105,19 @@ dependencies {
     }
 }
 
+// Set gradlebuild.skipBuildSrcChecks Gradle property to "true" to disable all buildSrc verification tasks
+if (findProperty("gradlebuild.skipBuildSrcChecks") == "true") {
+    allprojects {
+        tasks.matching { it.group == LifecycleBasePlugin.VERIFICATION_GROUP }.configureEach {
+            enabled = false
+        }
+    }
+}
+
 // TODO Avoid duplication of what defines a CI Server with BuildEnvironment
 val isCiServer: Boolean by extra { "CI" in System.getenv() }
 if (!isCiServer || System.getProperty("enableCodeQuality")?.toLowerCase() == "true") {
-    apply { from("../gradle/shared-with-buildSrc/code-quality-configuration.gradle.kts") }
+    apply(from = "../gradle/shared-with-buildSrc/code-quality-configuration.gradle.kts")
 }
 
 if (isCiServer) {
@@ -131,38 +155,34 @@ fun readProperties(propertiesFile: File) = Properties().apply {
     }
 }
 
-tasks {
-    val checkSameDaemonArgs by creating {
-        doLast {
-            val buildSrcProperties = readProperties(File(project.rootDir, "gradle.properties"))
-            val rootProperties = readProperties(File(project.rootDir, "../gradle.properties"))
-            val jvmArgs = listOf(buildSrcProperties, rootProperties).map { it.getProperty("org.gradle.jvmargs") }.toSet()
-            if (jvmArgs.size > 1) {
-                throw GradleException("gradle.properties and buildSrc/gradle.properties have different org.gradle.jvmargs " +
-                    "which may cause two daemons to be spawned on CI and in IDEA. " +
-                    "Use the same org.gradle.jvmargs for both builds.")
-            }
+val checkSameDaemonArgs = tasks.register("checkSameDaemonArgs") {
+    doLast {
+        val buildSrcProperties = readProperties(File(project.rootDir, "gradle.properties"))
+        val rootProperties = readProperties(File(project.rootDir, "../gradle.properties"))
+        val jvmArgs = listOf(buildSrcProperties, rootProperties).map { it.getProperty("org.gradle.jvmargs") }.toSet()
+        if (jvmArgs.size > 1) {
+            throw GradleException("gradle.properties and buildSrc/gradle.properties have different org.gradle.jvmargs " +
+                "which may cause two daemons to be spawned on CI and in IDEA. " +
+                "Use the same org.gradle.jvmargs for both builds.")
         }
     }
-
-    val build by getting
-    build.dependsOn(checkSameDaemonArgs)
 }
 
+tasks.named("build").configure { dependsOn(checkSameDaemonArgs) }
+
 fun Project.applyGroovyProjectConventions() {
-    apply { plugin("groovy") }
+    apply(plugin = "groovy")
 
     dependencies {
         compile(localGroovy())
-        testCompile("org.spockframework:spock-core:1.0-groovy-2.4")
-        testCompile("cglib:cglib:3.2.6")
-        testCompile("org.objenesis:objenesis:2.4")
-        constraints {
-            compile("org.codehaus.groovy:groovy-all:2.4.12")
+        testCompile("org.spockframework:spock-core:1.2-groovy-2.5") {
+            exclude(group = "org.codehaus.groovy")
         }
+        testCompile("net.bytebuddy:byte-buddy:1.8.21")
+        testCompile("org.objenesis:objenesis:2.6")
     }
 
-    tasks.withType<GroovyCompile> {
+    tasks.withType<GroovyCompile>().configureEach {
         groovyOptions.apply {
             encoding = "utf-8"
         }
@@ -175,13 +195,22 @@ fun Project.applyGroovyProjectConventions() {
         inputs.property("javaInstallation", "$vendor ${JavaVersion.current()}")
     }
 
-    val compileGroovy: GroovyCompile by tasks
+    tasks.withType<Test>().configureEach {
+        if (JavaVersion.current().isJava9Compatible()) {
+            //allow ProjectBuilder to inject legacy types into the system classloader
+            jvmArgs("--add-opens", "java.base/java.lang=ALL-UNNAMED")
+            jvmArgs("--illegal-access=deny")
+        }
+        
+    }
+
+    val compileGroovy: TaskProvider<GroovyCompile> = tasks.withType(GroovyCompile::class.java).named("compileGroovy")
 
     configurations {
         "apiElements" {
             outgoing.variants["classes"].artifact(
                 mapOf(
-                    "file" to compileGroovy.destinationDir,
+                    "file" to compileGroovy.get().destinationDir,
                     "type" to ArtifactTypeDefinition.JVM_CLASS_DIRECTORY,
                     "builtBy" to compileGroovy
                 ))
@@ -190,14 +219,19 @@ fun Project.applyGroovyProjectConventions() {
 }
 
 fun Project.applyKotlinProjectConventions() {
-    apply {
-        plugin("kotlin")
-        plugin("org.gradle.kotlin.ktlint-convention")
-    }
+    apply(plugin = "kotlin")
 
-    tasks.withType<KotlinCompile> {
+    apply(plugin = "org.gradle.kotlin.ktlint-convention")
+
+    tasks.withType<KotlinCompile>().configureEach {
         kotlinOptions {
             freeCompilerArgs += listOf("-Xjsr305=strict")
+        }
+    }
+
+    plugins.withType<KotlinDslPlugin> {
+        kotlinDslPluginOptions {
+            experimentalWarning.set(false)
         }
     }
 }

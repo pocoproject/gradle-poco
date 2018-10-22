@@ -16,18 +16,11 @@
 
 package org.gradle.api.internal.artifacts;
 
-import org.gradle.api.internal.artifacts.ivyservice.ArtifactCacheMetadata;
-import org.gradle.api.internal.artifacts.ivyservice.CacheLockingManager;
-import org.gradle.api.internal.artifacts.ivyservice.DefaultCacheLockingManager;
-import org.gradle.api.internal.artifacts.transform.DefaultTransformInfoFactory;
-import org.gradle.api.internal.artifacts.transform.DefaultTransformedFileCache;
-import org.gradle.api.internal.artifacts.transform.TransformInfoDependencyResolver;
-import org.gradle.api.internal.artifacts.transform.TransformInfoExecutor;
-import org.gradle.api.internal.artifacts.transform.TransformInfoFactory;
-import org.gradle.api.internal.artifacts.transform.TransformedFileCache;
-import org.gradle.api.internal.changedetection.state.FileSystemSnapshotter;
-import org.gradle.api.internal.changedetection.state.InMemoryCacheDecoratorFactory;
-import org.gradle.cache.CacheRepository;
+import org.gradle.api.internal.artifacts.transform.ArtifactTransformListener;
+import org.gradle.api.internal.artifacts.transform.DefaultTransformNodeFactory;
+import org.gradle.api.internal.artifacts.transform.TransformNodeDependencyResolver;
+import org.gradle.api.internal.artifacts.transform.TransformNodeExecutor;
+import org.gradle.api.internal.artifacts.transform.TransformNodeFactory;
 import org.gradle.internal.event.ListenerManager;
 import org.gradle.internal.operations.BuildOperationExecutor;
 import org.gradle.internal.service.ServiceRegistration;
@@ -44,11 +37,6 @@ public class DependencyServices extends AbstractPluginServiceRegistry {
     }
 
     @Override
-    public void registerBuildSessionServices(ServiceRegistration registration) {
-        registration.addProvider(new DependencyManagementBuildSessionServices());
-    }
-
-    @Override
     public void registerBuildServices(ServiceRegistration registration) {
         registration.addProvider(new DependencyManagementBuildScopeServices());
     }
@@ -58,27 +46,26 @@ public class DependencyServices extends AbstractPluginServiceRegistry {
         registration.addProvider(new DependencyManagementBuildTreeScopeServices());
     }
 
-    private static class DependencyManagementBuildSessionServices {
-        CacheLockingManager createCacheLockingManager(CacheRepository cacheRepository, ArtifactCacheMetadata artifactCacheMetadata) {
-            return new DefaultCacheLockingManager(cacheRepository, artifactCacheMetadata);
+    @Override
+    public void registerGradleServices(ServiceRegistration registration) {
+        registration.addProvider(new DependencyManagementGradleServices());
+    }
+
+    private static class DependencyManagementGradleServices {
+        ArtifactTransformListener createArtifactTransformListener(ListenerManager listenerManager) {
+            return listenerManager.getBroadcaster(ArtifactTransformListener.class);
         }
 
-        TransformedFileCache createTransformedFileCache(ArtifactCacheMetadata artifactCacheMetadata, CacheRepository cacheRepository, InMemoryCacheDecoratorFactory cacheDecoratorFactory, FileSystemSnapshotter fileSystemSnapshotter, ListenerManager listenerManager) {
-            DefaultTransformedFileCache transformedFileCache = new DefaultTransformedFileCache(artifactCacheMetadata, cacheRepository, cacheDecoratorFactory, fileSystemSnapshotter);
-            listenerManager.addListener(transformedFileCache);
-            return transformedFileCache;
+        TransformNodeFactory createTransformNodeFactory() {
+            return new DefaultTransformNodeFactory();
         }
 
-        TransformInfoFactory createTransformInfoFactory() {
-            return new DefaultTransformInfoFactory();
+        TransformNodeDependencyResolver createTransformNodeDepndencyResolver(TransformNodeFactory transformNodeFactory) {
+            return new TransformNodeDependencyResolver(transformNodeFactory);
         }
 
-        TransformInfoDependencyResolver createTransformInfoResolver(TransformInfoFactory transformInfoFactory) {
-            return new TransformInfoDependencyResolver(transformInfoFactory);
-        }
-
-        TransformInfoExecutor createTransformInfoExecutor(BuildOperationExecutor buildOperationExecutor) {
-            return new TransformInfoExecutor(buildOperationExecutor);
+        TransformNodeExecutor createTransformNodeExecutor(BuildOperationExecutor buildOperationExecutor, ArtifactTransformListener transformListener) {
+            return new TransformNodeExecutor(buildOperationExecutor, transformListener);
         }
     }
 }

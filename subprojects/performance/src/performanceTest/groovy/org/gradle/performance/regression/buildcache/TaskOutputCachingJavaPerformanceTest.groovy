@@ -42,7 +42,7 @@ class TaskOutputCachingJavaPerformanceTest extends AbstractTaskOutputCachingPerf
         runner.warmUpRuns = 11
         runner.runs = 21
         runner.minimumVersion = "3.5"
-        runner.targetVersions = ["4.9-20180620235919+0000"]
+        runner.targetVersions = ["5.0-20181010183641+0000"]
     }
 
     def "clean #tasks on #testProject with remote http cache"() {
@@ -238,7 +238,7 @@ class TaskOutputCachingJavaPerformanceTest extends AbstractTaskOutputCachingPerf
                                 break
                             }
 
-                            tarEntry.setModTime(tarEntry.modTime + 3743)
+                            tarEntry.setModTime(tarEntry.modTime.time + 3743)
                             tarOutput.putArchiveEntry(tarEntry)
                             if (!tarEntry.directory) {
                                 tarOutput << tarInput

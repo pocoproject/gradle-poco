@@ -21,16 +21,18 @@ import org.gradle.api.internal.artifacts.DependencyManagementServices
 import org.gradle.api.internal.changedetection.state.InMemoryCacheDecoratorFactory
 import org.gradle.api.internal.plugins.PluginRegistry
 import org.gradle.api.internal.project.ProjectInternal
+import org.gradle.api.internal.project.ProjectStateRegistry
 import org.gradle.api.internal.tasks.options.OptionReader
 import org.gradle.cache.CacheRepository
 import org.gradle.composite.internal.IncludedBuildTaskGraph
+import org.gradle.configuration.internal.ListenerBuildOperationDecorator
 import org.gradle.execution.BuildConfigurationActionExecuter
 import org.gradle.execution.BuildExecuter
 import org.gradle.execution.DefaultBuildExecuter
 import org.gradle.execution.ProjectConfigurer
-import org.gradle.execution.TaskExecutionGraphInternal
 import org.gradle.execution.TaskSelector
 import org.gradle.execution.taskgraph.DefaultTaskExecutionGraph
+import org.gradle.execution.taskgraph.TaskExecutionGraphInternal
 import org.gradle.initialization.BuildCancellationToken
 import org.gradle.internal.build.BuildState
 import org.gradle.internal.concurrent.DefaultParallelismConfiguration
@@ -77,6 +79,7 @@ public class GradleScopeServicesTest extends Specification {
         parent.get(ModelRuleSourceDetector) >> Stub(ModelRuleSourceDetector)
         parent.get(Clock) >> Stub(Clock)
         parent.get(BuildOperationExecutor) >> Stub(BuildOperationExecutor)
+        parent.get(ListenerBuildOperationDecorator) >> Stub(ListenerBuildOperationDecorator)
         parent.get(WorkerLeaseService) >> Stub(WorkerLeaseService)
         parent.get(ResourceLockCoordinationService) >> Stub(ResourceLockCoordinationService)
         parent.get(Instantiator) >> Stub(Instantiator)
@@ -85,6 +88,7 @@ public class GradleScopeServicesTest extends Specification {
         parent.get(BuildState) >> Stub(BuildState)
         parent.get(ParallelismConfigurationManager) >> new ParallelismConfigurationManagerFixture(DefaultParallelismConfiguration.DEFAULT)
         parent.get(StyledTextOutputFactory) >> new TestStyledTextOutputFactory()
+        parent.get(ProjectStateRegistry) >> Stub(ProjectStateRegistry)
         gradle.getStartParameter() >> startParameter
         pluginRegistryParent.createChild(_, _, _) >> pluginRegistryChild
         gradle.services >> registry

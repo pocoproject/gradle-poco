@@ -27,10 +27,11 @@ import org.gradle.internal.component.model.ComponentResolveMetadata
 import org.gradle.internal.component.model.DependencyMetadata
 import org.gradle.internal.component.model.ModuleSource
 import org.gradle.internal.hash.HashValue
+import org.gradle.util.AttributeTestUtil
 import org.gradle.util.TestUtil
 
 class DefaultMutableMavenModuleResolveMetadataTest extends AbstractMutableModuleComponentResolveMetadataTest {
-    private final mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
+    private final mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), AttributeTestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
 
     @Override
     AbstractMutableModuleComponentResolveMetadata createMetadata(ModuleComponentIdentifier id, List<Configuration> configurations, List<DependencyMetadata> dependencies) {
@@ -49,13 +50,13 @@ class DefaultMutableMavenModuleResolveMetadataTest extends AbstractMutableModule
         expect:
         def immutable = metadata.asImmutable()
         immutable.configurationNames == ["compile", "runtime", "test", "provided", "system", "optional", "master", "default", "javadoc", "sources"] as Set
-        immutable.getConfiguration("compile").hierarchy == ["compile"]
-        immutable.getConfiguration("runtime").hierarchy == ["runtime", "compile"]
-        immutable.getConfiguration("master").hierarchy == ["master"]
-        immutable.getConfiguration("test").hierarchy == ["test", "runtime", "compile"]
-        immutable.getConfiguration("default").hierarchy == ["default", "runtime", "compile", "master"]
-        immutable.getConfiguration("provided").hierarchy == ["provided"]
-        immutable.getConfiguration("optional").hierarchy == ["optional"]
+        immutable.getConfiguration("compile").hierarchy as List == ["compile"]
+        immutable.getConfiguration("runtime").hierarchy as List == ["runtime", "compile"]
+        immutable.getConfiguration("master").hierarchy as List == ["master"]
+        immutable.getConfiguration("test").hierarchy as List == ["test", "runtime", "compile"]
+        immutable.getConfiguration("default").hierarchy as List == ["default", "runtime", "compile", "master"]
+        immutable.getConfiguration("provided").hierarchy as List == ["provided"]
+        immutable.getConfiguration("optional").hierarchy as List == ["optional"]
     }
 
     def "default metadata"() {
@@ -166,7 +167,7 @@ class DefaultMutableMavenModuleResolveMetadataTest extends AbstractMutableModule
         immutable.snapshotTimestamp == "123"
         immutable.packaging == "pom"
         immutable.relocated
-        immutable.contentHash == contentHash
+        immutable.originalContentHash == contentHash
 
         def copy = immutable.asMutable()
         copy != metadata

@@ -17,11 +17,11 @@
 package org.gradle.integtests
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
+import org.gradle.integtests.fixtures.timeout.IntegrationTestTimeout
 import org.gradle.test.fixtures.file.TestFile
 import spock.lang.Issue
-import spock.lang.Timeout
 
-@Timeout(300)
+@IntegrationTestTimeout(300)
 class BuildSourceBuilderIntegrationTest extends AbstractIntegrationSpec {
 
     @Issue("https://issues.gradle.org/browse/GRADLE-2032")
@@ -80,6 +80,10 @@ class BuildSourceBuilderIntegrationTest extends AbstractIntegrationSpec {
         def firstTaskTimeFromSecondBuildSrcBuild = startedTaskTimes(secondBuildResult.output).values().min()
 
         lastTaskTimeFromFirstBuildSrcBuild < firstTaskTimeFromSecondBuildSrcBuild
+
+        cleanup:
+        runReleaseHandle.abort()
+        runBlockingHandle.abort()
     }
 
     Map<String, Long> startedTaskTimes(String output) {

@@ -30,7 +30,7 @@ public abstract class AbstractExternalModuleDependency extends AbstractModuleDep
     private final ModuleIdentifier moduleIdentifier;
     private boolean changing;
     private boolean force;
-    private final MutableVersionConstraint versionConstraint;
+    private final DefaultMutableVersionConstraint versionConstraint;
 
     public AbstractExternalModuleDependency(ModuleIdentifier module, String version, String configuration) {
         super(configuration);
@@ -67,7 +67,7 @@ public abstract class AbstractExternalModuleDependency extends AbstractModuleDep
     }
 
     public String getVersion() {
-        return Strings.emptyToNull(versionConstraint.getPreferredVersion());
+        return Strings.emptyToNull(versionConstraint.getVersion());
     }
 
     public boolean isForce() {
@@ -111,5 +111,26 @@ public abstract class AbstractExternalModuleDependency extends AbstractModuleDep
             throw new InvalidUserDataException("Name must not be null!");
         }
         return DefaultModuleIdentifier.newId(group, name);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        AbstractExternalModuleDependency that = (AbstractExternalModuleDependency) o;
+        return isContentEqualsFor(that);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = getGroup() != null ? getGroup().hashCode() : 0;
+        result = 31 * result + getName().hashCode();
+        result = 31 * result + (getVersion() != null ? getVersion().hashCode() : 0);
+        return result;
     }
 }

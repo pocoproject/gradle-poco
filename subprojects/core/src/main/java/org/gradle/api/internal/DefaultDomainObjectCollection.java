@@ -15,7 +15,6 @@
  */
 package org.gradle.api.internal;
 
-import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
@@ -25,7 +24,9 @@ import org.gradle.api.internal.collections.CollectionEventRegister;
 import org.gradle.api.internal.collections.CollectionFilter;
 import org.gradle.api.internal.collections.ElementSource;
 import org.gradle.api.internal.collections.FilteredCollection;
+import org.gradle.api.internal.provider.CollectionProviderInternal;
 import org.gradle.api.internal.provider.ProviderInternal;
+import org.gradle.api.internal.provider.Providers;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
@@ -37,14 +38,15 @@ import org.gradle.util.ConfigureUtil;
 import java.util.AbstractCollection;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 
-public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> implements DomainObjectCollection<T>, WithEstimatedSize {
+public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> implements DomainObjectCollection<T>, WithEstimatedSize, WithMutationGuard {
 
     private final Class<? extends T> type;
     private final CollectionEventRegister<T> eventRegister;
     private final ElementSource<T> store;
-    private ImmutableActionSet<Void> mutateAction = ImmutableActionSet.empty();
 
     protected DefaultDomainObjectCollection(Class<? extends T> type, ElementSource<T> store) {
         this(type, store, new BroadcastingCollectionEventRegister<T>(type));
@@ -54,10 +56,10 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         this.type = type;
         this.store = store;
         this.eventRegister = eventRegister;
-        this.store.onRealize(new Action<ProviderInternal<? extends T>>() {
+        this.store.onRealize(new Action<T>() {
             @Override
-            public void execute(ProviderInternal<? extends T> provider) {
-                doAdd(provider.get(), eventRegister.getAddActions());
+            public void execute(T value) {
+                doAddRealized(value, eventRegister.getAddActions());
             }
         });
     }
@@ -67,7 +69,7 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     protected void realized(ProviderInternal<? extends T> provider) {
-        getStore().removePending(provider);
+        getStore().realizeExternal(provider);
     }
 
     public Class<? extends T> getType() {
@@ -128,15 +130,15 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
 
     Iterator<T> iteratorNoFlush() {
         if (store.constantTimeIsEmpty()) {
-            return Iterators.emptyIterator();
+            return Collections.emptyIterator();
         }
 
         return new IteratorImpl(store.iteratorNoFlush());
     }
 
     public void all(Action<? super T> action) {
-
-        action = whenObjectAdded(action);
+        assertMutable("all(Action)");
+        action = addEagerAction(action);
 
         if (store.constantTimeIsEmpty()) {
             return;
@@ -162,12 +164,30 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
 
     @Override
     public void configureEach(Action<? super T> action) {
-        eventRegister.registerLazyAddAction(action);
+        assertMutable("configureEach(Action)");
+        Action<? super T> wrappedAction = withMutationDisabled(action);
+        eventRegister.registerLazyAddAction(wrappedAction);
+
+        // copy in case any actions mutate the store
+        Collection<T> copied = null;
         Iterator<T> iterator = iteratorNoFlush();
         while (iterator.hasNext()) {
-            T next = iterator.next();
-            action.execute(next);
+            // only create an intermediate collection if there's something to copy
+            if (copied == null) {
+                copied = Lists.newArrayListWithExpectedSize(estimatedSize());
+            }
+            copied.add(iterator.next());
         }
+
+        if (copied != null) {
+            for (T next : copied) {
+                wrappedAction.execute(next);
+            }
+        }
+    }
+
+    protected <I extends T> Action<? super I> withMutationDisabled(Action<? super I> action) {
+        return getMutationGuard().withMutationDisabled(action);
     }
 
     public void all(Closure action) {
@@ -175,18 +195,26 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public <S extends T> DomainObjectCollection<S> withType(Class<S> type, Action<? super S> configureAction) {
+        assertMutable("withType(Class, Action)");
         DomainObjectCollection<S> result = withType(type);
         result.all(configureAction);
         return result;
     }
 
     public <S extends T> DomainObjectCollection<S> withType(Class<S> type, Closure configureClosure) {
-        DomainObjectCollection<S> result = withType(type);
-        result.all(configureClosure);
-        return result;
+        return withType(type, toAction(configureClosure));
     }
 
     public Action<? super T> whenObjectAdded(Action<? super T> action) {
+        assertMutable("whenObjectAdded(Action)");
+        return addEagerAction(action);
+    }
+
+    public void whenObjectAdded(Closure action) {
+        whenObjectAdded(toAction(action));
+    }
+
+    private Action<? super T> addEagerAction(Action<? super T> action) {
         store.realizePending(type);
         eventRegister.registerEagerAddAction(type, action);
         return action;
@@ -197,19 +225,8 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         return action;
     }
 
-    public void whenObjectAdded(Closure action) {
-        whenObjectAdded(toAction(action));
-    }
-
     public void whenObjectRemoved(Closure action) {
         whenObjectRemoved(toAction(action));
-    }
-
-    /**
-     * Adds an action which is executed before this collection is mutated. Any exception thrown by the action will veto the mutation.
-     */
-    public void beforeChange(Action<Void> action) {
-        mutateAction = mutateAction.add(action);
     }
 
     private Action<? super T> toAction(Closure action) {
@@ -217,12 +234,13 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public boolean add(T toAdd) {
-        assertMutable();
+        assertMutable("add(T)");
+        assertMutableCollectionContents();
         return doAdd(toAdd, eventRegister.getAddActions());
     }
 
     protected <I extends T> boolean add(I toAdd, Action<? super I> notification) {
-        assertMutable();
+        assertMutableCollectionContents();
         return doAdd(toAdd, notification);
     }
 
@@ -236,22 +254,46 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         }
     }
 
+    private <I extends T> boolean doAddRealized(I toAdd, Action<? super I> notification) {
+        if (getStore().addRealized(toAdd)) {
+            didAdd(toAdd);
+            notification.execute(toAdd);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     @Override
     public void addLater(Provider<? extends T> provider) {
-        assertMutable();
-        ProviderInternal<? extends T> providerInternal = Cast.uncheckedCast(provider);
-        if (eventRegister.isSubscribed(providerInternal.getType())) {
-            doAdd(provider.get(), eventRegister.getAddActions());
-            return;
-        }
+        assertMutable("addLater(Provider)");
+        assertMutableCollectionContents();
+        ProviderInternal<? extends T> providerInternal = Providers.internal(provider);
         store.addPending(providerInternal);
+        if (eventRegister.isSubscribed(providerInternal.getType())) {
+            doAddRealized(provider.get(), eventRegister.getAddActions());
+        }
+    }
+
+    @Override
+    public void addAllLater(Provider<? extends Iterable<T>> provider) {
+        assertMutable("addAllLater(Provider)");
+        assertMutableCollectionContents();
+        CollectionProviderInternal<T, ? extends Iterable<T>> providerInternal = Cast.uncheckedCast(provider);
+        store.addPendingCollection(providerInternal);
+        if (eventRegister.isSubscribed(providerInternal.getElementType())) {
+            for (T value : provider.get()) {
+                doAddRealized(value, eventRegister.getAddActions());
+            }
+        }
     }
 
     protected void didAdd(T toAdd) {
     }
 
     public boolean addAll(Collection<? extends T> c) {
-        assertMutable();
+        assertMutable("addAll(Collection<T>)");
+        assertMutableCollectionContents();
         boolean changed = false;
         for (T o : c) {
             if (doAdd(o, eventRegister.getAddActions())) {
@@ -262,14 +304,15 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public void clear() {
-        assertMutable();
+        assertMutable("clear()");
+        assertMutableCollectionContents();
         if (store.constantTimeIsEmpty()) {
             return;
         }
-        Object[] c = toArray();
+        List<T> c = Lists.newArrayList(store.iteratorNoFlush());
         getStore().clear();
-        for (Object o : c) {
-            eventRegister.fireObjectRemoved((T) o);
+        for (T o : c) {
+            eventRegister.fireObjectRemoved(o);
         }
     }
 
@@ -286,11 +329,25 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public boolean remove(Object o) {
-        assertMutable();
+        assertMutable("remove(Object)");
+        assertMutableCollectionContents();
         return doRemove(o);
     }
 
     private boolean doRemove(Object o) {
+        if (o instanceof ProviderInternal) {
+            ProviderInternal<? extends T> providerInternal = Cast.uncheckedCast(o);
+            if (getStore().removePending(providerInternal)) {
+                // NOTE: When removing provider, we don't need to fireObjectRemoved as they were never added in the first place.
+                didRemove(providerInternal);
+                return true;
+            } else if (getType().isAssignableFrom(providerInternal.getType()) && providerInternal.isPresent()) {
+                // The provider is of compatible type and the element was either already realized or we are removing a provider to the element
+                o = providerInternal.get();
+            }
+            // Else, the provider is of incompatible type, maybe we have a domain object collection of Provider, fallthrough
+        }
+
         if (getStore().remove(o)) {
             @SuppressWarnings("unchecked") T cast = (T) o;
             didRemove(cast);
@@ -304,8 +361,12 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     protected void didRemove(T t) {
     }
 
+    protected void didRemove(ProviderInternal<? extends T> t) {
+    }
+
     public boolean removeAll(Collection<?> c) {
-        assertMutable();
+        assertMutable("removeAll(Collection)");
+        assertMutableCollectionContents();
         if (store.constantTimeIsEmpty()) {
             return false;
         }
@@ -319,7 +380,8 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
     }
 
     public boolean retainAll(Collection<?> target) {
-        assertMutable();
+        assertMutable("retainAll(Collection)");
+        assertMutableCollectionContents();
         Object[] existingItems = toArray();
         boolean changed = false;
         for (Object existingItem : existingItems) {
@@ -340,6 +402,11 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         return store.estimatedSize();
     }
 
+    @Override
+    public MutationGuard getMutationGuard() {
+        return store.getMutationGuard();
+    }
+
     public Collection<T> findAll(Closure cl) {
         return findAll(cl, new ArrayList<T>());
     }
@@ -354,8 +421,19 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         return matches;
     }
 
-    protected void assertMutable() {
-        mutateAction.execute(null);
+    /**
+     * Asserts that the container can be modified in any way by the given method.
+     */
+    protected final void assertMutable(String methodName) {
+        getMutationGuard().assertMutationAllowed(methodName, this);
+    }
+
+    /**
+     * Subclasses may override this method to prevent add/remove methods.
+     * @see DefaultDomainObjectSet
+     */
+    protected void assertMutableCollectionContents() {
+        // no special validation
     }
 
     protected class IteratorImpl implements Iterator<T>, WithEstimatedSize {
@@ -376,7 +454,8 @@ public class DefaultDomainObjectCollection<T> extends AbstractCollection<T> impl
         }
 
         public void remove() {
-            assertMutable();
+            assertMutable("iterator().remove()");
+            assertMutableCollectionContents();
             iterator.remove();
             didRemove(currentElement);
             getEventRegister().fireObjectRemoved(currentElement);

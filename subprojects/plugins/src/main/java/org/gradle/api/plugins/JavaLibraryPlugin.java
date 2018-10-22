@@ -15,7 +15,6 @@
  */
 package org.gradle.api.plugins;
 
-import org.gradle.api.Incubating;
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
@@ -27,6 +26,7 @@ import org.gradle.api.attributes.Usage;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.SourceSet;
+import org.gradle.api.tasks.SourceSetContainer;
 import org.gradle.api.tasks.compile.JavaCompile;
 
 import javax.inject.Inject;
@@ -40,7 +40,6 @@ import static org.gradle.api.plugins.JavaPlugin.COMPILE_JAVA_TASK_NAME;
  *
  * @since 3.4
  */
-@Incubating
 public class JavaLibraryPlugin implements Plugin<Project> {
     private final ObjectFactory objectFactory;
 
@@ -53,13 +52,13 @@ public class JavaLibraryPlugin implements Plugin<Project> {
     public void apply(Project project) {
         project.getPluginManager().apply(JavaPlugin.class);
 
-        JavaPluginConvention convention = (JavaPluginConvention) project.getConvention().getPlugins().get("java");
+        SourceSetContainer sourceSets = project.getExtensions().getByType(SourceSetContainer.class);
         ConfigurationContainer configurations = project.getConfigurations();
-        addApiToMainSourceSet(project, convention, configurations);
+        addApiToMainSourceSet(project, sourceSets, configurations);
     }
 
-    private void addApiToMainSourceSet(Project project, JavaPluginConvention convention, ConfigurationContainer configurations) {
-        SourceSet sourceSet = convention.getSourceSets().getByName("main");
+    private void addApiToMainSourceSet(Project project, SourceSetContainer sourceSets, ConfigurationContainer configurations) {
+        SourceSet sourceSet = sourceSets.getByName("main");
 
         Configuration apiConfiguration = configurations.maybeCreate(sourceSet.getApiConfigurationName());
         apiConfiguration.setVisible(false);
@@ -70,7 +69,7 @@ public class JavaLibraryPlugin implements Plugin<Project> {
         Configuration apiElementsConfiguration = configurations.getByName(sourceSet.getApiElementsConfigurationName());
         apiElementsConfiguration.extendsFrom(apiConfiguration);
 
-        final Provider<JavaCompile> javaCompile = project.getTasks().withType(JavaCompile.class).named(COMPILE_JAVA_TASK_NAME);
+        final Provider<JavaCompile> javaCompile = project.getTasks().named(COMPILE_JAVA_TASK_NAME, JavaCompile.class);
 
         // Define a classes variant to use for compilation
         ConfigurationPublications publications = apiElementsConfiguration.getOutgoing();

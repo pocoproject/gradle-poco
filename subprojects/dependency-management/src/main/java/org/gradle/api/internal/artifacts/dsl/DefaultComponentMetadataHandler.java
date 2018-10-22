@@ -16,7 +16,6 @@
 package org.gradle.api.internal.artifacts.dsl;
 
 import com.google.common.collect.Interner;
-import com.google.common.collect.Sets;
 import groovy.lang.Closure;
 import org.gradle.api.Action;
 import org.gradle.api.ActionConfiguration;
@@ -26,6 +25,7 @@ import org.gradle.api.artifacts.ComponentMetadataDetails;
 import org.gradle.api.artifacts.ComponentMetadataRule;
 import org.gradle.api.artifacts.ModuleIdentifier;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
+import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.dsl.ComponentMetadataHandler;
 import org.gradle.api.artifacts.ivy.IvyModuleDescriptor;
 import org.gradle.api.internal.artifacts.ComponentMetadataProcessor;
@@ -35,13 +35,15 @@ import org.gradle.api.internal.artifacts.MetadataResolutionContext;
 import org.gradle.api.internal.artifacts.repositories.resolver.DependencyConstraintMetadataImpl;
 import org.gradle.api.internal.artifacts.repositories.resolver.DirectDependencyMetadataImpl;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
-import org.gradle.api.internal.changedetection.state.isolation.IsolatableFactory;
+import org.gradle.api.internal.notations.ComponentIdentifierParserFactory;
 import org.gradle.api.internal.notations.DependencyMetadataNotationParser;
 import org.gradle.api.internal.notations.ModuleIdentifierNotationConverter;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.internal.action.ConfigurableRule;
 import org.gradle.internal.action.DefaultConfigurableRule;
+import org.gradle.internal.component.external.model.VariantDerivationStrategy;
+import org.gradle.internal.isolation.IsolatableFactory;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.resolve.caching.ComponentMetadataRuleExecutor;
 import org.gradle.internal.rules.DefaultRuleActionAdapter;
@@ -56,20 +58,19 @@ import org.gradle.internal.typeconversion.UnsupportedNotationException;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 
-public class DefaultComponentMetadataHandler implements ComponentMetadataHandler, ComponentMetadataProcessorFactory {
+public class DefaultComponentMetadataHandler implements ComponentMetadataHandler, ComponentMetadataHandlerInternal, ComponentMetadataProcessorFactory {
     private static final String ADAPTER_NAME = ComponentMetadataHandler.class.getSimpleName();
     private static final List<Class<?>> VALIDATOR_PARAM_LIST = Collections.<Class<?>>singletonList(IvyModuleDescriptor.class);
     private static final String INVALID_SPEC_ERROR = "Could not add a component metadata rule for module '%s'.";
 
     private final Instantiator instantiator;
-    private final Set<SpecRuleAction<? super ComponentMetadataDetails>> rules = Sets.newLinkedHashSet();
-    private final Set<SpecConfigurableRule> classBasedRules = Sets.newLinkedHashSet();
+    private final ComponentMetadataRuleContainer metadataRuleContainer;
     private final RuleActionAdapter ruleActionAdapter;
     private final NotationParser<Object, ModuleIdentifier> moduleIdentifierNotationParser;
     private final NotationParser<Object, DirectDependencyMetadataImpl> dependencyMetadataNotationParser;
     private final NotationParser<Object, DependencyConstraintMetadataImpl> dependencyConstraintMetadataNotationParser;
+    private final NotationParser<Object, ComponentIdentifier> componentIdentifierNotationParser;
     private final ImmutableAttributesFactory attributesFactory;
     private final IsolatableFactory isolatableFactory;
     private final ComponentMetadataRuleExecutor ruleExecutor;
@@ -85,13 +86,15 @@ public class DefaultComponentMetadataHandler implements ComponentMetadataHandler
         this.ruleActionAdapter = ruleActionAdapter;
         this.moduleIdentifierNotationParser = NotationParserBuilder
             .toType(ModuleIdentifier.class)
-            .converter(new ModuleIdentifierNotationConverter(moduleIdentifierFactory))
+            .fromCharSequence(new ModuleIdentifierNotationConverter(moduleIdentifierFactory))
             .toComposite();
         this.ruleExecutor = ruleExecutor;
         this.dependencyMetadataNotationParser = DependencyMetadataNotationParser.parser(instantiator, DirectDependencyMetadataImpl.class, stringInterner);
         this.dependencyConstraintMetadataNotationParser = DependencyMetadataNotationParser.parser(instantiator, DependencyConstraintMetadataImpl.class, stringInterner);
+        this.componentIdentifierNotationParser = new ComponentIdentifierParserFactory().create();
         this.attributesFactory = attributesFactory;
         this.isolatableFactory = isolatableFactory;
+        this.metadataRuleContainer = new ComponentMetadataRuleContainer();
     }
 
     public DefaultComponentMetadataHandler(Instantiator instantiator, ImmutableModuleIdentifierFactory moduleIdentifierFactory, Interner<String> stringInterner, ImmutableAttributesFactory attributesFactory, IsolatableFactory isolatableFactory, ComponentMetadataRuleExecutor ruleExecutor) {
@@ -104,15 +107,12 @@ public class DefaultComponentMetadataHandler implements ComponentMetadataHandler
     }
 
     private ComponentMetadataHandler addRule(SpecRuleAction<? super ComponentMetadataDetails> ruleAction) {
-        if (!classBasedRules.isEmpty()) {
-            throw new IllegalArgumentException("Non class based component metadata rules must all be added before class based ones.");
-        }
-        rules.add(ruleAction);
+        metadataRuleContainer.addRule(ruleAction);
         return this;
     }
 
     private ComponentMetadataHandler addClassBasedRule(SpecConfigurableRule ruleAction) {
-        classBasedRules.add(ruleAction);
+        metadataRuleContainer.addClassRule(ruleAction);
         return this;
     }
 
@@ -196,7 +196,12 @@ public class DefaultComponentMetadataHandler implements ComponentMetadataHandler
 
     @Override
     public ComponentMetadataProcessor createComponentMetadataProcessor(MetadataResolutionContext resolutionContext) {
-        return new DefaultComponentMetadataProcessor(rules, classBasedRules, instantiator, dependencyMetadataNotationParser, dependencyConstraintMetadataNotationParser, attributesFactory, ruleExecutor, resolutionContext);
+        return new DefaultComponentMetadataProcessor(metadataRuleContainer, instantiator, dependencyMetadataNotationParser, dependencyConstraintMetadataNotationParser, componentIdentifierNotationParser, attributesFactory, ruleExecutor, resolutionContext);
+    }
+
+    @Override
+    public void setVariantDerivationStrategy(VariantDerivationStrategy strategy) {
+        metadataRuleContainer.setVariantDerivationStrategy(strategy);
     }
 
     static class ComponentMetadataDetailsMatchingSpec implements Spec<ComponentMetadataDetails> {

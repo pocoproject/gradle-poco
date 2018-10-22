@@ -26,10 +26,11 @@ import org.gradle.api.internal.artifacts.dependencies.DefaultMutableVersionConst
 import org.gradle.api.internal.attributes.ImmutableAttributes
 import org.gradle.api.internal.project.ProjectInternal
 import org.gradle.internal.component.external.descriptor.Configuration
+import org.gradle.internal.component.external.model.ivy.IvyDependencyDescriptor
 import org.gradle.internal.component.model.ComponentResolveMetadata
 import org.gradle.internal.component.model.DependencyMetadata
 import org.gradle.internal.hash.HashValue
-import org.gradle.util.TestUtil
+import org.gradle.util.AttributeTestUtil
 import spock.lang.Specification
 
 import static org.gradle.internal.component.external.model.AbstractMutableModuleComponentResolveMetadata.EMPTY_CONTENT
@@ -84,7 +85,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
         !immutable.missing
         immutable.status == "integration"
         immutable.statusScheme == ComponentResolveMetadata.DEFAULT_STATUS_SCHEME
-        immutable.contentHash == EMPTY_CONTENT
+        immutable.originalContentHash == EMPTY_CONTENT
         immutable.getConfiguration("default")
         immutable.getConfiguration("default").artifacts.size() == 1
         immutable.getConfiguration("default").artifacts.first().name.name == id.module
@@ -110,7 +111,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
         immutable.changing
         immutable.missing
         immutable.status == "broken"
-        immutable.contentHash == contentHash
+        immutable.originalContentHash == contentHash
 
         def copy = immutable.asMutable()
         copy.changing
@@ -122,7 +123,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
         immutable2.changing
         immutable2.missing
         immutable2.status == "broken"
-        immutable2.contentHash == contentHash
+        immutable2.originalContentHash == contentHash
     }
 
     def "can changes to mutable metadata does not affect copies"() {
@@ -148,7 +149,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
         immutable.changing
         immutable.missing
         immutable.status == "broken"
-        immutable.contentHash == contentHash
+        immutable.originalContentHash == contentHash
 
         def copy = immutable.asMutable()
         copy.changing
@@ -243,15 +244,15 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
         metadata.variants[0].dependencies.size() == 2
         metadata.variants[0].dependencies[0].group == "g1"
         metadata.variants[0].dependencies[0].module == "m1"
-        metadata.variants[0].dependencies[0].versionConstraint.preferredVersion == "v1"
+        metadata.variants[0].dependencies[0].versionConstraint.requiredVersion == "v1"
         metadata.variants[0].dependencies[1].group == "g2"
         metadata.variants[0].dependencies[1].module == "m2"
-        metadata.variants[0].dependencies[1].versionConstraint.preferredVersion == "v2"
+        metadata.variants[0].dependencies[1].versionConstraint.requiredVersion == "v2"
         metadata.variants[0].dependencies[1].reason == "v2 is tested"
         metadata.variants[1].dependencies.size() == 1
         metadata.variants[1].dependencies[0].group == "g1"
         metadata.variants[1].dependencies[0].module == "m1"
-        metadata.variants[1].dependencies[0].versionConstraint.preferredVersion == "v1"
+        metadata.variants[1].dependencies[0].versionConstraint.requiredVersion == "v1"
 
         def immutable = metadata.asImmutable()
         immutable.variants.size() == 2
@@ -351,7 +352,7 @@ abstract class AbstractMutableModuleComponentResolveMetadataTest extends Specifi
     }
 
     def attributes(Map<String, String> values) {
-        def attrs = TestUtil.attributesFactory().mutable()
+        def attrs = AttributeTestUtil.attributesFactory().mutable()
         attrs.attribute(ProjectInternal.STATUS_ATTRIBUTE, 'integration')
         if (values) {
             values.each { String key, String value ->

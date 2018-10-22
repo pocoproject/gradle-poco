@@ -68,6 +68,7 @@ class DaemonLifecycleSpec extends DaemonIntegrationSpec {
 
     def buildDirWithScript(buildNum, buildScript) {
         def dir = buildDir(buildNum)
+        dir.file("settings.gradle").touch()
         dir.file("build.gradle") << buildScript
         dir
     }
@@ -253,7 +254,8 @@ class DaemonLifecycleSpec extends DaemonIntegrationSpec {
     }
 
     //IBM JDK adds a bunch of environment variables that make the foreground daemon not match
-    @Requires(TestPrecondition.NOT_JDK_IBM)
+    //Java 9 and above needs --add-opens to make environment variable mutation work
+    @Requires([TestPrecondition.NOT_JDK_IBM, TestPrecondition.JDK8_OR_EARLIER])
     def "existing foreground idle daemons are used"() {
         when:
         startForegroundDaemon()

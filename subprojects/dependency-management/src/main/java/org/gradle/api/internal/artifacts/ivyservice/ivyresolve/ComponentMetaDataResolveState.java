@@ -24,10 +24,11 @@ import org.gradle.internal.resolve.result.DefaultBuildableModuleComponentMetaDat
 import org.gradle.internal.resolve.result.ResourceAwareResolveResult;
 
 class ComponentMetaDataResolveState {
-    private final DefaultBuildableModuleComponentMetaDataResolveResult resolveResult = new DefaultBuildableModuleComponentMetaDataResolveResult();
+    private final DefaultBuildableModuleComponentMetaDataResolveResult resolveResult;
     private final VersionedComponentChooser versionedComponentChooser;
     private final ComponentOverrideMetadata componentOverrideMetadata;
     private final ModuleComponentIdentifier componentIdentifier;
+
     final ModuleComponentRepository repository;
 
     private boolean searchedLocally;
@@ -38,6 +39,7 @@ class ComponentMetaDataResolveState {
         this.componentIdentifier = componentIdentifier;
         this.repository = repository;
         this.versionedComponentChooser = versionedComponentChooser;
+        this.resolveResult = new DefaultBuildableModuleComponentMetaDataResolveResult();
     }
 
     BuildableModuleComponentMetaDataResolveResult resolve() {

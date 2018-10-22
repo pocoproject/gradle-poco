@@ -24,10 +24,10 @@ plugins {
 
 dependencies {
     api(project(":core"))
-    api(project(":versionControl"))
 
     implementation(project(":resources"))
     implementation(project(":resourcesHttp"))
+    implementation(project(":snapshots"))
 
     implementation(library("asm"))
     implementation(library("asm_commons"))
@@ -43,6 +43,7 @@ dependencies {
     runtimeOnly(library("bouncycastle_provider"))
     runtimeOnly(project(":installationBeacon"))
     runtimeOnly(project(":compositeBuilds"))
+    runtimeOnly(project(":versionControl"))
 
     testImplementation(library("nekohtml"))
 
@@ -52,7 +53,7 @@ dependencies {
     integTestRuntimeOnly(project(":resourcesSftp"))
     integTestRuntimeOnly(project(":testKit"))
 
-    testFixturesCompile(project(":resourcesHttp", "testFixturesUsageCompile"))
+    testFixturesApi(project(":resourcesHttp", "testFixturesApiElements"))
     testFixturesImplementation(project(":internalIntegTesting"))
 }
 
@@ -63,7 +64,7 @@ gradlebuildJava {
 testFixtures {
     from(":core")
     from(":messaging")
-    from(":modelCore")
+    from(":coreApi")
     from(":versionControl")
     from(":resourcesHttp")
 }
@@ -72,6 +73,6 @@ testFilesCleanup {
     policy.set(WhenNotEmpty.REPORT)
 }
 
-val classpathManifest by tasks.getting(ClasspathManifest::class) {
+tasks.named<ClasspathManifest>("classpathManifest") {
     additionalProjects = listOf(project(":runtimeApiInfo"))
 }

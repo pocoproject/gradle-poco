@@ -20,8 +20,6 @@ import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.internal.scan.config.fixtures.BuildScanPluginFixture
 import spock.lang.Unroll
 
-import static org.gradle.util.TextUtil.normaliseFileSeparators
-
 @Unroll
 class BuildScanConfigIntegrationTest extends AbstractIntegrationSpec {
 
@@ -40,7 +38,6 @@ class BuildScanConfigIntegrationTest extends AbstractIntegrationSpec {
             task t
         """
     }
-
 
     def "enabled and disabled are false with no flags"() {
         when:
@@ -192,57 +189,15 @@ class BuildScanConfigIntegrationTest extends AbstractIntegrationSpec {
         description = applied ? "applied" : "not applied"
     }
 
-    def "fails when VCS mappings are being used and plugin is too old"() {
-        given:
-        scanPlugin.runtimeVersion = "1.10"
-        installVcsMappings()
-
-        when:
-        fails "t"
-
-        then:
-        failureCauseContains(BuildScanPluginCompatibility.UNSUPPORTED_VCS_MAPPINGS_MESSAGE)
-    }
-
-    def "conveys when VCS mappings are being used and plugin is not too old"() {
-        given:
-        scanPlugin.runtimeVersion = "1.11"
-        installVcsMappings()
-
-        when:
-        succeeds "t"
-
-        then:
-        scanPlugin.assertUnsupportedMessage(output, null)
-        scanPlugin.attributes(output).rootProjectHasVcsMappings
-    }
-
     def "can convey unsupported to plugin that supports it"() {
         given:
-        scanPlugin.runtimeVersion = "1.11"
+        scanPlugin.runtimeVersion = "3.0"
         when:
         succeeds "t", "-D${BuildScanPluginCompatibility.UNSUPPORTED_TOGGLE}=true"
 
         then:
         scanPlugin.assertUnsupportedMessage(output, BuildScanPluginCompatibility.UNSUPPORTED_TOGGLE_MESSAGE)
         scanPlugin.attributes(output) != null
-    }
-
-    void installVcsMappings() {
-        def mapped = file('repo/mapped')
-        settingsFile.text = """
-            import org.gradle.vcs.internal.spec.DirectoryRepositorySpec
-            sourceControl {
-                vcsMappings {
-                    withModule('external-source:artifact') {
-                        from(DirectoryRepositorySpec) {
-                            sourceDir = file('${normaliseFileSeparators(mapped.absolutePath)}')
-                        }
-                    }
-                }
-            }
-
-        """
     }
 
     void assertFailedVersionCheck() {

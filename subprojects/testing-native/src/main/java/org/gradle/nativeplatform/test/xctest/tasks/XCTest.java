@@ -22,10 +22,13 @@ import org.gradle.api.file.RegularFile;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.internal.tasks.testing.TestExecuter;
 import org.gradle.api.internal.tasks.testing.filter.DefaultTestFilter;
+import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.tasks.InputDirectory;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Optional;
+import org.gradle.api.tasks.PathSensitive;
+import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.SkipWhenEmpty;
 import org.gradle.api.tasks.testing.AbstractTestTask;
 import org.gradle.nativeplatform.test.xctest.internal.execution.XCTestExecuter;
@@ -43,9 +46,16 @@ import java.util.List;
  */
 @Incubating
 public class XCTest extends AbstractTestTask {
-    private final DirectoryProperty workingDirectory = getProject().getLayout().directoryProperty();
-    private final DirectoryProperty testInstallDirectory = newInputDirectory();
-    private final RegularFileProperty runScriptFile = newInputFile();
+    private final DirectoryProperty workingDirectory;
+    private final DirectoryProperty testInstallDirectory;
+    private final RegularFileProperty runScriptFile;
+
+    public XCTest() {
+        ObjectFactory objectFactory = getProject().getObjects();
+        workingDirectory = objectFactory.directoryProperty();
+        testInstallDirectory = objectFactory.directoryProperty();
+        runScriptFile = objectFactory.fileProperty();
+    }
 
     @Override
     protected XCTestTestExecutionSpec createTestExecutionSpec() {
@@ -58,6 +68,7 @@ public class XCTest extends AbstractTestTask {
     /**
      * Sets the test suite bundle or executable location
      */
+    @PathSensitive(PathSensitivity.RELATIVE)
     @InputDirectory
     public DirectoryProperty getTestInstallDirectory() {
         return testInstallDirectory;
@@ -90,6 +101,7 @@ public class XCTest extends AbstractTestTask {
     @SkipWhenEmpty
     @Nullable
     @Optional
+    @PathSensitive(PathSensitivity.ABSOLUTE)
     @InputFile
     protected File getRunScript() {
         RegularFile runScript = getRunScriptFile().get();

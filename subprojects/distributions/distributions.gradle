@@ -25,29 +25,55 @@ configurations.all {
 }
 //tasks.remove(jar)
 
-tasks.withType(AbstractArchiveTask) {
+tasks.withType(AbstractArchiveTask).configureEach {
     baseName "gradle"
     version = baseVersion
 
     // The CI server looks for the distributions at this location
     destinationDir = rootProject.distsDir
-    clean.delete archivePath
 }
 
-configurations {
-    dists
-}
-
-dependencies {
-    compile project(':distributionsDependencies')
+tasks.named("clean").configure {
+    delete tasks.withType(AbstractArchiveTask)
 }
 
 gradlebuildJava {
     moduleType = ModuleType.INTERNAL
 }
 
+configurations {
+    dists
 
-evaluationDependsOn ":docs"
+    buildReceipt {
+        visible = false
+        canBeResolved = true
+        canBeConsumed = false
+        extendsFrom(gradleRuntimeSource)
+        attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_RUNTIME))
+        attributes.attribute(Attribute.of("org.gradle.api", String), "build-receipt")
+    }
+
+    gradleFullDocs {
+        visible = false
+        canBeResolved = true
+        canBeConsumed = false
+        extendsFrom(gradleDocumentation)
+        attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, "docs"))
+        attributes.attribute(Attribute.of("type", String), "full-docs")
+    }
+    gradleGettingStarted {
+        visible = false
+        canBeResolved = true
+        canBeConsumed = false
+        extendsFrom(gradleDocumentation)
+        attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, "docs"))
+        attributes.attribute(Attribute.of("type", String), "getting-started")
+    }
+}
+
+dependencies {
+    implementation(project(":distributionsDependencies"))
+}
 
 ext {
     zipRootFolder = "gradle-$version"
@@ -56,53 +82,56 @@ ext {
         from("$rootDir/LICENSE")
         from('src/toplevel')
         into('bin') {
-            from { project(':launcher').startScripts.outputs.files }
+            from configurations.gradleScripts
             fileMode = 0755
         }
         into('lib') {
-            from rootProject.configurations.runtime
+            from configurations.coreGradleRuntime
             into('plugins') {
-                from rootProject.configurations.gradlePlugins - rootProject.configurations.runtime
+                from configurations.builtInGradlePlugins - configurations.coreGradleRuntime
             }
         }
     }
 
     binWithDistDocImage = copySpec {
         with binDistImage
-        from project(':docs').outputs.distDocs
+        from configurations.gradleGettingStarted
     }
 
     allDistImage = copySpec {
         with binWithDistDocImage
+        // TODO: Change this to a src publication too
         ProjectGroups.INSTANCE.getJavaProjects(project).each { project ->
             into("src/$project.projectDir.name") {
                 from project.sourceSets.main.allSource
             }
         }
         into('docs') {
-            from project(':docs').outputs.docs
+            from configurations.gradleFullDocs
         }
         into('samples') {
-            from project(':docs').outputs.samples
+            from configurations.gradleSamples
+            exclude '**/*.out'
+            exclude '**/*.sample.conf*'
         }
     }
 }
 
-task allZip(type: Zip) {
+def allZip = tasks.register("allZip", Zip) {
     classifier = 'all'
     into(zipRootFolder) {
         with allDistImage
     }
 }
 
-task binZip(type: Zip) {
+def binZip = tasks.register("binZip", Zip) {
     classifier = 'bin'
     into(zipRootFolder) {
         with binWithDistDocImage
     }
 }
 
-task srcZip(type: Zip) {
+def srcZip = tasks.register("srcZip", Zip) {
     classifier = 'src'
     into(zipRootFolder) {
         from(rootProject.file('gradlew')) {
@@ -110,6 +139,7 @@ task srcZip(type: Zip) {
         }
         from(rootProject.projectDir) {
             def spec = delegate
+            // TODO: Maybe make this some kind of publication too.
             ['buildSrc', 'buildSrc/subprojects/*', 'subprojects/*'].each {
                 spec.include "$it/*.gradle"
                 spec.include "$it/*.gradle.kts"
@@ -126,16 +156,17 @@ task srcZip(type: Zip) {
             include 'gradlew.bat'
             include 'version.txt'
             include 'released-versions.json'
+            exclude '**/.gradle/'
         }
     }
 }
 
-task outputsZip(type: Zip) {
+tasks.register("outputsZip", Zip) {
     archiveName "outputs.zip"
-    from {
-        tasks.getByPath(':createBuildReceipt')
-    }
-    ["all", "bin", "src"].each { from(tasks["${it}Zip"]) }
+    from(configurations.buildReceipt)
+    from(allZip)
+    from(binZip)
+    from(srcZip)
 }
 
 artifacts {

@@ -23,11 +23,12 @@ import spock.lang.Issue
 import spock.lang.Unroll
 
 class DependencySubstitutionRulesIntegrationTest extends AbstractIntegrationSpec {
-    def resolve = new ResolveTestFixture(buildFile, "conf")
+    def resolve = new ResolveTestFixture(buildFile, "conf").expectDefaultConfiguration("runtime")
 
     def setup() {
         settingsFile << "rootProject.name='depsub'\n"
         resolve.prepare()
+        resolve.addDefaultVariantDerivationStrategy()
     }
 
     void "forces multiple modules by rule"()
@@ -449,7 +450,7 @@ class DependencySubstitutionRulesIntegrationTest extends AbstractIntegrationSpec
             }
             project(":impl") {
                 dependencies {
-                    conf project(path: ":api", configuration: "default")
+                    conf project(path: ":api")
                 }
 
                 configurations.conf.resolutionStrategy.dependencySubstitution {
@@ -560,6 +561,7 @@ class DependencySubstitutionRulesIntegrationTest extends AbstractIntegrationSpec
         resolve.expectGraph {
             root(":impl", "depsub:impl:") {
                 edge("org.utils:api:1.5", "project :api", "depsub:api:") {
+                    variant "default"
                     selectedByRule()
                 }
             }
@@ -593,8 +595,9 @@ class DependencySubstitutionRulesIntegrationTest extends AbstractIntegrationSpec
         then:
         resolve.expectGraph {
             root(":impl", "depsub:impl:") {
-                module("org.utils:bela:1.5") {
+                module("org.utils:bela:1.5:default") {
                     edge("org.utils:api:1.5", "project :api", "depsub:api:") {
+                        variant "default"
                         selectedByRule()
                     }
                 }
@@ -634,6 +637,7 @@ class DependencySubstitutionRulesIntegrationTest extends AbstractIntegrationSpec
         resolve.expectGraph {
             root(":impl", "depsub:impl:") {
                 edge("org.utils:api:1.5", "project :api", "depsub:api:") {
+                    variant("default")
                     selectedByRule()
                 }
             }
@@ -669,6 +673,7 @@ class DependencySubstitutionRulesIntegrationTest extends AbstractIntegrationSpec
         resolve.expectGraph {
             root(":impl", "depsub:impl:") {
                 edge("org.utils:api:1.5", "project :api", "depsub:api:") {
+                    variant("default")
                     selectedByRule()
                 }
             }
@@ -763,6 +768,7 @@ class DependencySubstitutionRulesIntegrationTest extends AbstractIntegrationSpec
         resolve.expectGraph {
             root(":test", "depsub:test:") {
                 edge("org.utils:impl:1.5", "project :impl", "depsub:impl:") {
+                    variant "default"
                     selectedByRule()
                 }
             }
@@ -876,6 +882,7 @@ class DependencySubstitutionRulesIntegrationTest extends AbstractIntegrationSpec
                 edge("org.utils:dep1:2.0", "org.utils:dep1:2.0")
 
                 edge("org.utils:dep2:1.5", "project :dep2", "org.utils:dep2:3.0") {
+                    variant "default"
                     selectedByRule().byConflictResolution("between versions 3.0 and 2.0")
                 }
                 edge("org.utils:dep2:2.0", "org.utils:dep2:3.0")
@@ -1399,6 +1406,7 @@ Required by:
                 if (project.version != 'unspecified') {
                     archiveName = "\${project.name}-\${project.version}.jar"
                 }
+                destinationDir = buildDir
             }
             artifacts { conf jar }
         }
@@ -1491,5 +1499,33 @@ configurations.all {
                 edge('foo:bar:1', 'org.test:sub:0.0.1')
             }
         }
+    }
+
+    def "should fail not crash if empty selector skipped"() {
+        given:
+        buildFile << """
+            configurations {
+                conf {
+                    resolutionStrategy.dependencySubstitution {
+                        all { DependencySubstitution dependency ->
+                            throw new RuntimeException('Substitution exception')
+                        }
+                    }
+                }
+            }
+            dependencies {
+                conf 'org:foo:1.0'
+                constraints {
+                    conf 'org:foo'
+                }
+            }                       
+        """
+
+        when:
+        fails ':checkDeps'
+
+        then:
+        failure.assertHasCause("Substitution exception")
+
     }
 }

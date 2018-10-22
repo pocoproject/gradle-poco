@@ -17,13 +17,13 @@
 package org.gradle.api.internal.changedetection.state;
 
 import org.gradle.cache.PersistentIndexedCache;
-import org.gradle.caching.internal.BuildCacheHasher;
-import org.gradle.caching.internal.DefaultBuildCacheHasher;
 import org.gradle.internal.hash.HashCode;
+import org.gradle.internal.hash.Hasher;
 import org.gradle.internal.hash.Hashing;
+import org.gradle.internal.snapshot.RegularFileSnapshot;
 
 public class DefaultResourceSnapshotterCacheService implements ResourceSnapshotterCacheService {
-    private static final HashCode NO_HASH = Hashing.md5().hashString(CachingResourceHasher.class.getName() + " : no hash");
+    private static final HashCode NO_HASH = Hashing.signature(CachingResourceHasher.class.getName() + " : no hash");
     private final PersistentIndexedCache<HashCode, HashCode> persistentCache;
 
     public DefaultResourceSnapshotterCacheService(PersistentIndexedCache<HashCode, HashCode> persistentCache) {
@@ -32,7 +32,7 @@ public class DefaultResourceSnapshotterCacheService implements ResourceSnapshott
 
     @Override
     public HashCode hashFile(RegularFileSnapshot fileSnapshot, RegularFileHasher hasher, HashCode configurationHash) {
-        HashCode resourceHashCacheKey = resourceHashCacheKey(fileSnapshot, configurationHash);
+        HashCode resourceHashCacheKey = resourceHashCacheKey(fileSnapshot.getHash(), configurationHash);
 
         HashCode resourceHash = persistentCache.get(resourceHashCacheKey);
         if (resourceHash != null) {
@@ -52,10 +52,10 @@ public class DefaultResourceSnapshotterCacheService implements ResourceSnapshott
         return resourceHash;
     }
 
-    private static HashCode resourceHashCacheKey(RegularFileSnapshot fileSnapshot, HashCode configurationHash) {
-        BuildCacheHasher hasher = new DefaultBuildCacheHasher();
+    private static HashCode resourceHashCacheKey(HashCode contentHash, HashCode configurationHash) {
+        Hasher hasher = Hashing.newHasher();
         hasher.putHash(configurationHash);
-        hasher.putHash(fileSnapshot.getContent().getContentMd5());
+        hasher.putHash(contentHash);
         return hasher.hash();
     }
 }

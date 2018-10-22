@@ -16,8 +16,8 @@
 
 package org.gradle.internal.build;
 
+import org.gradle.StartParameter;
 import org.gradle.api.Transformer;
-import org.gradle.api.internal.SettingsInternal;
 import org.gradle.internal.invocation.BuildController;
 
 /**
@@ -25,12 +25,12 @@ import org.gradle.internal.invocation.BuildController;
  */
 public interface RootBuildState extends BuildState {
     /**
+     * Returns the start parameter used to define this build.
+     */
+    StartParameter getStartParameter();
+
+    /**
      * Runs a single invocation of this build, executing the given action and returning the result. Should be called once only for a given build instance.
      */
     <T> T run(Transformer<T, ? super BuildController> buildAction);
-
-    /**
-     * This method should not be here. Instead, this instance should manage the settings object itself.
-     */
-    void setSettings(SettingsInternal settings);
 }

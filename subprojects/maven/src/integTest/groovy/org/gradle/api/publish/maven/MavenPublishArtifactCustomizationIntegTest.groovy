@@ -146,7 +146,7 @@ class MavenPublishArtifactCustomizationIntegTest extends AbstractMavenPublishInt
             withModuleMetadata {
                 shouldFail {
                     // We have a publication but artifacts have been modified, which currently disables publication
-                    assertHasDescription 'Could not resolve all files'
+                    assertHasCause 'Could not resolve all files'
                     assertHasCause 'Could not find group:projectText:1.0.'
                 }
             }
@@ -411,7 +411,8 @@ class MavenPublishArtifactCustomizationIntegTest extends AbstractMavenPublishInt
             }
 
             task regularFileTask {
-                ext.outputFile = newOutputFile()
+                ext.outputFile = project.objects.fileProperty()
+                outputs.file(outputFile)
                 outputFile.set(file('regularFile-1.0.reg'))
                 doLast {
                     outputFile.get().getAsFile() << 'foo'

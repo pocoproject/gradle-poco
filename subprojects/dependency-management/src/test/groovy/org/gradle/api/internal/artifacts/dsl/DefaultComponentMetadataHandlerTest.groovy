@@ -31,20 +31,22 @@ import org.gradle.api.internal.artifacts.ivyservice.NamespaceId
 import org.gradle.api.internal.artifacts.repositories.metadata.IvyMutableModuleMetadataFactory
 import org.gradle.api.internal.artifacts.repositories.metadata.MavenMutableModuleMetadataFactory
 import org.gradle.api.internal.changedetection.state.InMemoryCacheDecoratorFactory
-import org.gradle.api.internal.changedetection.state.ValueSnapshotter
 import org.gradle.api.specs.Specs
 import org.gradle.cache.CacheRepository
 import org.gradle.internal.action.ConfigurableRule
 import org.gradle.internal.component.external.model.DefaultModuleComponentIdentifier
-import org.gradle.internal.component.external.model.DefaultMutableIvyModuleResolveMetadata
-import org.gradle.internal.component.external.model.DefaultMutableMavenModuleResolveMetadata
+import org.gradle.internal.component.external.model.ivy.DefaultMutableIvyModuleResolveMetadata
+import org.gradle.internal.component.external.model.maven.DefaultMutableMavenModuleResolveMetadata
 import org.gradle.internal.reflect.DirectInstantiator
 import org.gradle.internal.resolve.caching.ComponentMetadataRuleExecutor
 import org.gradle.internal.rules.RuleAction
 import org.gradle.internal.rules.RuleActionAdapter
 import org.gradle.internal.rules.RuleActionValidationException
 import org.gradle.internal.serialize.Serializer
+import org.gradle.internal.snapshot.ValueSnapshotter
+import org.gradle.util.AttributeTestUtil
 import org.gradle.util.BuildCommencedTimeProvider
+import org.gradle.util.SnapshotTestUtil
 import org.gradle.util.TestUtil
 import org.gradle.util.internal.SimpleMapInterner
 import spock.lang.Specification
@@ -62,12 +64,12 @@ class DefaultComponentMetadataHandlerTest extends Specification {
     def executor = new ComponentMetadataRuleExecutor(Stub(CacheRepository), Stub(InMemoryCacheDecoratorFactory), Stub(ValueSnapshotter), new BuildCommencedTimeProvider(), Stub(Serializer))
     CachePolicy cachePolicy = Mock()
     def stringInterner = SimpleMapInterner.notThreadSafe()
-    def handler = new DefaultComponentMetadataHandler(DirectInstantiator.INSTANCE, moduleIdentifierFactory, stringInterner, TestUtil.attributesFactory(), TestUtil.valueSnapshotter(), executor)
+    def handler = new DefaultComponentMetadataHandler(DirectInstantiator.INSTANCE, moduleIdentifierFactory, stringInterner, AttributeTestUtil.attributesFactory(), SnapshotTestUtil.valueSnapshotter(), executor)
     RuleActionAdapter adapter = Mock(RuleActionAdapter)
-    def mockedHandler = new DefaultComponentMetadataHandler(DirectInstantiator.INSTANCE, adapter, moduleIdentifierFactory, stringInterner, TestUtil.attributesFactory(), TestUtil.valueSnapshotter(), executor)
+    def mockedHandler = new DefaultComponentMetadataHandler(DirectInstantiator.INSTANCE, adapter, moduleIdentifierFactory, stringInterner, AttributeTestUtil.attributesFactory(), SnapshotTestUtil.valueSnapshotter(), executor)
     def ruleAction = Stub(RuleAction)
-    def mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
-    def ivyMetadataFactory = new IvyMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), TestUtil.attributesFactory())
+    def mavenMetadataFactory = new MavenMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), AttributeTestUtil.attributesFactory(), TestUtil.objectInstantiator(), TestUtil.featurePreviews())
+    def ivyMetadataFactory = new IvyMutableModuleMetadataFactory(new DefaultImmutableModuleIdentifierFactory(), AttributeTestUtil.attributesFactory())
     MetadataResolutionContext context = Mock()
 
     def 'setup'() {
@@ -87,9 +89,10 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         1 * adapter.createFromAction(action) >> ruleAction
 
         and:
-        mockedHandler.rules.size() == 1
-        mockedHandler.rules[0].action == (ruleAction)
-        mockedHandler.rules[0].spec == Specs.satisfyAll()
+        !mockedHandler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = mockedHandler.metadataRuleContainer.iterator().next()
+        ruleWrapper.rule.action == (ruleAction)
+        ruleWrapper.rule.spec == Specs.satisfyAll()
     }
 
     def "add closure rule that applies to all components" () {
@@ -102,9 +105,11 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         1 * adapter.createFromClosure(ComponentMetadataDetails, closure) >> ruleAction
 
         and:
-        mockedHandler.rules.size() == 1
-        mockedHandler.rules[0].action == (ruleAction)
-        mockedHandler.rules[0].spec == Specs.satisfyAll()
+        !mockedHandler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = mockedHandler.metadataRuleContainer.iterator().next()
+        !ruleWrapper.classBased
+        ruleWrapper.rule.action == (ruleAction)
+        ruleWrapper.rule.spec == Specs.satisfyAll()
     }
 
     def "add rule source rule that applies to all components" () {
@@ -117,9 +122,11 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         1 * adapter.createFromRuleSource(ComponentMetadataDetails, ruleSource) >> ruleAction
 
         and:
-        mockedHandler.rules.size() == 1
-        mockedHandler.rules[0].action == (ruleAction)
-        mockedHandler.rules[0].spec == Specs.satisfyAll()
+        !mockedHandler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = mockedHandler.metadataRuleContainer.iterator().next()
+        !ruleWrapper.classBased
+        ruleWrapper.rule.action == (ruleAction)
+        ruleWrapper.rule.spec == Specs.satisfyAll()
     }
 
     def "add class rule that applies to all components"() {
@@ -127,9 +134,12 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         handler.all(TestComponentMetadataRule)
 
         then:
-        handler.classBasedRules.size() == 1
-        handler.classBasedRules[0].configurableRule instanceof ConfigurableRule
-        handler.classBasedRules[0].spec == Specs.satisfyAll()
+        !handler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = handler.metadataRuleContainer.iterator().next()
+        ruleWrapper.classBased
+        def classRule = ruleWrapper.classRules.iterator().next()
+        classRule.configurableRule instanceof ConfigurableRule
+        classRule.spec == Specs.satisfyAll()
         TestComponentMetadataRule.instanceCount == 0
     }
 
@@ -141,10 +151,13 @@ class DefaultComponentMetadataHandlerTest extends Specification {
             } as Action<ActionConfiguration>)
 
         then:
-        handler.classBasedRules.size() == 1
-        handler.classBasedRules[0].configurableRule instanceof ConfigurableRule
-        handler.classBasedRules[0].spec == Specs.satisfyAll()
-        TestComponentMetadataRuleWithArgs.instanceCount == 0
+        !handler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = handler.metadataRuleContainer.iterator().next()
+        ruleWrapper.classBased
+        def classRule = ruleWrapper.classRules.iterator().next()
+        classRule.configurableRule instanceof ConfigurableRule
+        classRule.spec == Specs.satisfyAll()
+        TestComponentMetadataRule.instanceCount == 0
     }
 
     def "add action rule that applies to module" () {
@@ -161,9 +174,11 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         1 * adapter.createFromAction(action) >> ruleAction
 
         and:
-        mockedHandler.rules.size() == 1
-        mockedHandler.rules[0].action == (ruleAction)
-        mockedHandler.rules[0].spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
+        !mockedHandler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = mockedHandler.metadataRuleContainer.iterator().next()
+        !ruleWrapper.classBased
+        ruleWrapper.rule.action == (ruleAction)
+        ruleWrapper.rule.spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
     }
 
     def "add closure rule that applies to module" () {
@@ -177,9 +192,11 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         1 * adapter.createFromClosure(ComponentMetadataDetails, closure) >> ruleAction
 
         and:
-        mockedHandler.rules.size() == 1
-        mockedHandler.rules[0].action == (ruleAction)
-        mockedHandler.rules[0].spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
+        !mockedHandler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = mockedHandler.metadataRuleContainer.iterator().next()
+        !ruleWrapper.classBased
+        ruleWrapper.rule.action == (ruleAction)
+        ruleWrapper.rule.spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
     }
 
     def "add rule source rule that applies to module" () {
@@ -193,9 +210,11 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         1 * adapter.createFromRuleSource(ComponentMetadataDetails, ruleSource) >> ruleAction
 
         and:
-        mockedHandler.rules.size() == 1
-        mockedHandler.rules[0].action == (ruleAction)
-        mockedHandler.rules[0].spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
+        !mockedHandler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = mockedHandler.metadataRuleContainer.iterator().next()
+        !ruleWrapper.classBased
+        ruleWrapper.rule.action == (ruleAction)
+        ruleWrapper.rule.spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
     }
 
     def "add class rule that applies to module"() {
@@ -205,9 +224,12 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         handler.withModule(notation, TestComponentMetadataRule)
 
         then:
-        handler.classBasedRules.size() == 1
-        handler.classBasedRules[0].configurableRule instanceof ConfigurableRule
-        handler.classBasedRules[0].spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
+        !handler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = handler.metadataRuleContainer.iterator().next()
+        ruleWrapper.classBased
+        def classRule = ruleWrapper.classRules.iterator().next()
+        classRule.configurableRule instanceof ConfigurableRule
+        classRule.spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
         TestComponentMetadataRule.instanceCount == 0
     }
 
@@ -221,9 +243,12 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         } as Action<ActionConfiguration>)
 
         then:
-        handler.classBasedRules.size() == 1
-        handler.classBasedRules[0].configurableRule instanceof ConfigurableRule
-        handler.classBasedRules[0].spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
+        !handler.metadataRuleContainer.isEmpty()
+        def ruleWrapper = handler.metadataRuleContainer.iterator().next()
+        ruleWrapper.classBased
+        def classRule = ruleWrapper.classRules.iterator().next()
+        classRule.configurableRule instanceof ConfigurableRule
+        classRule.spec.target == DefaultModuleIdentifier.newId(GROUP, MODULE)
         TestComponentMetadataRule.instanceCount == 0
     }
 
@@ -473,15 +498,31 @@ class DefaultComponentMetadataHandlerTest extends Specification {
         "org.gradle" | "lib" | false
     }
 
-    def 'refuses to add an old style rule after a class based one has been added'() {
+    def 'allows to mix old style and class based rules starting with class based'() {
+        def closure = { ComponentMetadataDetails cmd -> }
+
+        when:
         handler.all(TestComponentMetadataRule)
+        handler.all closure
+        handler.all closure
+        handler.all(TestComponentMetadataRule)
+
+        then:
+        noExceptionThrown()
+
+    }
+
+    def 'allows to mix old style and class based rules starting with old style'() {
         def closure = { ComponentMetadataDetails cmd -> }
 
         when:
         handler.all closure
+        handler.all(TestComponentMetadataRule)
+        handler.all closure
+        handler.all(TestComponentMetadataRule)
 
         then:
-        thrown(IllegalArgumentException)
+        noExceptionThrown()
 
     }
 

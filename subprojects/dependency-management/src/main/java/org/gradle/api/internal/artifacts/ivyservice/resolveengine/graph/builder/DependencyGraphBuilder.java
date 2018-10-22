@@ -20,6 +20,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
+import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.artifacts.ModuleVersionIdentifier;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.capabilities.Capability;
@@ -27,6 +28,8 @@ import org.gradle.api.internal.artifacts.ComponentSelectorConverter;
 import org.gradle.api.internal.artifacts.ResolveContext;
 import org.gradle.api.internal.artifacts.dsl.ModuleReplacementsData;
 import org.gradle.api.internal.artifacts.ivyservice.dependencysubstitution.DependencySubstitutionApplicator;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.Version;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionParser;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.strategy.VersionSelectorScheme;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.DependencyGraphSelector;
@@ -35,7 +38,6 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflict
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.DefaultCapabilitiesConflictHandler;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.ModuleConflictHandler;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.PotentialConflict;
-import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.selectors.SelectorStateResolver;
 import org.gradle.api.internal.attributes.AttributesSchemaInternal;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.specs.Spec;
@@ -56,8 +58,10 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class DependencyGraphBuilder {
     private static final Logger LOGGER = LoggerFactory.getLogger(DependencyGraphBuilder.class);
@@ -75,6 +79,8 @@ public class DependencyGraphBuilder {
     private final ImmutableAttributesFactory attributesFactory;
     private final CapabilitiesConflictHandler capabilitiesConflictHandler;
     private final VersionSelectorScheme versionSelectorScheme;
+    private final Comparator<Version> versionComparator;
+    private final VersionParser versionParser;
 
     public DependencyGraphBuilder(DependencyToComponentIdResolver componentIdResolver,
                                   ComponentMetaDataResolver componentMetaDataResolver,
@@ -89,7 +95,9 @@ public class DependencyGraphBuilder {
                                   DependencySubstitutionApplicator dependencySubstitutionApplicator,
                                   ComponentSelectorConverter componentSelectorConverter,
                                   ImmutableAttributesFactory attributesFactory,
-                                  VersionSelectorScheme versionSelectorScheme) {
+                                  VersionSelectorScheme versionSelectorScheme,
+                                  Comparator<Version> versionComparator,
+                                  VersionParser versionParser) {
         this.idResolver = componentIdResolver;
         this.metaDataResolver = componentMetaDataResolver;
         this.moduleResolver = resolveContextToComponentResolver;
@@ -104,6 +112,8 @@ public class DependencyGraphBuilder {
         this.attributesFactory = attributesFactory;
         this.capabilitiesConflictHandler = capabilitiesConflictHandler;
         this.versionSelectorScheme = versionSelectorScheme;
+        this.versionComparator = versionComparator;
+        this.versionParser = versionParser;
     }
 
     public void resolve(final ResolveContext resolveContext, final DependencyGraphVisitor modelVisitor) {
@@ -112,9 +122,11 @@ public class DependencyGraphBuilder {
         DefaultBuildableComponentResolveResult rootModule = new DefaultBuildableComponentResolveResult();
         moduleResolver.resolve(resolveContext, rootModule);
 
-        final ResolveState resolveState = new ResolveState(idGenerator, rootModule, resolveContext.getName(), idResolver, metaDataResolver, edgeFilter, attributesSchema, moduleExclusions, moduleReplacementsData, componentSelectorConverter, attributesFactory, dependencySubstitutionApplicator, versionSelectorScheme);
+        int graphSize = estimateSize(resolveContext);
+        final ResolveState resolveState = new ResolveState(idGenerator, rootModule, resolveContext.getName(), idResolver, metaDataResolver, edgeFilter, attributesSchema, moduleExclusions, moduleReplacementsData, componentSelectorConverter, attributesFactory, dependencySubstitutionApplicator, versionSelectorScheme, versionComparator, versionParser, moduleConflictHandler.getResolver(), graphSize);
 
-        traverseGraph(resolveState);
+        Map<ModuleVersionIdentifier, ComponentIdentifier> componentIdentifierCache = Maps.newHashMapWithExpectedSize(graphSize/2);
+        traverseGraph(resolveState, componentIdentifierCache);
 
         validateGraph(resolveState);
 
@@ -123,14 +135,24 @@ public class DependencyGraphBuilder {
     }
 
     /**
+     * This method is a heuristic that gives an idea of the "size" of the graph. The larger
+     * the graph is, the higher the risk of internal resizes exists, so we try to estimate
+     * the size of the graph to avoid maps resizing.
+     */
+    private static int estimateSize(ResolveContext resolveContext) {
+        int estimate = 0;
+        if (resolveContext instanceof Configuration) {
+            estimate = (int) (512 * Math.log(((Configuration) resolveContext).getAllDependencies().size()));
+        }
+        return Math.max(10, estimate);
+    }
+
+    /**
      * Traverses the dependency graph, resolving conflicts and building the paths from the root configuration.
      */
-    private void traverseGraph(final ResolveState resolveState) {
+    private void traverseGraph(final ResolveState resolveState, final Map<ModuleVersionIdentifier, ComponentIdentifier> componentIdentifierCache) {
         resolveState.onMoreSelected(resolveState.getRoot());
         final List<EdgeState> dependencies = Lists.newArrayList();
-        final Map<ModuleVersionIdentifier, ComponentIdentifier> componentIdentifierCache = Maps.newHashMap();
-
-        final PendingDependenciesHandler pendingDependenciesHandler = new DefaultPendingDependenciesHandler();
 
         while (resolveState.peek() != null || moduleConflictHandler.hasConflicts() || capabilitiesConflictHandler.hasConflicts()) {
             if (resolveState.peek() != null) {
@@ -142,7 +164,7 @@ public class DependencyGraphBuilder {
 
                 // Initialize and collect any new outgoing edges of this node
                 dependencies.clear();
-                node.visitOutgoingDependencies(dependencies, pendingDependenciesHandler);
+                node.visitOutgoingDependencies(dependencies);
                 resolveEdges(node, dependencies, resolveState, componentIdentifierCache);
             } else {
                 // We have some batched up conflicts. Resolve the first, and continue traversing the graph
@@ -217,10 +239,8 @@ public class DependencyGraphBuilder {
     private void performSelection(ResolveState resolveState, ModuleResolveState module) {
         ComponentState currentSelection = module.getSelected();
 
-        SelectorStateResolver<ComponentState> selectorStateResolver = new SelectorStateResolver<ComponentState>(moduleConflictHandler.getResolver(), resolveState, resolveState.getRoot().getComponent());
-        ComponentState selected;
         try {
-            selected = selectorStateResolver.selectBest(module.getId(), module.getSelectors());
+            module.maybeUpdateSelection();
         } catch (ModuleVersionResolveException e) {
             // Ignore: All selectors failed, and will have failures recorded
             return;
@@ -228,19 +248,9 @@ public class DependencyGraphBuilder {
 
         // If no current selection for module, just use the candidate.
         if (currentSelection == null) {
-            module.select(selected);
             // This is the first time we've seen the module, so register with conflict resolver.
             checkForModuleConflicts(resolveState, module);
-            return;
         }
-
-        // If current selection is still the best choice, then only need to point new edge/selector at current selection.
-        if (selected == currentSelection) {
-            return;
-        }
-
-        // New candidate is a preferred choice over current selection. Reset the module state and reselect.
-        module.changeSelection(selected);
     }
 
     private void checkForModuleConflicts(ResolveState resolveState, ModuleResolveState module) {
@@ -315,8 +325,26 @@ public class DependencyGraphBuilder {
                 // We need to attach failures on unattached dependencies too, in case a node wasn't selected
                 // at all, but we still want to see an error message for it.
                 attachFailureToEdges(error, module.getUnattachedDependencies());
+            } else if (module.isVirtualPlatform() && module.hasCompetingForceSelectors()) {
+                attachMultipleForceOnPlatformFailureToEdges(module);
             }
         }
+    }
+
+    private void attachMultipleForceOnPlatformFailureToEdges(ModuleResolveState module) {
+        List<EdgeState> forcedEdges = Lists.newArrayList();
+        Set<ModuleResolveState> participatingModules = module.getPlatformState().getParticipatingModules();
+        for (ModuleResolveState participatingModule : participatingModules) {
+            for (EdgeState incomingEdge : participatingModule.getIncomingEdges()) {
+                if (incomingEdge.getSelector().isForce()) {
+                    // Filter out platform originating edges
+                    if (!incomingEdge.getFrom().getComponent().getModule().equals(module)) {
+                        forcedEdges.add(incomingEdge);
+                    }
+                }
+            }
+        }
+        attachFailureToEdges(new GradleException("Multiple forces on different versions for virtual platform " + module.getId()), forcedEdges);
     }
 
     /**

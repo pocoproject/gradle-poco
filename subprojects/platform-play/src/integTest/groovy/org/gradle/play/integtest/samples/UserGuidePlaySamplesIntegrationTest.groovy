@@ -17,7 +17,6 @@
 package org.gradle.play.integtest.samples
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
-import org.gradle.integtests.fixtures.RepoScriptBlockUtil
 import org.gradle.integtests.fixtures.Sample
 import org.gradle.test.fixtures.archive.ArchiveTestFixture
 import org.gradle.test.fixtures.archive.JarTestFixture
@@ -38,7 +37,7 @@ class UserGuidePlaySamplesIntegrationTest extends AbstractIntegrationSpec {
     @Rule Sample play26Sample = new Sample(temporaryFolder, "play/play-2.6")
 
     def setup() {
-        executer.usingInitScript(RepoScriptBlockUtil.createMirrorInitScript())
+        executer.withRepositoryMirrors()
     }
 
     def "sourcesets sample is buildable" () {
@@ -69,9 +68,6 @@ class UserGuidePlaySamplesIntegrationTest extends AbstractIntegrationSpec {
     @IgnoreIf({ !AbstractPlaySampleIntegrationTest.portForWithBrowserTestIsFree() })
     def "compiler sample is buildable" () {
         when:
-        // The following annotation processors were detected on the compile classpath: 'org.atteo.classindex.processor.ClassIndexProcessor'.
-        // Detecting annotation processors on the compile classpath is deprecated
-        executer.expectDeprecationWarning()
         sample compilerPlaySample
 
         then:
