@@ -41,10 +41,6 @@ gradlebuildJava {
     moduleType = ModuleType.CORE
 }
 
-gradlebuildJava {
-    moduleType = ModuleType.PLUGIN
-}
-
 testFixtures {
     from(":core")
     from(":dependencyManagement")
