@@ -25,6 +25,7 @@ import org.gradle.internal.nativeintegration.console.FallbackConsoleMetaData;
 import org.gradle.internal.nativeintegration.console.TestConsoleMetadata;
 import org.gradle.internal.nativeintegration.services.NativeServices;
 
+import javax.annotation.Nullable;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 
@@ -64,6 +65,7 @@ public class ConsoleConfigureAction {
         configurePlainConsole(renderer, consoleMetaData);
     }
 
+    @Nullable
     private static ConsoleMetaData getConsoleMetaData() {
         String testConsole = System.getProperty(TestConsoleMetadata.TEST_CONSOLE_PROPERTY);
         if (testConsole != null) {
@@ -78,21 +80,23 @@ public class ConsoleConfigureAction {
         renderer.addPlainConsole(consoleMetaData != null && consoleMetaData.isStdOut() && consoleMetaData.isStdErr());
     }
 
-    private static void configureRichConsole(OutputEventRenderer renderer, ConsoleMetaData consoleMetaData, boolean force, boolean verbose) {
-        consoleMetaData = consoleMetaData == null ? FallbackConsoleMetaData.INSTANCE : consoleMetaData;
+    private static void configureRichConsole(OutputEventRenderer renderer, @Nullable ConsoleMetaData consoleMetaData, boolean force, boolean verbose) {
+        if (consoleMetaData == null) {
+            consoleMetaData = FallbackConsoleMetaData.ATTACHED;
+        }
         if (consoleMetaData.isStdOut()) {
             OutputStream originalStdOut = renderer.getOriginalStdOut();
             OutputStreamWriter outStr = new OutputStreamWriter(force ? originalStdOut : AnsiConsoleUtil.wrapOutputStream(originalStdOut));
             Console console = new AnsiConsole(outStr, outStr, renderer.getColourMap(), consoleMetaData, force);
-            renderer.addRichConsole(console, true, consoleMetaData.isStdErr(), consoleMetaData, verbose);
+            renderer.addRichConsole(console, consoleMetaData, verbose);
         } else if (consoleMetaData.isStdErr()) {
             // Only stderr is connected to a terminal
             OutputStream originalStdErr = renderer.getOriginalStdErr();
             OutputStreamWriter errStr = new OutputStreamWriter(force ? originalStdErr : AnsiConsoleUtil.wrapOutputStream(originalStdErr));
             Console console = new AnsiConsole(errStr, errStr, renderer.getColourMap(), consoleMetaData, force);
-            renderer.addRichConsole(console, false, true, consoleMetaData, verbose);
+            renderer.addRichConsole(console, consoleMetaData, verbose);
         } else {
-            renderer.addRichConsole(null, false, false, consoleMetaData, verbose);
+            renderer.addRichConsole(null, consoleMetaData, verbose);
         }
     }
 }

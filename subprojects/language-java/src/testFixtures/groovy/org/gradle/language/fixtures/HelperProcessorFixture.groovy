@@ -17,7 +17,7 @@
 package org.gradle.language.fixtures
 
 import groovy.transform.CompileStatic
-import org.gradle.api.internal.tasks.compile.processing.IncrementalAnnotationProcessorType
+import org.gradle.api.internal.tasks.compile.incremental.processing.IncrementalAnnotationProcessorType
 import org.gradle.test.fixtures.file.TestFile
 
 /**
@@ -82,14 +82,19 @@ for (Element element : elements) {
     @Override
     protected String getSupportedOptionsBlock() {
         if (declaredType == IncrementalAnnotationProcessorType.DYNAMIC) {
-                """
-                @Override
-                public Set<String> getSupportedOptions() {
-                    return Collections.singleton("${IncrementalAnnotationProcessorType.ISOLATING.processorOption}");
-                }
+            """
+            @Override
+            public Set<String> getSupportedOptions() {
+                return new HashSet<String>(Arrays.asList("message", "${IncrementalAnnotationProcessorType.ISOLATING.processorOption}"));
+            }
             """
         } else {
-            ""
+            """
+            @Override
+            public Set<String> getSupportedOptions() {
+                return Collections.singleton("message");
+            }
+            """
         }
     }
 }

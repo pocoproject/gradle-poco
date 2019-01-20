@@ -25,56 +25,53 @@ import java.util.Properties
 
 plugins {
     `kotlin-dsl`
-    id("org.gradle.kotlin.ktlint-convention") version "0.1.15" apply false
+    id("org.gradle.kotlin-dsl.ktlint-convention") version "0.2.0" apply false
 }
 
 subprojects {
+    if (name != "buildPlatform") {
+        apply(plugin = "java-library")
 
-    apply(plugin = "java-library")
 
-    if (file("src/main/groovy").isDirectory || file("src/test/groovy").isDirectory) {
-
-        applyGroovyProjectConventions()
-    }
-
-    if (file("src/main/kotlin").isDirectory || file("src/test/kotlin").isDirectory) {
-
-        applyKotlinProjectConventions()
-    }
-
-    configure<JavaPluginExtension> {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-    
-    apply(plugin = "idea")
-    apply(plugin = "eclipse")
-
-    configure<IdeaModel> {
-        module.name = "buildSrc-${this@subprojects.name}"
-    }
-
-    dependencies {
-        compile(gradleApi())
-    }
-
-    afterEvaluate {
-        if (tasks.withType<ValidateTaskProperties>().isEmpty()) {
-            val validateTaskProperties = tasks.register("validateTaskProperties", ValidateTaskProperties::class.java) {
-                outputFile.set(project.the<ReportingExtension>().baseDirectory.file("task-properties/report.txt"))
-
-                val mainSourceSet = project.sourceSets[SourceSet.MAIN_SOURCE_SET_NAME]
-                classes = mainSourceSet.output.classesDirs
-                classpath = mainSourceSet.compileClasspath
-                dependsOn(mainSourceSet.output)
-            }
-            tasks.named("check").configure { dependsOn(validateTaskProperties) }
+        if (file("src/main/groovy").isDirectory || file("src/test/groovy").isDirectory) {
+            applyGroovyProjectConventions()
         }
-    }
 
-    tasks.withType<ValidateTaskProperties> {
-        failOnWarning = true
+        if (file("src/main/kotlin").isDirectory || file("src/test/kotlin").isDirectory) {
+            applyKotlinProjectConventions()
+        }
+
+        configure<JavaPluginExtension> {
+            sourceCompatibility = JavaVersion.VERSION_1_8
+            targetCompatibility = JavaVersion.VERSION_1_8
+        }
+
+        dependencies {
+            compile(gradleApi())
+        }
+
+        afterEvaluate {
+            if (tasks.withType<ValidateTaskProperties>().isEmpty()) {
+                val validateTaskProperties by tasks.registering(ValidateTaskProperties::class) {
+                    outputFile.set(project.reporting.baseDirectory.file("task-properties/report.txt"))
+
+                    val mainSourceSet = project.sourceSets.main.get()
+                    classes.setFrom(mainSourceSet.output.classesDirs)
+                    classpath.setFrom(mainSourceSet.compileClasspath)
+                    dependsOn(mainSourceSet.output)
+                }
+                tasks.check { dependsOn(validateTaskProperties) }
+            }
+        }
+
+        tasks.withType<ValidateTaskProperties> {
+            failOnWarning = true
+            enableStricterValidation = true
+        }
+
+        apply(from = "../../../gradle/shared-with-buildSrc/code-quality-configuration.gradle.kts")
     }
+    apply(plugin = "eclipse")
 }
 
 allprojects {
@@ -92,16 +89,12 @@ allprojects {
             name = "kotlin-eap"
             url = uri("https://dl.bintray.com/kotlin/kotlin-eap")
         }
-        maven {
-            name = "kotlin-dev"
-            url = uri("https://dl.bintray.com/kotlin/kotlin-dev")
-        }
     }
 }
 
 dependencies {
     subprojects.forEach {
-        "runtime"(project(it.path))
+        runtime(project(it.path))
     }
 }
 
@@ -116,10 +109,6 @@ if (findProperty("gradlebuild.skipBuildSrcChecks") == "true") {
 
 // TODO Avoid duplication of what defines a CI Server with BuildEnvironment
 val isCiServer: Boolean by extra { "CI" in System.getenv() }
-if (!isCiServer || System.getProperty("enableCodeQuality")?.toLowerCase() == "true") {
-    apply(from = "../gradle/shared-with-buildSrc/code-quality-configuration.gradle.kts")
-}
-
 if (isCiServer) {
     gradle.buildFinished {
         allprojects.forEach { project ->
@@ -155,7 +144,7 @@ fun readProperties(propertiesFile: File) = Properties().apply {
     }
 }
 
-val checkSameDaemonArgs = tasks.register("checkSameDaemonArgs") {
+val checkSameDaemonArgs by tasks.registering {
     doLast {
         val buildSrcProperties = readProperties(File(project.rootDir, "gradle.properties"))
         val rootProperties = readProperties(File(project.rootDir, "../gradle.properties"))
@@ -168,7 +157,7 @@ val checkSameDaemonArgs = tasks.register("checkSameDaemonArgs") {
     }
 }
 
-tasks.named("build").configure { dependsOn(checkSameDaemonArgs) }
+tasks.build { dependsOn(checkSameDaemonArgs) }
 
 fun Project.applyGroovyProjectConventions() {
     apply(plugin = "groovy")
@@ -204,10 +193,10 @@ fun Project.applyGroovyProjectConventions() {
         
     }
 
-    val compileGroovy: TaskProvider<GroovyCompile> = tasks.withType(GroovyCompile::class.java).named("compileGroovy")
+    val compileGroovy by tasks.existing(GroovyCompile::class)
 
     configurations {
-        "apiElements" {
+        apiElements {
             outgoing.variants["classes"].artifact(
                 mapOf(
                     "file" to compileGroovy.get().destinationDir,
@@ -219,15 +208,8 @@ fun Project.applyGroovyProjectConventions() {
 }
 
 fun Project.applyKotlinProjectConventions() {
-    apply(plugin = "kotlin")
-
-    apply(plugin = "org.gradle.kotlin.ktlint-convention")
-
-    tasks.withType<KotlinCompile>().configureEach {
-        kotlinOptions {
-            freeCompilerArgs += listOf("-Xjsr305=strict")
-        }
-    }
+    apply(plugin = "org.gradle.kotlin.kotlin-dsl")
+    apply(plugin = "org.gradle.kotlin-dsl.ktlint-convention")
 
     plugins.withType<KotlinDslPlugin> {
         kotlinDslPluginOptions {

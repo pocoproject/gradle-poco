@@ -525,6 +525,8 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
         }
         if (JVM_VERSION_DETECTOR.getJavaVersion(Jvm.forHome(getJavaHome())).compareTo(JavaVersion.VERSION_1_8) < 0) {
             buildJvmOpts.add("-XX:MaxPermSize=320m");
+        } else {
+            buildJvmOpts.add("-XX:MaxMetaspaceSize=512m");
         }
         buildJvmOpts.add("-XX:+HeapDumpOnOutOfMemoryError");
         buildJvmOpts.add("-XX:HeapDumpPath=" + buildContext.getGradleUserHomeDir());
@@ -714,7 +716,7 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
 
     @Override
     public GradleExecuter withWorkerDaemonsExpirationDisabled() {
-        return withArgument("-Dorg.gradle.workers.internal.disable-daemons-expiration=true");
+        return withCommandLineGradleOpts("-Dorg.gradle.workers.internal.disable-daemons-expiration=true");
     }
 
     @Override
@@ -1190,6 +1192,9 @@ public abstract class AbstractGradleExecuter implements GradleExecuter {
                     }
                     if (line.matches(".*use(s)? or override(s)? a deprecated API\\.")) {
                         // A javac warning, ignore
+                        i++;
+                    } else if (line.matches("w: .* is deprecated\\..*")) {
+                        // A kotlinc warning, ignore
                         i++;
                     } else if (isDeprecationMessageInHelpDescription(line)) {
                         i++;

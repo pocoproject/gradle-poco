@@ -2,8 +2,8 @@ import org.gradle.gradlebuild.unittestandcompile.ModuleType
 import org.gradle.gradlebuild.testing.integrationtests.cleanup.WhenNotEmpty
 
 plugins {
-    id("gradlebuild.strict-compile")
-    id("gradlebuild.classycle")
+    gradlebuild.`strict-compile`
+    gradlebuild.classycle
 }
 
 dependencies {
@@ -14,6 +14,8 @@ dependencies {
     compile(project(":core"))
     compile(project(":platformJvm"))
     compile(project(":languageJvm"))
+    compile(project(":toolingApi"))
+    compile(project(":launcher"))
     implementation(project(":snapshots"))
 
     // TODO - get rid of this cycle

@@ -24,10 +24,9 @@ import org.gradle.internal.operations.BuildOperationQueue
 import org.gradle.testing.internal.util.Specification
 
 class TransformingAsyncArtifactListenerTest extends Specification {
-    def transformer = Mock(ArtifactTransformer)
+    def transformation = Mock(Transformation)
     def operationQueue = Mock(BuildOperationQueue)
-    def transformListener = Mock(ArtifactTransformListener)
-    def listener  = new TransformingAsyncArtifactListener(transformer, null, operationQueue, Maps.newHashMap(), Maps.newHashMap(), transformListener)
+    def listener  = new TransformingAsyncArtifactListener(transformation, null, operationQueue, Maps.newHashMap(), Maps.newHashMap(), Mock(ExecutionGraphDependenciesResolver))
     def file = new File("foo")
     def artifactFile = new File("foo-artifact")
     def artifactId = Stub(ComponentArtifactIdentifier)
@@ -36,16 +35,7 @@ class TransformingAsyncArtifactListenerTest extends Specification {
         getArtifactFile() >> artifactFile
     }
 
-    def "runs transforms in parallel if no cached result is available"() {
-        given:
-        transformer.hasCachedResult(_ as File) >> false
-
-        when:
-        listener.artifactAvailable(artifact)
-
-        then:
-        1 * operationQueue.add(_ as BuildOperation)
-
+    def "adds file transformations to the build operation queue"() {
         when:
         listener.fileAvailable(file)
 
@@ -53,24 +43,11 @@ class TransformingAsyncArtifactListenerTest extends Specification {
         1 * operationQueue.add(_ as BuildOperation)
     }
 
-    def "runs transforms immediately if the result is already cached"() {
-        given:
-        transformer.hasCachedResult(_ as File) >> true
-
+    def "runs artifact transformations immediately"() {
         when:
         listener.artifactAvailable(artifact)
 
         then:
-        0 * transformListener.beforeTransform(transformer, artifactId, artifactFile)
-        1 * transformer.transform(artifactFile)
-        0 * transformListener.afterTransform(transformer, artifactId, artifactFile, null)
-
-        when:
-        listener.fileAvailable(file)
-
-        then:
-        0 * transformListener.beforeTransform(transformer, null, file)
-        1 * transformer.transform(file)
-        0 * transformListener.afterTransform(transformer, null, file, null)
+        1 * transformation.transform({ it.files == [artifactFile] }, _ as ExecutionGraphDependenciesResolver)
     }
 }

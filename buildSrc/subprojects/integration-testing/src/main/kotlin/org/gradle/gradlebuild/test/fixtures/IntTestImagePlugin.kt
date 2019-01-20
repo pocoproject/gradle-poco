@@ -131,6 +131,12 @@ open class IntTestImagePlugin : Plugin<Project> {
             gradleScripts(project(":launcher"))
         }
 
+        val copySamples = tasks.register("copySamples", Sync::class) {
+            group = "Verification"
+            from(gradleSamples)
+            into(file("$buildDir/integ test/samples"))
+        }
+
         if (useAllDistribution) {
             val unpackedPath = layout.buildDirectory.dir("tmp/unpacked-all-distribution")
 
@@ -140,7 +146,7 @@ open class IntTestImagePlugin : Plugin<Project> {
                 from(Callable {
                     val distributionsProject = rootProject.project("distributions")
                     val allZip = distributionsProject.tasks.getByName<Zip>("allZip")
-                    zipTree(allZip.archivePath)
+                    zipTree(allZip.archiveFile)
                 })
                 into(unpackedPath)
             }
@@ -150,6 +156,9 @@ open class IntTestImagePlugin : Plugin<Project> {
                 from(unpackedPath.get().dir("gradle-$version"))
             }
         } else {
+            intTestImage.configure {
+                dependsOn(copySamples)
+            }
             afterEvaluate {
                 if (!project.configurations["default"].allArtifacts.isEmpty()) {
                     dependencies {
@@ -174,8 +183,8 @@ open class IntTestImagePlugin : Plugin<Project> {
                         }
                     }
 
-                    into("samples") {
-                        from(gradleSamples)
+                    preserve {
+                        include("samples/**")
                     }
 
                     doLast {

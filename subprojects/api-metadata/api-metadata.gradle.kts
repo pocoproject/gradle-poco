@@ -3,7 +3,7 @@ import org.gradle.gradlebuild.PublicApi
 import org.gradle.gradlebuild.unittestandcompile.ModuleType
 
 plugins {
-    id("gradlebuild.api-metadata")
+    gradlebuild.`api-metadata`
 }
 
 gradlebuildJava {
@@ -25,7 +25,7 @@ dependencies {
 }
 
 apiMetadata {
-    sources.from(javaProjects.map { it.sourceSets["main"].allJava })
+    sources.from(javaProjects.map { it.sourceSets.main.get().allJava })
     includes.addAll(PublicApi.includes)
     excludes.addAll(PublicApi.excludes)
     classpath.from(configurations["gradleApiRuntime"])

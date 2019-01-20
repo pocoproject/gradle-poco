@@ -20,10 +20,6 @@ pluginManagement {
             name = "kotlin-eap"
             url = uri("https://dl.bintray.com/kotlin/kotlin-eap")
         }
-        maven {
-            name = "kotlin-dev"
-            url = uri("https://dl.bintray.com/kotlin/kotlin-dev")
-        }
         gradlePluginPortal()
     }
 }
@@ -65,5 +61,27 @@ for (project in rootProject.children) {
     project.buildFileName = buildFileNameFor(projectDirName)
     assert(project.projectDir.isDirectory)
     assert(project.buildFile.isFile)
+}
+
+fun remoteBuildCacheEnabled(settings: Settings) = settings.buildCache.remote?.isEnabled == true
+
+fun isOpenJDK() = true == System.getProperty("java.vm.name")?.contains("OpenJDK")
+
+fun isOpenJDK11() = isOpenJDK() && JavaVersion.current().isJava11
+
+fun getBuildJavaHome() = System.getProperty("java.home")
+
+gradle.settingsEvaluated {
+    if ("true" == System.getProperty("org.gradle.ignoreBuildJavaVersionCheck")) {
+        return@settingsEvaluated
+    }
+
+    if (remoteBuildCacheEnabled(this) && !isOpenJDK11()) {
+        throw GradleException("Remote cache is enabled, which requires OpenJDK 11 to perform this build. It's currently ${getBuildJavaHome()}.")
+    }
+
+    if (!JavaVersion.current().isJava9Compatible) {
+        throw GradleException("JDK 9+ is required to perform this build. It's currently ${getBuildJavaHome()}.")
+    }
 }
 

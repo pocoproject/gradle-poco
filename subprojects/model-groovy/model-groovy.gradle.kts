@@ -17,12 +17,12 @@ import org.gradle.gradlebuild.unittestandcompile.ModuleType
  */
 
 /*
- * Groovy specific adaptions to the model management.
+ * Groovy specific adaptations to the model management.
  */
 plugins {
     `java-library`
-    id("gradlebuild.strict-compile")
-    id("gradlebuild.classycle")
+    gradlebuild.`strict-compile`
+    gradlebuild.classycle
 }
 
 dependencies {

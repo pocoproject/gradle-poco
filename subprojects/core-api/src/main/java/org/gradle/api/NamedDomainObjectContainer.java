@@ -30,6 +30,8 @@ import org.gradle.util.Configurable;
  *
  * @param <T> The type of domain objects in this container.
  * @see NamedDomainObjectSet
+ * @see Project#container(Class) Creating a container.
+ * @see Project#container(Class, NamedDomainObjectFactory) Creating a container with a custom factory.
  */
 public interface NamedDomainObjectContainer<T> extends NamedDomainObjectSet<T>, Configurable<NamedDomainObjectContainer<T>> {
 
@@ -91,7 +93,6 @@ public interface NamedDomainObjectContainer<T> extends NamedDomainObjectSet<T>, 
      * @throws InvalidUserDataException If a object with the given name already exists in this project.
      * @since 4.10
      */
-    @Incubating
     NamedDomainObjectProvider<T> register(String name, Action<? super T> configurationAction) throws InvalidUserDataException;
 
     /**
@@ -104,6 +105,5 @@ public interface NamedDomainObjectContainer<T> extends NamedDomainObjectSet<T>, 
      * @throws InvalidUserDataException If a object with the given name already exists in this project.
      * @since 4.10
      */
-    @Incubating
     NamedDomainObjectProvider<T> register(String name) throws InvalidUserDataException;
 }

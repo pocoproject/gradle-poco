@@ -17,9 +17,11 @@
 package org.gradle.language.swift
 
 import org.gradle.language.AbstractNativeLanguageComponentIntegrationTest
+import org.gradle.nativeplatform.OperatingSystemFamily
 import org.gradle.nativeplatform.fixtures.RequiresInstalledToolChain
 import org.gradle.nativeplatform.fixtures.ToolChainRequirement
 import org.gradle.nativeplatform.fixtures.app.SourceElement
+import org.gradle.nativeplatform.platform.internal.DefaultNativePlatform
 
 @RequiresInstalledToolChain(ToolChainRequirement.SWIFTC)
 abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLanguageComponentIntegrationTest {
@@ -31,7 +33,7 @@ abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLangu
             task verifyBinariesSwiftVersion {
                 doLast {
                     ${componentUnderTestDsl}.binaries.get().each {
-                        assert it.sourceCompatibility.get().version == ${expectedVersion}
+                        assert it.targetPlatform.sourceCompatibility.version == ${expectedVersion}
                     }
                 }
             }
@@ -51,7 +53,7 @@ abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLangu
             }
 
             ${componentUnderTestDsl}.binaries.whenElementKnown {
-                assert it.sourceCompatibility.get() == SwiftVersion.SWIFT3
+                assert it.targetPlatform.sourceCompatibility == SwiftVersion.SWIFT3
                 ${componentUnderTestDsl}.sourceCompatibility = SwiftVersion.SWIFT4
             }
 
@@ -78,7 +80,7 @@ abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLangu
             task verifyBinariesSwiftVersion {
                 doLast {
                     ${componentUnderTestDsl}.binaries.get().each {
-                        assert it.sourceCompatibility.get() == SwiftVersion.SWIFT3
+                        assert it.targetPlatform.sourceCompatibility == SwiftVersion.SWIFT3
                     }
                 }
             }
@@ -106,7 +108,7 @@ abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLangu
             task verifyBinariesSwiftVersion {
                 doLast {
                     ${componentUnderTestDsl}.binaries.get().each {
-                        assert it.sourceCompatibility.get() == SwiftVersion.SWIFT4
+                        assert it.targetPlatform.sourceCompatibility == SwiftVersion.SWIFT4
                     }
                 }
             }
@@ -131,7 +133,7 @@ abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLangu
             task verifyBinariesSwiftVersion {
                 doLast {
                     ${componentUnderTestDsl}.binaries.get().each {
-                        assert it.sourceCompatibility.get() == SwiftVersion.SWIFT3
+                        assert it.targetPlatform.sourceCompatibility == SwiftVersion.SWIFT3
                     }
                 }
             }
@@ -155,7 +157,7 @@ abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLangu
             task verifyBinariesSwiftVersion {
                 doLast {
                     ${componentUnderTestDsl}.binaries.get().each {
-                        assert it.sourceCompatibility.get() == SwiftVersion.SWIFT4
+                        assert it.targetPlatform.sourceCompatibility == SwiftVersion.SWIFT4
                     }
                 }
             }
@@ -170,6 +172,71 @@ abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLangu
         result.assertTasksExecuted(tasksToAssembleDevelopmentBinaryOfComponentUnderTest, ":$taskNameToAssembleDevelopmentBinary")
     }
 
+    def "assemble task warns when current operating system family is excluded"() {
+        given:
+        makeSingleProject()
+        swift4Component.writeToProject(testDirectory)
+
+        and:
+        buildFile << configureTargetMachines("machines.os('some-other-family')")
+
+        expect:
+        succeeds taskNameToAssembleDevelopmentBinary
+
+        and:
+        outputContains("'${componentName}' component in project ':' does not target this operating system.")
+    }
+
+    def "build task warns when current operating system family is excluded"() {
+        given:
+        makeSingleProject()
+        swift4Component.writeToProject(testDirectory)
+
+        and:
+        buildFile << configureTargetMachines("machines.os('some-other-family')")
+
+        expect:
+        succeeds "build"
+
+        and:
+        outputContains("'${componentName}' component in project ':' does not target this operating system.")
+    }
+
+    def "does not fail when current operating system family is excluded but assemble is not invoked"() {
+        given:
+        makeSingleProject()
+        swift4Component.writeToProject(testDirectory)
+
+        and:
+        buildFile << configureTargetMachines("machines.os('some-other-family')")
+
+        expect:
+        succeeds "help"
+    }
+
+    def "fails configuration when no target machine is configured"() {
+        given:
+        makeSingleProject()
+        swift4Component.writeToProject(testDirectory)
+
+        and:
+        buildFile << configureTargetMachines('')
+
+        expect:
+        fails taskNameToAssembleDevelopmentBinary
+        failure.assertHasDescription("A problem occurred configuring root project '${testDirectory.name}'.")
+        failure.assertHasCause("A target machine needs to be specified")
+    }
+
+    protected String getCurrentHostOperatingSystemFamilyDsl() {
+        String osFamily = DefaultNativePlatform.getCurrentOperatingSystem().toFamilyName()
+        if (osFamily == OperatingSystemFamily.MACOS) {
+            return "macOS"
+        } else {
+            return osFamily
+        }
+    }
+
     abstract String getDevelopmentBinaryCompileTask()
 
     abstract SourceElement getSwift3Component()
@@ -179,4 +246,14 @@ abstract class AbstractSwiftComponentIntegrationTest extends AbstractNativeLangu
     abstract String getTaskNameToAssembleDevelopmentBinary()
 
     abstract List<String> getTasksToAssembleDevelopmentBinaryOfComponentUnderTest()
+
+    abstract String getComponentName()
+
+    protected configureTargetMachines(String targetMachines) {
+        return """
+            ${componentUnderTestDsl} {
+                targetMachines = [${targetMachines}]
+            }
+        """
+    }
 }

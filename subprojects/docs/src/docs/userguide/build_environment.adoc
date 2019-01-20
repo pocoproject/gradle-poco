@@ -55,9 +55,9 @@ Gradle Daemon will terminate itself after specified number of idle milliseconds.
 `org.gradle.debug=(true,false)`::
 When set to `true`, Gradle will run the build with remote debugging enabled, listening on port 5005. Note that this is the equivalent of adding `-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005` to the JVM command line and will suspend the virtual machine until a debugger is attached. Default is `false`.
 `org.gradle.java.home=(path to JDK home)`::
-Specifies the Java home for the Gradle build process. The value can be set to either a `jdk` or `jre` location, however, depending on what your build does, using a JDK is safer. A reasonable default is used if the setting is unspecified.
+Specifies the Java home for the Gradle build process. The value can be set to either a `jdk` or `jre` location, however, depending on what your build does, using a JDK is safer. A reasonable default is derived from your environment (`JAVA_HOME` or the path to `java`) if the setting is unspecified. This does not affect the version of Java used to launch the Gradle client VM (<<#sec:gradle_environment_variables, see Environment variables>>).
 `org.gradle.jvmargs=(JVM arguments)`::
-Specifies the JVM arguments used for the Gradle Daemon. The setting is particularly useful for <<#sec:configuring_jvm_memory,configuring JVM memory settings>> for build performance.
+Specifies the JVM arguments used for the Gradle Daemon. The setting is particularly useful for <<#sec:configuring_jvm_memory,configuring JVM memory settings>> for build performance. This does not affect the JVM settings for the Gradle client VM.
 `org.gradle.logging.level=(quiet,warn,lifecycle,info,debug)`::
 When set to quiet, warn, lifecycle, info, or debug, Gradle will use this log level. The values are not case sensitive. The `lifecycle` level is the default. See <<logging.adoc#sec:choosing_a_log_level,Choosing a log level>>.
 `org.gradle.parallel=(true,false)`::
@@ -116,11 +116,12 @@ In a multi project build, “`systemProp.`” properties set in any project exce
 The following environment variables are available for the `gradle` command. Note that command-line options and system properties take precedence over environment variables.
 
 `GRADLE_OPTS`::
-Specifies <<command_line_interface.adoc#command_line_interface, command-line arguments>> to use when starting the Gradle client. This can be useful for setting the properties to use when running Gradle.
+Specifies JVM arguments to use when starting the Gradle client VM. The client VM only handles command line input/output, so it is rare that one would need to change its VM options.
+The actual build is run by the Gradle daemon, which is not affected by this environment variable.
 `GRADLE_USER_HOME`::
 Specifies the Gradle user home directory (which defaults to `$USER_HOME/.gradle` if not set).
 `JAVA_HOME`::
-Specifies the JDK installation directory to use.
+Specifies the JDK installation directory to use for the client VM. This VM is also used for the daemon, unless a different one is specified in a Gradle properties file with `org.gradle.java.home`.
 
 [[sec:project_properties]]
 == Project properties
@@ -129,12 +130,12 @@ You can add properties directly to your link:{groovyDslPath}/org.gradle.api.Proj
 
 Gradle can also set project properties when it sees specially-named system properties or environment variables. If the environment variable name looks like `ORG_GRADLE_PROJECT___prop__=somevalue`, then Gradle will set a `prop` property on your project object, with the value of `somevalue`. Gradle also supports this for system properties, but with a different naming pattern, which looks like `org.gradle.project.__prop__`. Both of the following will set the `foo` property on your Project object to `"bar"`.
 
-.Setting a project property via gradle.properties
+.Setting a project property via a system property
 ----
 org.gradle.project.foo=bar
 ----
 
-.Setting a project property via environment variable
+.Setting a project property via an environment variable
 ----
 ORG_GRADLE_PROJECT_foo=bar
 ----
@@ -160,7 +161,7 @@ You should check for existence of optional project properties before you access 
 
 You can adjust JVM options for Gradle in the following ways:
 
-The `org.gradle.jvmargs` Gradle property controls the VM running the build. It defaults to `-Xmx512m`
+The `org.gradle.jvmargs` Gradle property controls the VM running the build. It defaults to `-Xmx512m "-XX:MaxMetaspaceSize=256m"`
 
 .Changing JVM settings for the build VM
 ----

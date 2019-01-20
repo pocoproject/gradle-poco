@@ -17,13 +17,17 @@
 package org.gradle.api.tasks.compile
 
 import org.gradle.api.JavaVersion
-import org.gradle.api.internal.tasks.compile.processing.IncrementalAnnotationProcessorType
+import org.gradle.api.internal.tasks.compile.CompileJavaBuildOperationType
+import org.gradle.api.internal.tasks.compile.incremental.processing.IncrementalAnnotationProcessorType
 import org.gradle.integtests.fixtures.AvailableJavaHomes
 import org.gradle.language.fixtures.AnnotationProcessorFixture
 import org.gradle.language.fixtures.HelperProcessorFixture
 import org.gradle.language.fixtures.NonIncrementalProcessorFixture
 import org.gradle.language.fixtures.ServiceRegistryProcessorFixture
 import org.gradle.util.TextUtil
+import spock.lang.Issue
+
+import static org.gradle.api.internal.tasks.compile.CompileJavaBuildOperationType.Result.AnnotationProcessorDetails.Type.ISOLATING
 
 class IsolatingIncrementalAnnotationProcessingIntegrationTest extends AbstractIncrementalAnnotationProcessingIntegrationTest {
     private HelperProcessorFixture helperProcessor
@@ -122,14 +126,14 @@ class IsolatingIncrementalAnnotationProcessingIntegrationTest extends AbstractIn
         outputs.snapshot { run "compileJava" }
 
         then:
-        file("build/classes/java/main/AHelper.java").exists()
+        file("build/generated/sources/annotationProcessor/java/main/AHelper.java").exists()
 
         when:
         a.delete()
         run "compileJava"
 
         then:
-        !file("build/classes/java/main/AHelper.java").exists()
+        !file("build/generated/sources/annotationProcessor/java/main/AHelper.java").exists()
     }
 
     def "generated files and classes are deleted when processor is removed"() {
@@ -140,14 +144,14 @@ class IsolatingIncrementalAnnotationProcessingIntegrationTest extends AbstractIn
         outputs.snapshot { run "compileJava" }
 
         then:
-        file("build/classes/java/main/AHelper.java").exists()
+        file("build/generated/sources/annotationProcessor/java/main/AHelper.java").exists()
 
         when:
         buildFile << "compileJava.options.annotationProcessorPath = files()"
         run "compileJava"
 
         then:
-        !file("build/classes/java/main/AHelper.java").exists()
+        !file("build/generated/sources/annotationProcessor/java/main/AHelper.java").exists()
 
         and:
         outputs.deletedClasses("AHelper")
@@ -199,7 +203,7 @@ class IsolatingIncrementalAnnotationProcessingIntegrationTest extends AbstractIn
         outputs.snapshot { run "compileJava" }
 
         when:
-        file("build/classes/java/main/AHelper.java").delete()
+        file("build/generated/sources/annotationProcessor/java/main/AHelper.java").delete()
         run "compileJava"
 
         then:
@@ -269,6 +273,41 @@ class IsolatingIncrementalAnnotationProcessingIntegrationTest extends AbstractIn
 
         and:
         outputContains("Full recompilation is required because the generated type 'ServiceRegistry' must have exactly one originating element, but had 2.")
+    }
+
+    @Issue(["https://github.com/gradle/gradle/issues/8128", "https://bugs.openjdk.java.net/browse/JDK-8162455"])
+    def "incremental processing doesn't trigger unmatched processor option warning"() {
+        buildFile << """
+            dependencies {
+                compileOnly project(":annotation")
+                annotationProcessor project(":processor")
+            }
+            compileJava.options.compilerArgs += [ "-Werror", "-Amessage=fromOptions" ]
+        """
+        java "@Helper class A {}"
+
+        outputs.snapshot { succeeds "compileJava" }
+
+        when:
+        java "class B {}"
+
+        then:
+        succeeds "compileJava"
+        outputs.recompiledClasses("B")
+    }
+
+    def "reports isolating processor in build operation"() {
+        java "class Irrelevant {}"
+
+        when:
+        succeeds "compileJava"
+
+        then:
+        with(operations[':compileJava'].result.annotationProcessorDetails as List<CompileJavaBuildOperationType.Result.AnnotationProcessorDetails>) {
+            size() == 1
+            first().className == 'HelperProcessor'
+            first().type == ISOLATING.name()
+        }
     }
 
     /**

@@ -18,22 +18,29 @@ package org.gradle.gradlebuild.profiling.buildscan
 import com.gradle.scan.plugin.BuildScanExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.Task
 import org.gradle.api.plugins.quality.Checkstyle
 import org.gradle.api.plugins.quality.CodeNarc
 import org.gradle.api.reporting.Reporting
+import org.gradle.api.tasks.compile.AbstractCompile
+import org.gradle.build.ClasspathManifest
+import org.gradle.build.docs.CacheableAsciidoctorTask
 import org.gradle.gradlebuild.BuildEnvironment.isCiServer
+import org.gradle.gradlebuild.BuildEnvironment.isJenkins
+import org.gradle.gradlebuild.BuildEnvironment.isTravis
 import org.gradle.internal.classloader.ClassLoaderHierarchyHasher
 import org.gradle.kotlin.dsl.apply
 import org.gradle.kotlin.dsl.support.serviceOf
 import org.gradle.kotlin.dsl.the
 import org.jsoup.Jsoup
 import org.jsoup.parser.Parser
-import java.io.ByteArrayOutputStream
 import java.net.URLEncoder
 import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.collections.filter
 import kotlin.collections.forEach
+import org.gradle.kotlin.dsl.*
+import java.util.concurrent.atomic.AtomicBoolean
 
 
 const val serverUrl = "https://e.grdev.net"
@@ -53,6 +60,9 @@ open class BuildScanPlugin : Plugin<Project> {
     private
     lateinit var buildScan: BuildScanExtension
 
+    private
+    val cacheMissTagged = AtomicBoolean(false)
+
     override fun apply(project: Project): Unit = project.run {
         apply(plugin = "com.gradle.build-scan")
         buildScan = the()
@@ -60,8 +70,9 @@ open class BuildScanPlugin : Plugin<Project> {
         extractCiOrLocalData()
         extractVcsData()
 
-        if (isCiServer) {
+        if (isCiServer && !isTravis && !isJenkins) {
             extractAllReportsFromCI()
+            monitorUnexpectedCacheMisses()
         }
 
         extractCheckstyleAndCodenarcData()
@@ -69,10 +80,54 @@ open class BuildScanPlugin : Plugin<Project> {
     }
 
     private
+    fun Project.monitorUnexpectedCacheMisses() {
+        gradle.taskGraph.afterTask {
+            if (isCacheMiss() && isNotTaggedYet()) {
+                buildScan.tag("CACHE_MISS")
+            }
+        }
+    }
+
+    private
+    fun isNotTaggedYet() = cacheMissTagged.compareAndSet(false, true)
+
+    private
+    fun Task.isCacheMiss() = !state.skipped && (isCompileCacheMiss() || isAsciidoctorCacheMiss())
+
+    private
+    fun Task.isCompileCacheMiss() = isMonitoredCompileTask() && !isExpectedCompileCacheMiss()
+
+    private
+    fun Task.isAsciidoctorCacheMiss() = isMonitoredAsciidoctorTask() && !isExpectedAsciidoctorCacheMiss()
+
+    private
+    fun Task.isMonitoredCompileTask() = this is AbstractCompile || this is ClasspathManifest
+
+    private
+    fun Task.isMonitoredAsciidoctorTask() = this is CacheableAsciidoctorTask
+
+    private
+    fun Task.isExpectedAsciidoctorCacheMiss() =
+    // Expected cache-miss for asciidoctor task:
+    // 1. CompileAll is the seed build for docs:distDocs
+    // 2. Gradle_Check_BuildDistributions is the seed build for other asciidoctor tasks
+        isInBuild("Gradle_Check_CompileAll", "Gradle_Check_BuildDistributions")
+
+    private
+    fun Task.isExpectedCompileCacheMiss() =
+    // Expected cache-miss:
+    // 1. CompileAll is the seed build
+    // 2. Gradleception which re-builds Gradle with a new Gradle version
+    // 3. buildScanPerformance test, which doesn't depend on compileAll
+        isInBuild("Gradle_Check_CompileAll", "Enterprise_Master_Components_GradleBuildScansPlugin_Performance_PerformanceLinux", "Gradle_Check_Gradleception")
+
+    private
+    fun Task.isInBuild(vararg buildTypeIds: String) = System.getenv("BUILD_TYPE_ID") in buildTypeIds
+
+    private
     fun Project.extractCheckstyleAndCodenarcData() {
         gradle.taskGraph.afterTask {
             if (state.failure != null) {
-
                 if (this is Checkstyle && reports.xml.destination.exists()) {
                     val checkstyle = Jsoup.parse(reports.xml.destination.readText(), "", Parser.xmlParser())
                     val errors = checkstyle.getElementsByTag("file").flatMap { file ->
@@ -111,10 +166,23 @@ open class BuildScanPlugin : Plugin<Project> {
         if (isCiServer) {
             buildScan {
                 tag("CI")
-                link("TeamCity Build", System.getenv("BUILD_URL"))
-                value("Build ID", System.getenv("BUILD_ID"))
-                setCommitId(System.getenv("BUILD_VCS_NUMBER"))
-
+                when {
+                    isTravis -> {
+                        link("Travis Build", System.getenv("TRAVIS_BUILD_WEB_URL"))
+                        value("Build ID", System.getenv("TRAVIS_BUILD_ID"))
+                        setCommitId(System.getenv("TRAVIS_COMMIT"))
+                    }
+                    isJenkins -> {
+                        link("Jenkins Build", System.getenv("BUILD_URL"))
+                        value("Build ID", System.getenv("BUILD_ID"))
+                        setCommitId(System.getenv("GIT_COMMIT"))
+                    }
+                    else -> {
+                        link("TeamCity Build", System.getenv("BUILD_URL"))
+                        value("Build ID", System.getenv("BUILD_ID"))
+                        setCommitId(System.getenv("BUILD_VCS_NUMBER"))
+                    }
+                }
                 whenEnvIsSet("BUILD_TYPE_ID") { buildType ->
                     value(ciBuildTypeName, buildType)
                     link("Build Type Scans", customValueSearchUrl(mapOf(ciBuildTypeName to buildType)))
@@ -122,6 +190,12 @@ open class BuildScanPlugin : Plugin<Project> {
             }
         } else {
             buildScan.tag("LOCAL")
+            if (listOf("idea.registered", "idea.active", "idea.paths.selector").map(System::getProperty).filterNotNull().isNotEmpty()) {
+                buildScan.tag("IDEA")
+                System.getProperty("idea.paths.selector")?.let { ideaVersion ->
+                    buildScan.value("IDEA version", ideaVersion)
+                }
+            }
         }
     }
 
@@ -129,7 +203,7 @@ open class BuildScanPlugin : Plugin<Project> {
     fun BuildScanExtension.whenEnvIsSet(envName: String, action: BuildScanExtension.(envValue: String) -> Unit) {
         val envValue: String? = System.getenv(envName)
         if (!envValue.isNullOrEmpty()) {
-            action(envValue!!)
+            action(envValue)
         }
     }
 
@@ -139,27 +213,21 @@ open class BuildScanPlugin : Plugin<Project> {
 
             if (!isCiServer) {
                 background {
-                    system("git", "rev-parse", "--verify", "HEAD").let { commitId ->
-                        setCommitId(commitId)
-                    }
+                    setCommitId(execAndGetStdout("git", "rev-parse", "--verify", "HEAD"))
                 }
             }
 
             background {
-                system("git", "status", "--porcelain").let { status ->
-                    if (status.isNotEmpty()) {
-                        tag("dirty")
-                        value("Git Status", status)
-                    }
+                execAndGetStdout("git", "status", "--porcelain").takeIf { it.isNotEmpty() }?.let { status ->
+                    tag("dirty")
+                    value("Git Status", status)
                 }
             }
 
             background {
-                system("git", "rev-parse", "--abbrev-ref", "HEAD").let { branchName ->
-                    if (branchName.isNotEmpty() && branchName != "HEAD") {
-                        tag(branchName)
-                        value("Git Branch Name", branchName)
-                    }
+                execAndGetStdout("git", "rev-parse", "--abbrev-ref", "HEAD").takeIf { it.isNotEmpty() && it != "HEAD" }?.let { branchName ->
+                    tag(branchName)
+                    value("Git Branch Name", branchName)
                 }
             }
         }
@@ -211,25 +279,16 @@ open class BuildScanPlugin : Plugin<Project> {
     fun BuildScanExtension.setCommitId(commitId: String) {
         value(gitCommitName, commitId)
         link("Source", "https://github.com/gradle/gradle/commit/$commitId")
-        link("Git Commit Scans", customValueSearchUrl(mapOf(gitCommitName to commitId)))
-        link("CI CompileAll Scan", customValueSearchUrl(mapOf(gitCommitName to commitId)) + "&search.tags=CompileAll")
+        if (!isTravis) {
+            link("Git Commit Scans", customValueSearchUrl(mapOf(gitCommitName to commitId)))
+            link("CI CompileAll Scan", customValueSearchUrl(mapOf(gitCommitName to commitId)) + "&search.tags=CompileAll")
+        }
     }
 
     private
     inline fun buildScan(configure: BuildScanExtension.() -> Unit) {
         buildScan.apply(configure)
     }
-}
-
-
-private
-fun Project.system(vararg args: String): String {
-    val out = ByteArrayOutputStream()
-    exec {
-        commandLine(*args)
-        standardOutput = out
-    }
-    return String(out.toByteArray()).trim()
 }
 
 

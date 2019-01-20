@@ -16,7 +16,7 @@ import org.gradle.gradlebuild.unittestandcompile.ModuleType
  * limitations under the License.
  */
 plugins {
-    id("gradlebuild.classycle")
+    gradlebuild.classycle
 }
 
 dependencies {
@@ -38,6 +38,7 @@ gradlebuildJava {
 testFixtures {
     from(":core")
     from(":platformNative")
+    from(":languageNative")
     from(":versionControl")
     from(":ide", "testFixtures")
 }

@@ -17,14 +17,15 @@ import org.gradle.gradlebuild.unittestandcompile.ModuleType
  */
 plugins {
     `java-library`
-    id("gradlebuild.strict-compile")
-    id("gradlebuild.classycle")
+    gradlebuild.`strict-compile`
+    gradlebuild.classycle
 
 }
 
 dependencies {
     api(project(":baseServices"))
     api(library("inject"))
+    api(project(":coreApi"))
 
     implementation(project(":messaging"))
     implementation(project(":native"))

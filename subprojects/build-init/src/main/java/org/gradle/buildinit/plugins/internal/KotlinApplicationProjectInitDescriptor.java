@@ -23,7 +23,7 @@ import org.gradle.buildinit.plugins.internal.modifiers.BuildInitTestFramework;
 import java.util.Collections;
 import java.util.Set;
 
-public class KotlinApplicationProjectInitDescriptor extends LanguageLibraryProjectInitDescriptor {
+public class KotlinApplicationProjectInitDescriptor extends JvmProjectInitDescriptor {
     public KotlinApplicationProjectInitDescriptor(BuildScriptBuilderFactory scriptBuilderFactory, TemplateOperationFactory templateOperationFactory, FileResolver fileResolver, DefaultTemplateLibraryVersionProvider versionProvider) {
         super("kotlin", scriptBuilderFactory, templateOperationFactory, fileResolver, versionProvider);
     }
@@ -50,16 +50,18 @@ public class KotlinApplicationProjectInitDescriptor extends LanguageLibraryProje
 
     @Override
     protected void generate(InitSettings settings, BuildScriptBuilder buildScriptBuilder) {
+        super.generate(settings, buildScriptBuilder);
+
         String kotlinVersion = libraryVersionProvider.getVersion("kotlin");
         buildScriptBuilder
             .fileComment("This generated file contains a sample Kotlin application project to get you started.")
-            .plugin("Apply the Kotlin JVM plugin to add support for Kotlin on the JVM", "org.jetbrains.kotlin.jvm", kotlinVersion)
-            .plugin("Apply the application to add support for building a CLI application", "application")
-            .implementationDependency("Use the Kotlin JDK 8 standard library", "org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-            .testImplementationDependency("Use the Kotlin test library", "org.jetbrains.kotlin:kotlin-test")
-            .testImplementationDependency("Use the Kotlin JUnit integration", "org.jetbrains.kotlin:kotlin-test-junit")
+            .plugin("Apply the Kotlin JVM plugin to add support for Kotlin on the JVM.", "org.jetbrains.kotlin.jvm", kotlinVersion)
+            .plugin("Apply the application plugin to add support for building a CLI application.", "application")
+            .implementationDependency("Use the Kotlin JDK 8 standard library.", "org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+            .testImplementationDependency("Use the Kotlin test library.", "org.jetbrains.kotlin:kotlin-test")
+            .testImplementationDependency("Use the Kotlin JUnit integration.", "org.jetbrains.kotlin:kotlin-test-junit")
             .conventionPropertyAssignment(
-                "Define the main class for the application",
+                "Define the main class for the application.",
                 "application", "mainClassName", withPackage(settings, "AppKt"));
 
         TemplateOperation kotlinSourceTemplate = fromClazzTemplate("kotlinapp/App.kt.template", settings, "main");

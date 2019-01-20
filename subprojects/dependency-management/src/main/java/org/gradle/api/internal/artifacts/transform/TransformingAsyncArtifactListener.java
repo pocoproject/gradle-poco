@@ -26,33 +26,42 @@ import java.io.File;
 import java.util.Map;
 
 class TransformingAsyncArtifactListener implements ResolvedArtifactSet.AsyncArtifactListener {
-    private final Map<ComponentArtifactIdentifier, TransformArtifactOperation> artifactResults;
-    private final Map<File, TransformFileOperation> fileResults;
-    private final ArtifactTransformListener transformListener;
+    private final Map<ComponentArtifactIdentifier, TransformationOperation> artifactResults;
+    private final Map<File, TransformationOperation> fileResults;
+    private final ExecutionGraphDependenciesResolver dependenciesResolver;
     private final BuildOperationQueue<RunnableBuildOperation> actions;
     private final ResolvedArtifactSet.AsyncArtifactListener delegate;
-    private final ArtifactTransformer transform;
+    private final Transformation transformation;
 
-    TransformingAsyncArtifactListener(ArtifactTransformer transform, ResolvedArtifactSet.AsyncArtifactListener delegate, BuildOperationQueue<RunnableBuildOperation> actions, Map<ComponentArtifactIdentifier, TransformArtifactOperation> artifactResults, Map<File, TransformFileOperation> fileResults, ArtifactTransformListener transformListener) {
+    TransformingAsyncArtifactListener(
+        Transformation transformation,
+        ResolvedArtifactSet.AsyncArtifactListener delegate,
+        BuildOperationQueue<RunnableBuildOperation> actions,
+        Map<ComponentArtifactIdentifier, TransformationOperation> artifactResults,
+        Map<File, TransformationOperation> fileResults,
+        ExecutionGraphDependenciesResolver dependenciesResolver
+    ) {
         this.artifactResults = artifactResults;
         this.actions = actions;
-        this.transform = transform;
+        this.transformation = transformation;
         this.delegate = delegate;
         this.fileResults = fileResults;
-        this.transformListener = transformListener;
+        this.dependenciesResolver = dependenciesResolver;
     }
 
     @Override
     public void artifactAvailable(ResolvableArtifact artifact) {
         ComponentArtifactIdentifier artifactId = artifact.getId();
         File file = artifact.getFile();
-        TransformArtifactOperation operation = new TransformArtifactOperation(artifactId, file, transform, transformListener);
+        TransformationSubject initialSubject = TransformationSubject.initial(artifactId, file);
+        TransformationOperation operation = new TransformationOperation(transformation, initialSubject, dependenciesResolver);
         artifactResults.put(artifactId, operation);
-        if (transform.hasCachedResult(file)) {
-            operation.run(null);
-        } else {
-            actions.add(operation);
-        }
+        // We expect artifact transformations to be executed in a scheduled way,
+        // so at this point we take the result from the in-memory cache.
+        // Artifact transformations are always executed scheduled via the execution graph when the transformed component is declared as an input.
+        // Using the BuildOperationQueue here to only realize that the result of the transformation is from the in-memory has a performance impact,
+        // so we executing the (no-op) operation in place.
+        operation.run(null);
     }
 
     @Override
@@ -68,12 +77,12 @@ class TransformingAsyncArtifactListener implements ResolvedArtifactSet.AsyncArti
 
     @Override
     public void fileAvailable(File file) {
-        TransformFileOperation operation = new TransformFileOperation(file, transform, transformListener);
+        TransformationSubject initialSubject = TransformationSubject.initial(file);
+        TransformationOperation operation = new TransformationOperation(transformation, initialSubject, dependenciesResolver);
         fileResults.put(file, operation);
-        if (transform.hasCachedResult(file)) {
-            operation.run(null);
-        } else {
-            actions.add(operation);
-        }
+        // We expect file transformations to be executed in an immediate way,
+        // since they cannot be scheduled early.
+        // To allow file transformations to run in parallel, we use the BuildOperationQueue.
+        actions.add(operation);
     }
 }

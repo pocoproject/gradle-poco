@@ -30,13 +30,13 @@ import org.gradle.gradlebuild.buildquality.incubation.IncubatingApiReportTask
 
 plugins {
     `java-base`
-    id("gradlebuild.build-types")
-    id("gradlebuild.ci-reporting")
+    gradlebuild.`build-types`
+    gradlebuild.`ci-reporting`
     // TODO Apply this plugin in the BuildScanConfigurationPlugin once binary plugins can apply plugins via the new plugin DSL
     // We have to apply it here at the moment, so that when the build scan plugin is auto-applied via --scan can detect that
     // the plugin has been already applied. For that the plugin has to be applied with the new plugin DSL syntax.
-    id("com.gradle.build-scan")
-    id("org.gradle.ci.tag-single-build")
+    com.gradle.`build-scan`
+    id("org.gradle.ci.tag-single-build") version("0.48")
 }
 
 defaultTasks("assemble")
@@ -45,7 +45,7 @@ base.archivesBaseName = "gradle"
 
 buildTypes {
     create("compileAllBuild") {
-        tasks(":createBuildReceipt", "compileAll")
+        tasks(":createBuildReceipt", "compileAll", ":docs:distDocs")
         projectProperties("ignoreIncomingBuildReceipt" to true)
     }
 
@@ -53,7 +53,7 @@ buildTypes {
         tasks(
             "classes", "doc:checkstyleApi", "codeQuality", "allIncubationReportsZip",
             "docs:check", "distribution:checkBinaryCompatibility", "javadocAll",
-            "architectureTest:test")
+            "architectureTest:test", "toolingApi:toolingApiShadedJar")
     }
 
     // Used by the first phase of the build pipeline, running only last version on multiversion - tests
@@ -61,7 +61,7 @@ buildTypes {
         tasks("test", "integTest", "crossVersionTest")
     }
 
-    // Used for builds to run all tests, but not necessarily on all platforms
+    // Used for builds to run all tests
     create("fullTest") {
         tasks("test", "forkingIntegTest", "forkingCrossVersionTest")
         projectProperties("testAllVersions" to true)
@@ -70,10 +70,7 @@ buildTypes {
     // Used for builds to test the code on certain platforms
     create("platformTest") {
         tasks("test", "forkingIntegTest", "forkingCrossVersionTest")
-        projectProperties(
-            "testAllVersions" to true,
-            "testAllPlatforms" to true
-        )
+        projectProperties("testPartialVersions" to true)
     }
 
     // Tests not using the daemon mode
@@ -113,7 +110,8 @@ buildTypes {
 
     // Used for cross version tests on CI
     create("allVersionsCrossVersionTest") {
-        tasks("allVersionsCrossVersionTests")
+        tasks("allVersionsCrossVersionTests", "integMultiVersionTest")
+        projectProperties("testAllVersions" to true)
     }
 
     create("quickFeedbackCrossVersionTest") {
@@ -154,12 +152,12 @@ allprojects {
             url = uri("https://repo.gradle.org/gradle/libs")
         }
         maven {
-            name = "kotlin-eap"
-            url = uri("https://dl.bintray.com/kotlin/kotlin-eap")
+            name = "kotlinx"
+            url = uri("https://kotlin.bintray.com/kotlinx/")
         }
         maven {
-            name = "kotlin-dev"
-            url = uri("https://dl.bintray.com/kotlin/kotlin-dev")
+            name = "kotlin-eap"
+            url = uri("https://dl.bintray.com/kotlin/kotlin-eap")
         }
     }
 
@@ -185,13 +183,15 @@ apply(plugin = "gradlebuild.update-versions")
 apply(plugin = "gradlebuild.dependency-vulnerabilities")
 apply(plugin = "gradlebuild.add-verify-production-environment-task")
 
+allprojects {
+    apply(plugin = "gradlebuild.dependencies-metadata-rules")
+}
 
 subprojects {
     version = rootProject.version
 
     if (project in javaProjects) {
         apply(plugin = "gradlebuild.java-projects")
-        apply(plugin = "gradlebuild.dependencies-metadata-rules")
     }
 
     if (project in publishedProjects) {

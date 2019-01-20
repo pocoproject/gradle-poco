@@ -18,13 +18,12 @@ import org.gradle.gradlebuild.testing.integrationtests.cleanup.WhenNotEmpty
  */
 plugins {
     `java-library`
-    // id("gradlebuild.strict-compile")
+    // gradlebuild.`strict-compile`
 }
 
 dependencies {
     api(project(":baseServices"))
     api(project(":baseServicesGroovy"))
-    api(project(":buildCache"))
     api(project(":logging"))
     api(project(":persistentCache"))
     api(project(":processServices"))

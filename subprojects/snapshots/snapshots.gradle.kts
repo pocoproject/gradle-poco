@@ -17,7 +17,7 @@ import org.gradle.gradlebuild.unittestandcompile.ModuleType
 
 plugins {
     `java-library`
-     id("gradlebuild.classycle")
+     gradlebuild.classycle
 }
 
 description = "Tools to take immutable, comparable snapshots of files and other things"
@@ -33,10 +33,8 @@ dependencies {
     testImplementation(project(":internalTesting"))
 }
 
-java {
-    gradlebuildJava {
-        moduleType = ModuleType.CORE
-    }
+gradlebuildJava {
+    moduleType = ModuleType.CORE
 }
 
 testFixtures {

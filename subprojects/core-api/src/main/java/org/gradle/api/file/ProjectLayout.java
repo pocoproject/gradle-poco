@@ -28,7 +28,7 @@ import java.io.File;
 /**
  * Provides access to several important locations for a project.
  *
- * An instance of the factory can be injected into a task or plugin by annotating a public constructor or method with {@code javax.inject.Inject}. It is also available via {@link org.gradle.api.Project#getLayout()}.
+ * <p>An instance of this type can be injected into a task, plugin or other object by annotating a public constructor or method with {@code javax.inject.Inject}. It is also available via {@link org.gradle.api.Project#getLayout()}.
  *
  * @since 4.1
  */
@@ -50,6 +50,7 @@ public interface ProjectLayout {
      * @since 4.3
      * @deprecated Replaced by {@link ObjectFactory#directoryProperty()}
      */
+    @Deprecated
     DirectoryProperty directoryProperty();
 
     /**
@@ -59,6 +60,7 @@ public interface ProjectLayout {
      * @since 4.4
      * @deprecated Replaced by {@link ObjectFactory#directoryProperty()}
      */
+    @Deprecated
     DirectoryProperty directoryProperty(Provider<? extends Directory> initialProvider);
 
     /**
@@ -67,6 +69,7 @@ public interface ProjectLayout {
      * @since 4.3
      * @deprecated Replaced by {@link ObjectFactory#fileProperty()}
      */
+    @Deprecated
     RegularFileProperty fileProperty();
 
     /**
@@ -76,6 +79,7 @@ public interface ProjectLayout {
      * @since 4.4
      * @deprecated Replaced by {@link ObjectFactory#fileProperty()}
      */
+    @Deprecated
     RegularFileProperty fileProperty(Provider<? extends RegularFile> initialProvider);
 
     /**

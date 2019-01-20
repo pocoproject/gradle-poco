@@ -5,7 +5,7 @@ import org.gradle.gradlebuild.unittestandcompile.ModuleType
  */
 plugins {
     `java-library`
-    id("gradlebuild.classycle")
+    gradlebuild.classycle
 }
 
 dependencies {
@@ -27,6 +27,8 @@ dependencies {
     runtimeOnly(library("jcl_to_slf4j"))
 
     testImplementation(project(":internalTesting"))
+
+    integTestRuntimeOnly(project(":apiMetadata"))
 }
 
 gradlebuildJava {

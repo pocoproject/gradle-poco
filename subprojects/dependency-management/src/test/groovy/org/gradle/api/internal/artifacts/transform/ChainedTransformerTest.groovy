@@ -16,85 +16,85 @@
 
 package org.gradle.api.internal.artifacts.transform
 
-import com.google.common.collect.Lists
+import com.google.common.collect.ImmutableList
 import org.gradle.api.Action
+import org.gradle.internal.Try
 import spock.lang.Specification
 
 class ChainedTransformerTest extends Specification {
-
-    def "is cached if all parts are cached"() {
-        given:
-        def chain = new ChainedTransformer(new CachingTransformer(), new CachingTransformer())
-
-        expect:
-        chain.hasCachedResult(new File("foo"))
-    }
-
-    def "is not cached if first part is not cached"() {
-        given:
-        def chain = new ChainedTransformer(new NonCachingTransformer(), new CachingTransformer())
-
-        expect:
-        !chain.hasCachedResult(new File("foo"))
-    }
-
-    def "is not cached if second part is not cached"() {
-        given:
-        def chain = new ChainedTransformer(new CachingTransformer(), new NonCachingTransformer())
-
-        expect:
-        !chain.hasCachedResult(new File("foo"))
-    }
+    private TransformationSubject initialSubject = TransformationSubject.initial(new File("foo"))
 
     def "applies second transform on the result of the first"() {
         given:
-        def chain = new ChainedTransformer(new CachingTransformer(), new NonCachingTransformer())
+        def chain = new TransformationChain(new CachingTransformation(), new NonCachingTransformation())
 
         expect:
-        chain.transform(new File("foo")) == [new File("foo/cached/non-cached")]
+        chain.transform(initialSubject, Mock(ExecutionGraphDependenciesResolver)).get().files == [new File("foo/cached/non-cached")]
     }
 
-    class CachingTransformer implements ArtifactTransformer {
+    class CachingTransformation implements Transformation {
 
         @Override
-        List<File> transform(File input) {
-            Lists.newArrayList(new File(input, "cached"));
+        Try<TransformationSubject> transform(TransformationSubject subjectToTransform, ExecutionGraphDependenciesResolver dependenciesResolver) {
+            return Try.successful(subjectToTransform.createSubjectFromResult(ImmutableList.of(new File(subjectToTransform.files.first(), "cached"))))
         }
 
         @Override
-        boolean hasCachedResult(File input) {
-            return true
-        }
-
-        @Override
-        String getDisplayName() {
-            return null;
-        }
-
-        @Override
-        void visitLeafTransformers(Action<? super ArtifactTransformer> action) {
-        }
-    }
-
-    class NonCachingTransformer implements ArtifactTransformer {
-
-        @Override
-        List<File> transform(File input) {
-            Lists.newArrayList(new File(input, "non-cached"));
-        }
-
-        @Override
-        boolean hasCachedResult(File input) {
+        boolean requiresDependencies() {
             return false
         }
 
         @Override
         String getDisplayName() {
-            return null;
+            return "cached"
         }
 
         @Override
-        void visitLeafTransformers(Action<? super ArtifactTransformer> action) {
+        void visitTransformationSteps(Action<? super TransformationStep> action) {
+        }
+
+
+        @Override
+        boolean endsWith(Transformation otherTransform) {
+            return false
+        }
+
+        @Override
+        int stepsCount() {
+            return 1
+        }
+    }
+
+    class NonCachingTransformation implements Transformation {
+
+        @Override
+        Try<TransformationSubject> transform(TransformationSubject subjectToTransform, ExecutionGraphDependenciesResolver dependenciesResolver) {
+            return Try.successful(subjectToTransform.createSubjectFromResult(ImmutableList.of(new File(subjectToTransform.files.first(), "non-cached"))))
+        }
+
+        @Override
+        boolean requiresDependencies() {
+            return false
+        }
+
+        @Override
+        String getDisplayName() {
+            return "non-cached"
+        }
+
+        @Override
+        void visitTransformationSteps(Action<? super TransformationStep> action) {
+        }
+
+
+        @Override
+        boolean endsWith(Transformation otherTransform) {
+            return false
+        }
+
+        @Override
+        int stepsCount() {
+            return 1
         }
     }
 }

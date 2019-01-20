@@ -69,12 +69,7 @@ val prepareVersionsInfo = tasks.register<PrepareVersionsInfo>("prepareVersionsIn
     mostRecentSnapshot = releasedVersions.mostRecentSnapshot
 }
 
-sourceSets["main"].output.dir(mapOf("builtBy" to prepareVersionsInfo), generatedResourcesDir)
-
-ideConfiguration {
-    makeAllSourceDirsTestSourceDirsToWorkaroundIssuesWithIDEA13()
-}
-
+sourceSets.main { output.dir(mapOf("builtBy" to prepareVersionsInfo), generatedResourcesDir) }
 
 @CacheableTask
 open class PrepareVersionsInfo : DefaultTask() {

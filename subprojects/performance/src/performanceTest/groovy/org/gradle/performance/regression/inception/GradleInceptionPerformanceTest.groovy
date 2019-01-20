@@ -23,6 +23,9 @@ import org.junit.experimental.categories.Category
 import spock.lang.Issue
 import spock.lang.Unroll
 
+import static org.gradle.api.internal.artifacts.BaseRepositoryFactory.PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY
+import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.createMirrorInitScript
+import static org.gradle.integtests.fixtures.RepoScriptBlockUtil.gradlePluginRepositoryMirrorUrl
 import static org.gradle.performance.generator.JavaTestProject.LARGE_JAVA_MULTI_PROJECT
 import static org.gradle.performance.generator.JavaTestProject.LARGE_JAVA_MULTI_PROJECT_KOTLIN_DSL
 import static org.gradle.performance.generator.JavaTestProject.MEDIUM_MONOLITHIC_JAVA_PROJECT
@@ -41,13 +44,25 @@ import static org.gradle.performance.generator.JavaTestProject.MEDIUM_MONOLITHIC
 @Issue('https://github.com/gradle/gradle-private/issues/1313')
 class GradleInceptionPerformanceTest extends AbstractCrossVersionPerformanceTest {
 
+    static List<String> extraGradleBuildArguments() {
+        ["-Djava9Home=${System.getProperty('java9Home')}",
+         "-D${PLUGIN_PORTAL_OVERRIDE_URL_PROPERTY}=${gradlePluginRepositoryMirrorUrl()}",
+         "-Dorg.gradle.ignoreBuildJavaVersionCheck=true",
+         "-I", createMirrorInitScript().absolutePath]
+    }
+
+    def setup() {
+        def targetVersion = "5.2-20181221000038+0000"
+        runner.targetVersions = [targetVersion]
+        runner.minimumVersion = targetVersion
+    }
+
     @Unroll
     def "#tasks on the gradle build comparing gradle"() {
         given:
         runner.testProject = "gradleBuildCurrent"
         runner.tasksToRun = tasks.split(' ')
-        runner.targetVersions = ["5.0-20181016235834+0000"]
-        runner.args = ["-Djava9Home=${System.getProperty('java9Home')}"]
+        runner.args = extraGradleBuildArguments()
 
         when:
         def result = runner.run()
@@ -66,12 +81,8 @@ class GradleInceptionPerformanceTest extends AbstractCrossVersionPerformanceTest
         given:
         runner.testProject = testProject
         runner.tasksToRun = ['help']
-        runner.targetVersions = ["5.0-20181016235834+0000"]
         runner.runs = runs
-        runner.args = [
-            "-Djava9Home=${System.getProperty('java9Home')}",
-            "-Pgradlebuild.skipBuildSrcChecks=true"
-        ]
+        runner.args = extraGradleBuildArguments() + ["-Pgradlebuild.skipBuildSrcChecks=true"]
 
         and:
         def changingClassFilePath = "buildSrc/${buildSrcProjectDir}src/main/groovy/ChangingClass.groovy"

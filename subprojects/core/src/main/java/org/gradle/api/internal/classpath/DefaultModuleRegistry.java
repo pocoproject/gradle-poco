@@ -196,11 +196,15 @@ public class DefaultModuleRegistry implements ModuleRegistry, CachedJarFileStore
     }
 
     private void findImplementationClasspath(String name, Collection<File> implementationClasspath) {
-        List<String> suffixes = getClasspathSuffixes(name);
+        Matcher matcher = Pattern.compile("gradle-(.+)").matcher(name);
+        matcher.matches();
+        String projectDirName = matcher.group(1);
+        List<String> suffixesForProjectDir = getClasspathSuffixesForProjectDir(projectDirName);
         for (File file : classpath) {
             if (file.isDirectory()) {
-                for (String suffix : suffixes) {
-                    if (file.getAbsolutePath().endsWith(suffix)) {
+                String path = file.getAbsolutePath();
+                for (String suffix : suffixesForProjectDir) {
+                    if (path.endsWith(suffix)) {
                         implementationClasspath.add(file);
                     }
                 }
@@ -214,20 +218,12 @@ public class DefaultModuleRegistry implements ModuleRegistry, CachedJarFileStore
      *
      * <ul>
      * <li>In Eclipse, they are in the bin/ folder.</li>
-     * <li>In IDEA, they are in a folder derived from their module name.</li>
-     * Due to de-duplication with names in the buildSrc project, that module name can start with "gradle-"
+     * <li>In IDEA (native import), they are in in the out/production/ folder.</li>
      * </ul>
      * <li>In both cases we also include the static and generated resources of the project.</li>
      */
-    private List<String> getClasspathSuffixes(String name) {
+    private List<String> getClasspathSuffixesForProjectDir(String projectDirName) {
         List<String> suffixes = new ArrayList<String>();
-        Matcher matcher = Pattern.compile("gradle-(.+)").matcher(name);
-        matcher.matches();
-        String projectDirName = matcher.group(1);
-        String projectName = toCamelCase(projectDirName);
-
-        suffixes.add(("/out/production/" + projectName).replace('/', File.separatorChar));
-        suffixes.add(("/out/production/gradle-" + projectName).replace('/', File.separatorChar));
 
         suffixes.add(("/" + projectDirName + "/out/production/classes").replace('/', File.separatorChar));
         suffixes.add(("/" + projectDirName + "/out/production/resources").replace('/', File.separatorChar));
