@@ -128,10 +128,6 @@ open class IdePlugin : Plugin<Project> {
                         entries.removeAll { it is AbstractClasspathEntry && it.path.contains("$project.name/build") && it.kind == "lib" }
                         // Remove references to other project's binaries
                         entries.removeAll { it is AbstractClasspathEntry && it.path.contains("/subprojects") && it.kind == "lib" }
-                        // Add needed resources for running gradle as a non daemon java application
-                        if (file("build/generated-resources/main").exists()) {
-                            entries.add(SourceFolder("build/generated-resources/main", null))
-                        }
                         if (file("build/generated-resources/test").exists()) {
                             entries.add(SourceFolder("build/generated-resources/test", null))
                         }
